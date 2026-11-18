@@ -69,6 +69,12 @@ export type TrainSlice = {
   reset: () => void;
   restoreBest: () => void;
   /**
+   * Install saved weights after `loadGraph` (tinker-ysl.1). `host` belongs to the current graph
+   * (already filtered by `paramsFromJson`); nodes it lacks keep their fresh initialisation.
+   * Starts a new run (history and best cleared) from these weights. No-op while the graph is invalid.
+   */
+  loadHost: (host: HostParams) => void;
+  /**
    * Predictions of the current parameters (dropout off, after the link) for the rows of `x`
    * (row-major [n, dataColumns], already standardised if on); [n, width], or null when there is
    * no compiled model. Allocates only the result. Every distinct `n` costs one retrace in the
@@ -406,6 +412,28 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
           running: false,
         });
       }
+    },
+    loadHost: (loaded) => {
+      const { analysis, graph } = get();
+      if (!analysis.trainable || !rt.host) return;
+      const merged = Object.assign(Object.create(null) as HostParams, rt.host, loaded);
+      stopLoop();
+      disposeState();
+      rt.host = merged;
+      rt.hostGraph = graph;
+      rt.hostAnalysis = analysis;
+      clearRun();
+      const { engine, model } = rt;
+      let issue: string | null = null;
+      if (engine && model) {
+        try {
+          rt.state = engine.startTraining(model, engine.fromHost(model, merged), rt.seed);
+          evaluateInitial();
+        } catch (e) {
+          issue = e instanceof Error ? e.message : 'The saved weights could not be loaded.';
+        }
+      }
+      publish({ trainIssue: issue, canTrain: rt.state !== null, running: false, diverged: false });
     },
     predictGrid: (x, n) => {
       const { engine, model, state } = rt;
