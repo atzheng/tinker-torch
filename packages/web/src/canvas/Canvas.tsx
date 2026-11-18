@@ -35,6 +35,8 @@ import { useStore } from '../state/store.js';
 
 const DEFAULT_SIZE = { w: 800, h: 500 };
 const INSPECTOR_W = 248;
+/** Height in px of the strip above the drawing (the grain toggle sits in it). */
+const HEADER_H = 44;
 
 function useElementSize(ref: React.RefObject<HTMLElement | null>) {
   const [size, setSize] = useState(DEFAULT_SIZE);
@@ -96,6 +98,7 @@ export function Canvas() {
   const select = useStore((s) => s.select);
   const analysis = useAnalysis();
   const grain = useStore((s) => s.grain);
+  const setGrain = useStore((s) => s.setGrain);
   // Neuron view repaints its edges from `host` itself, so the canvas does not follow it per frame.
   const weights = useWeights(analysis, grain === 'layer');
   const selection = useSelection(analysis);
@@ -120,7 +123,11 @@ export function Canvas() {
         : layerLayout,
     [neuronLayout, layerLayout],
   );
-  const t: Transform = useMemo(() => fitTransform(layout.size, view), [layout.size, view]);
+  // A header strip above the drawing holds the grain toggle, so it never covers a piece or wire.
+  const t: Transform = useMemo(() => {
+    const f = fitTransform(layout.size, { w: view.w, h: Math.max(1, view.h - HEADER_H) });
+    return { ...f, ty: f.ty + HEADER_H };
+  }, [layout.size, view]);
   const placed = useMemo(
     () =>
       placeIssues(
@@ -223,6 +230,16 @@ export function Canvas() {
         if (e.key === 'Escape') select(null);
       }}
     >
+      <button
+        type="button"
+        className="tk-grain"
+        data-testid="grain-toggle"
+        aria-pressed={grain === 'neuron'}
+        title="Switch between layer view and neuron view"
+        onClick={() => setGrain(grain === 'neuron' ? 'layer' : 'neuron')}
+      >
+        Neurons
+      </button>
       <svg
         className="tk-svg"
         width={view.w}

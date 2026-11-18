@@ -22,6 +22,7 @@ import {
   type NeuronEdge,
 } from './neuronPure.js';
 import { pointerDownWith } from './tap.js';
+import { hostShape } from '../state/hostShape.js';
 import { useStore } from '../state/store.js';
 import type { Selection } from '../state/viewSlice.js';
 
@@ -66,7 +67,15 @@ const EdgeLayer = memo(function EdgeLayer(p: {
         const el = lines.current[k];
         const d = p.dims[e.node];
         if (!el || !d) return;
-        const w = weightAt(host, e.node, e.i, e.j, d.inW, d.out);
+        const w = weightAt(
+          host,
+          e.node,
+          e.i,
+          e.j,
+          d.inW,
+          d.out,
+          hostShape(host, e.node, useStore.getState().dataInfo),
+        );
         if (w === undefined) {
           el.setAttribute('data-sign', 'none');
           el.setAttribute('stroke-width', '0.8');
@@ -405,7 +414,15 @@ function EdgeTip(p: {
   const e = p.layout.edges[p.hover.k];
   const d = e && p.dims[e.node];
   if (!e || !d) return null;
-  const w = weightAt(host, e.node, e.i, e.j, d.inW, d.out);
+  const w = weightAt(
+    host,
+    e.node,
+    e.i,
+    e.j,
+    d.inW,
+    d.out,
+    hostShape(host, e.node, useStore.getState().dataInfo),
+  );
   if (w === undefined) return null;
   const text = w.toFixed(3);
   const fs = 13 / p.scale;

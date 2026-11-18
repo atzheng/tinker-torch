@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { analyse, initParams, type Analysis, type HostParams } from '@tinker/core';
-import { edgeIndexOf } from '../canvas/pure.js';
+import { edgeIndexOf, neuronSelectionLive } from '../canvas/pure.js';
 import { useStore, type Store } from './store.js';
 import type { Selection } from './viewSlice.js';
 
@@ -54,14 +54,5 @@ export function useSelection(analysis?: Analysis): Selection | null {
   if (!sel) return null;
   if (sel.kind === 'node') return graph.nodes.some((n) => n.id === sel.id) ? sel : null;
   if (sel.kind === 'wire') return edgeIndexOf(graph, sel.from, sel.to) >= 0 ? sel : null;
-  const node = graph.nodes.find((n) => n.id === sel.node);
-  if (!node) return null;
-  if (sel.kind === 'unit') {
-    if (sel.index < 0) return null;
-    return node.type === 'linear' && sel.index >= node.out ? null : sel;
-  }
-  if (node.type !== 'linear' || sel.i < 0 || sel.j < 0 || sel.j >= node.out) return null;
-  const inW = analysis?.inWidth[node.id];
-  if (analysis && (inW === undefined || sel.i >= inW)) return null;
-  return sel;
+  return neuronSelectionLive(sel, graph, analysis) ? sel : null;
 }

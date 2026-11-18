@@ -5,7 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { analyse, layoutNeurons, setLinearOut, type HostParams } from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { fitTransform } from '../src/canvas/pure.js';
-import { DataControls } from '../src/topbar/DataControls.js';
+import { hostShape, noteHost } from '../src/state/hostShape.js';
+import { weightAt } from '../src/canvas/neuronPure.js';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { useStore } from '../src/state/store.js';
 
@@ -23,14 +24,7 @@ beforeEach(() => {
   el = document.createElement('div');
   document.body.appendChild(el);
   root = createRoot(el);
-  act(() =>
-    root.render(
-      <>
-        <DataControls />
-        <Canvas />
-      </>,
-    ),
-  );
+  act(() => root.render(<Canvas />));
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -59,8 +53,8 @@ function tapAt(target: Element, x: number, y: number) {
 function screenOf(x: number, y: number): [number, number] {
   const g = s().graph;
   const layout = layoutNeurons(g, analyse(g, s().dataInfo));
-  const t = fitTransform(layout.size, { w: 800, h: 500 });
-  return [x * t.scale + t.tx, y * t.scale + t.ty];
+  const t = fitTransform(layout.size, { w: 800, h: 500 - 44 }); // 44: the header strip
+  return [x * t.scale + t.tx, y * t.scale + t.ty + 44];
 }
 const neuron = () => layoutNeurons(s().graph, analyse(s().graph, s().dataInfo));
 
@@ -241,4 +235,47 @@ test('Delete with an edge or unit selected does nothing to the graph', () => {
   act(() => s().select({ kind: 'unit', node: 'lin1', index: 1 }));
   act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' })));
   expect(s().graph).toBe(before);
+});
+
+test('a selection that stops fitting is cleared in the store; undo and regrow do not bring it back', () => {
+  toggle();
+  act(() => s().select({ kind: 'edge', node: 'lin2', i: 3, j: 0 }));
+  act(() => void s().apply(setLinearOut(s().graph, 'lin1', 2))); // lin2 is now 2x1
+  expect(s().selection).toBeNull();
+  act(() => s().undo()); // lin2 is 4x1 again
+  expect(s().selection).toBeNull();
+  act(() => s().select({ kind: 'unit', node: 'lin1', index: 3 }));
+  act(() => void s().apply(setLinearOut(s().graph, 'lin1', 2)));
+  expect(s().selection).toBeNull();
+  act(() => void s().apply(setLinearOut(s().graph, 'lin1', 4)));
+  expect(s().selection).toBeNull();
+});
+
+test('a still-valid edge selection survives an unrelated edit', () => {
+  toggle();
+  act(() => s().select({ kind: 'edge', node: 'lin2', i: 1, j: 0 }));
+  act(() => void s().apply(setLinearOut(s().graph, 'lin2', 1)));
+  expect(s().selection).toEqual({ kind: 'edge', node: 'lin2', i: 1, j: 0 });
+});
+
+test('weightAt refuses a host whose [in, out] is swapped, even when the length matches', () => {
+  const host: HostParams = { l: { W: Float32Array.from([1, 2, 3, 4, 5, 6]) } };
+  expect(weightAt(host, 'l', 1, 0, 2, 3, [2, 3])).toBe(4);
+  expect(weightAt(host, 'l', 1, 0, 3, 2, [2, 3])).toBeUndefined(); // built as 2x3, now 3x2
+  expect(weightAt(host, 'l', 1, 0, 2, 3)).toBe(4); // shape unknown: length check only
+});
+
+test('the store remembers the graph a host was published with, so its shapes are known', () => {
+  const h: HostParams = {
+    lin1: { W: new Float32Array(4), b: new Float32Array(4) },
+    lin2: { W: new Float32Array(4), b: new Float32Array(1) },
+  };
+  expect(hostShape(h, 'lin1', s().dataInfo)).toBeUndefined();
+  act(() => useStore.setState({ host: h }));
+  expect(hostShape(h, 'lin1', s().dataInfo)).toEqual([1, 4]);
+  expect(hostShape(h, 'lin2', s().dataInfo)).toEqual([4, 1]);
+  act(() => void s().apply(setLinearOut(s().graph, 'lin1', 2)));
+  expect(hostShape(h, 'lin1', s().dataInfo)).toEqual([1, 4]); // still what it was built for
+  noteHost(h, s().graph); // a snapshot is noted once: the first graph stays
+  expect(hostShape(h, 'lin1', s().dataInfo)).toEqual([1, 4]);
 });

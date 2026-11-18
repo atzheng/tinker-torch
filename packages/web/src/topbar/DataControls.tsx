@@ -88,8 +88,6 @@ export function DataControls() {
   const data = useStore((s) => s.graph.data);
   const setData = useStore((s) => s.setData);
   const resample = useStore((s) => s.resample);
-  const grain = useStore((s) => s.grain);
-  const setGrain = useStore((s) => s.setGrain);
   return (
     <div className={styles.row} data-testid="data-controls">
       <label className={styles.field}>
@@ -161,15 +159,6 @@ export function DataControls() {
         />
         <span>Standardise</span>
       </label>
-      <button
-        type="button"
-        data-testid="grain-toggle"
-        aria-pressed={grain === 'neuron'}
-        title="Switch between layer view and neuron view"
-        onClick={() => setGrain(grain === 'neuron' ? 'layer' : 'neuron')}
-      >
-        Neurons
-      </button>
     </div>
   );
 }

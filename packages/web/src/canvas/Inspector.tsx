@@ -4,6 +4,7 @@ import { WEB_PIECES } from './drawings/index.js';
 import { deleteSelection } from './actions.js';
 import { biasAt, weightAt } from './neuronPure.js';
 import { edgeIndexOf } from './pure.js';
+import { hostShape } from '../state/hostShape.js';
 import { useStore } from '../state/store.js';
 import type { Selection } from '../state/viewSlice.js';
 
@@ -97,7 +98,15 @@ function EdgeInspector(p: {
   const n = p.graph.nodes.find((x) => x.id === p.node);
   const w =
     n?.type === 'linear' && inW !== undefined
-      ? weightAt(host, p.node, p.i, p.j, inW, n.out)
+      ? weightAt(
+          host,
+          p.node,
+          p.i,
+          p.j,
+          inW,
+          n.out,
+          hostShape(host, p.node, useStore.getState().dataInfo),
+        )
       : undefined;
   return (
     <>

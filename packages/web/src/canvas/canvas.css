@@ -361,3 +361,25 @@ path.tk-hit {
 .tk-link[data-error='true'] {
   stroke: var(--error);
 }
+
+/* Grain toggle: a small view control in the header strip above the drawing. */
+.tk-grain {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  z-index: 3;
+  min-height: 32px;
+  min-width: 88px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: 14px var(--font);
+  cursor: pointer;
+}
+.tk-grain[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}

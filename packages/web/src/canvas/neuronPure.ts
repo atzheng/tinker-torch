@@ -22,11 +22,14 @@ export function weightAt(
   j: number,
   inWidth: number,
   out: number,
+  /** [in, out] the host was built for, when known (`hostShape`): a swapped shape is refused. */
+  shape?: readonly [number, number],
 ): number | undefined {
   const e = host?.[node];
   if (!e || e.W.length !== inWidth * out || i < 0 || j < 0 || i >= inWidth || j >= out) {
     return undefined;
   }
+  if (shape && (shape[0] !== inWidth || shape[1] !== out)) return undefined;
   return e.W[i * out + j];
 }
 
