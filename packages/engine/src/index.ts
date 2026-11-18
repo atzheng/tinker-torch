@@ -195,8 +195,9 @@ function makeEngine(): Engine {
       return guarded([pRef, x, y], () => m.evalFn()(pRef, x, y)).item();
     },
 
-    lossGrid() {
-      return lossGrid();
+    /** Borrows `model` and `params`. [a.length, b.length] row-major; dropout off. */
+    lossGrid(model, params, batch, axes, a, b) {
+      return lossGrid(model, peekParams(params), batch, axes, a, b);
     },
 
     trainMany() {
