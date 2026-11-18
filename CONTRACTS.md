@@ -191,9 +191,15 @@ function makeRng(seed: number): Rng;   // sfc32 or splitmix32; same seed -> same
 // core/params.ts
 type HostParams = Record<NodeId, { W: Float32Array; b?: Float32Array }>; // W row-major [in, out]; only linear nodes
 function initParams(graph: Graph, analysis: Analysis, seed: number): HostParams;
+function reconcileParams(old: HostParams, graph: Graph, analysis: Analysis, seed: number): HostParams;
+function countParams(host: HostParams): number;
+function paramsToJson(host: HostParams): Record<NodeId, { W: number[]; b?: number[] }>;
+function paramsFromJson(json: unknown, graph: Graph, analysis: Analysis): { params: HostParams; dropped: NodeId[] };
 ```
 
 Initialisation follows `nn.Linear`: W and b both uniform on ±1/√in. Different seeds give different values; the same seed always gives the same values. Note the layout: torch stores `weight` as [out, in]; HostParams stores [in, out] so that the forward pass is `x @ W + b`. Fixtures (section 11) are written in HostParams layout.
+
+HostParams has an entry for exactly the linear nodes on `analysis.order` with a known input width (an entry has `b` iff the node has bias). Each node draws W then b from `makeRng(seed).fork(nodeId)`, so adding a node does not change the others' init. `reconcileParams` keeps a node's arrays (the same objects) when W and b lengths match the new shapes, re-inits the rest, and drops nodes that left the path; it never mutates `old`. `paramsFromJson` drops malformed or shape-mismatched entries and lists their ids in `dropped`; linear nodes with no saved entry are absent, so callers follow it with `reconcileParams`.
 
 All data sampling, initialisation and mini-batch shuffling use `core/rng.ts`, never `Math.random` and never jax random. Only dropout masks use jax random, keyed from `TrainState.key`.
 
