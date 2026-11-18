@@ -3,3 +3,4 @@ export const CORE_NAME = '@tinker/core';
 export * from './graph.js';
 export * from './registry.js';
 export * from './rng.js';
+export * from './analyse.js';
