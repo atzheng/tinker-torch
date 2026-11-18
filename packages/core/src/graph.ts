@@ -158,6 +158,8 @@ export type LossFn = (typeof LOSS_FNS)[number];
 export type DatasetName = (typeof DATASET_NAMES)[number];
 export type PortRef = string;
 export type Edge = [from: PortRef, to: PortRef];
+/** What analysis needs to know about the dataset (CONTRACTS.md section 4). */
+export type DataInfo = { columns: string[]; kind: 'regression' | 'binary'; numClasses: number };
 export type DataConfig = z.infer<typeof dataSchema>;
 export type TrainConfig = z.infer<typeof trainSchema>;
 export type Graph = {

@@ -143,6 +143,7 @@ Parameter count of a Linear: in·out + (bias ? out : 0). Every other piece has 0
 ## 4. Analysis (`core/analyse.ts`)
 
 ```ts
+// DataInfo is defined in core/graph.ts (not analyse.ts) so that data and analysis both import it.
 type DataInfo = { columns: string[]; kind: 'regression' | 'binary'; numClasses: number }; // from the dataset
 type Issue = { at: { node?: NodeId; edge?: number }; message: string };  // edge = index into graph.edges
 type Analysis = {
@@ -217,8 +218,11 @@ function truth(set: DatasetName, xRaw: Float32Array): Float32Array; // regressio
 - Regression noise: y = f*(x) + noise · s · ε, ε ~ N(0, 1), where s is the standard deviation of f* over a uniform sample of the domain (a constant per set, computed once).
 - Classification noise: Gaussian jitter of point positions with std noise · 0.5 (blobs: noise scales its std, 0.6 · (0.5 + noise)). Classes are balanced.
 - n is the total; the last round(n · val) points are validation. Columns are named `x1`, `x2`.
-- `data/grid.ts`: `grid1d(domain, 200)` and `grid2d(domain, 64)` return raw x plus standardised x.
-- `data/batches.ts`: `batchSchedule(nTrain, batch, seed)` yields index arrays; each epoch shuffles with `makeRng(seed).fork('epoch' + e)`; `batch: 'full'` yields all rows in order every step.
+- Standardisation: when `config.standardize` is on, `xTrain` and `xVal` are stored already standardised, (x - mean) / std per column, with mean and population std (divide by n) of the raw training rows; a constant column gets std 1. `standardization` holds those numbers (null when off) and `domain` stays in raw units. `standardizeRows(x, d, st)` and `unstandardizeRows(x, d, st)` convert row-major arrays.
+- `truth` takes raw (unstandardised) x. Regression returns f*(x). Classification returns P(y=1|x) of the clean generator: blobs the exact logistic of the two Gaussians, circle (cut at r = 1.15, mid-gap), xor and moons (class 1 = inner moon, the nearer half circle) 0 or 1. All v1 classification sets are binary, so `info.kind` is `'binary'` with `numClasses` 2; regression has `numClasses` 1. `DataInfo` is defined in `core/graph.ts`.
+- Classification labels alternate 0, 1, 0, 1, ... so the train and validation parts are each balanced.
+- `data/grid.ts`: `grid1d(domain, m = 200, standardization = null)` and `grid2d(domain, m = 64, standardization = null)` return `{ n, d, xRaw, xStd }` (row-major Float32Arrays; xStd equals xRaw when standardization is null). Both span the domain inclusive of the ends. grid2d row index is `iy * m + ix`, x1 varying fastest.
+- `data/batches.ts`: `batchSchedule(nTrain, batch, seed)` is an infinite generator of fresh `Int32Array` index arrays, one per step; each epoch shuffles with `makeRng(seed).fork('epoch' + e)` and cuts the order into batches, keeping a smaller last batch so every row appears once per epoch. `batch: 'full'` yields all rows in order every step. `stepsPerEpoch(nTrain, batch)` gives steps per epoch. `gatherBatch(xTrain, yTrain, d, idx)` copies those rows into a `Batch` (section 7).
 
 ## 7. Engine (`engine/src/index.ts`)
 
