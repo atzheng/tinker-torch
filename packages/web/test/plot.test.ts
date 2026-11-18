@@ -7,6 +7,7 @@ import {
   logTicks,
   niceTicks,
   paddedRange,
+  fitYRange,
 } from '../src/plot/axes.js';
 import { lossRange } from '../src/plot/loss.js';
 
@@ -100,4 +101,21 @@ test('lossRange: linear starts at zero, log ignores non-positive values, steps u
   expect(r.hi).toBeCloseTo(5);
   expect(lossRange([], true).hi).toBeGreaterThan(lossRange([], true).lo);
   expect(lossRange(h, false, 9).hi).toBeCloseTo(9 * 1.05);
+});
+
+test('fitYRange: a diverging curve cannot blow up the axis', () => {
+  const curve = new Float32Array(200);
+  for (let i = 0; i < curve.length; i++) curve[i] = (i % 2 ? 1 : -1) * 10 ** (i / 33);
+  const [a, b] = fitYRange(-1, 1, curve);
+  expect(a).toBeGreaterThanOrEqual(-2.5);
+  expect(b).toBeLessThanOrEqual(2.5);
+  expect(fitYRange(-1, 1, null)).toEqual(paddedRange(-1, 1));
+  expect(fitYRange(-1, 1, [Number.NaN, 0.5])).toEqual(paddedRange(-1, 1));
+});
+
+test('logTicks thins out wide ranges to about six labels', () => {
+  const t = logTicks(1e-20, 1e5);
+  expect(t.length).toBeLessThanOrEqual(8);
+  expect(t.length).toBeGreaterThanOrEqual(3);
+  expect(logTicks(1e-3, 1e3)).toEqual([0.001, 0.01, 0.1, 1, 10, 100, 1000]);
 });

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { grid1d, truth, unstandardizeRows } from '@tinker/core';
-import { linearScale, niceTicks, paddedRange } from '../plot/axes.js';
+import { fitYRange, linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { MARGINS, drawAxes, drawLegend, type LegendItem } from '../plot/draw.js';
 import { useStore } from '../state/store.js';
@@ -70,14 +70,7 @@ function FitPlot1D() {
     for (let i = 0; i < dataset.nVal; i++) see(dataset.yVal[i] ?? Number.NaN);
     if (showTruth) for (let i = 0; i < fixed.f.length; i++) see(fixed.f[i] ?? Number.NaN);
     if (!(hi >= lo)) [lo, hi] = [-1, 1];
-    const span = hi - lo || 1;
-    if (curve) {
-      for (let i = 0; i < curve.length; i++) {
-        const v = curve[i] ?? Number.NaN;
-        if (Number.isFinite(v)) see(Math.min(hi + span * 0.5, Math.max(lo - span * 0.5, v)));
-      }
-    }
-    const [ylo, yhi] = paddedRange(lo, hi);
+    const [ylo, yhi] = fitYRange(lo, hi, curve);
     const xs = linearScale(xlo, xhi, m.l, w - m.r);
     const ys = linearScale(ylo, yhi, h - m.b, m.t);
     drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(xlo, xhi, 6), niceTicks(ylo, yhi, 4), 'x', 'y');

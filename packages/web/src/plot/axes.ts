@@ -50,8 +50,10 @@ export function logTicks(lo: number, hi: number): number[] {
   if (!(lo > 0 && hi > lo)) return [];
   const decades = Math.log10(hi / lo);
   const mants = decades > 3 ? [1] : [1, 2, 5];
+  const every = Math.max(1, Math.ceil(decades / 6)); // thin to about 6 labels
   const out: number[] = [];
   for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) {
+    if (e % every !== 0) continue;
     for (const m of mants) {
       const v = Number((m * 10 ** e).toPrecision(12));
       if (v >= lo * (1 - 1e-9) && v <= hi * (1 + 1e-9)) out.push(v);
@@ -134,4 +136,30 @@ export function decimatePath(
     }
   }
   flush();
+}
+
+/**
+ * Padded y range for the fit plot: the data range [lo, hi] extended by the curve, where the curve
+ * counts only up to half the data span beyond the data (so a diverging curve cannot squash the points).
+ */
+export function fitYRange(
+  lo: number,
+  hi: number,
+  curve: ArrayLike<number> | null,
+): [number, number] {
+  const span = hi - lo || 1;
+  const cLo = lo - span * 0.5;
+  const cHi = hi + span * 0.5;
+  let a = lo;
+  let b = hi;
+  if (curve) {
+    for (let i = 0; i < curve.length; i++) {
+      const v = curve[i];
+      if (v === undefined || !Number.isFinite(v)) continue;
+      const c = Math.min(cHi, Math.max(cLo, v));
+      if (c < a) a = c;
+      if (c > b) b = c;
+    }
+  }
+  return paddedRange(a, b);
 }
