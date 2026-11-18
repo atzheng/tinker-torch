@@ -1,0 +1,60 @@
+/* Five regions (SPEC "Screen layout"): top bar, palette, canvas (~55%), results (~30%), training bar. */
+.app {
+  display: grid;
+  height: 100%;
+  grid-template-columns: minmax(140px, 15%) minmax(0, 55%) minmax(0, 30%);
+  grid-template-rows: 48px minmax(0, 1fr) 56px;
+  grid-template-areas:
+    'top top top'
+    'palette canvas results'
+    'train train train';
+  gap: 1px;
+  background: var(--border);
+}
+
+.region {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.top {
+  grid-area: top;
+}
+.palette {
+  grid-area: palette;
+}
+.canvas {
+  grid-area: canvas;
+  background: var(--bg);
+}
+.results {
+  grid-area: results;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); /* fit plot above, loss curves below */
+  gap: 1px;
+}
+.train {
+  grid-area: train;
+}
+
+.notice {
+  display: none;
+  height: 100%;
+  padding: 24px;
+  place-items: center;
+  text-align: center;
+  font-size: 20px;
+  background: var(--bg);
+}
+
+/* Narrower than 1024 px, or portrait: only the notice. */
+@media (max-width: 1023px), (orientation: portrait) {
+  .app {
+    display: none;
+  }
+  .notice {
+    display: grid;
+  }
+}
