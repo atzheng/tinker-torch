@@ -67,6 +67,30 @@ test('changing set within the same columns keeps the column choice; undo recompu
   expect(s().dataInfo.columns).toEqual(['x1']);
 });
 
+test('data changes are undo steps, in order with other edits; dataset follows', () => {
+  const g0 = s().graph;
+  s().setData({ set: 'xor' });
+  s().apply({ ok: true, graph: { ...s().graph, train: { ...s().graph.train, lr: 0.5 } } });
+  s().undo();
+  expect(s().graph.train.lr).toBe(g0.train.lr);
+  expect(s().graph.data.set).toBe('xor');
+  expect(s().dataInfo.columns).toEqual(['x1', 'x2']);
+  s().undo();
+  expect(s().graph).toEqual(g0);
+  expect(s().dataInfo.columns).toEqual(['x1']);
+  s().redo();
+  expect(s().graph.data.set).toBe('xor');
+  expect(input().columns).toEqual(['x1', 'x2']);
+  s().redo();
+  expect(s().graph.train.lr).toBe(0.5);
+  expect(s().dataset.nTrain).toBe(sample(s().graph.data).nTrain);
+});
+
+test('a data patch that changes nothing adds no history', () => {
+  s().setData({ n: 40 });
+  expect(s().canUndo).toBe(false);
+});
+
 test('standardise toggles stored standardisation', () => {
   expect(s().dataset.standardization).toBeNull();
   s().setData({ standardize: true });

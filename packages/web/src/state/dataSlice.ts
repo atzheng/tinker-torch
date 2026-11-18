@@ -23,8 +23,9 @@ export type DataSlice = {
   dataset: Dataset;
   dataInfo: DataInfo;
   /**
-   * Patch `graph.data` (clamped to the schema ranges). Not an undo step: data settings are not a
-   * canvas gesture. When the set changes to one with different columns, the Input pieces' columns
+   * Patch `graph.data` (clamped to the schema ranges). One undo step per call (through
+   * `graphSlice.apply`; no step when nothing changes), because history holds whole graphs
+   * including `graph.data`. When the set changes to one with different columns, the Input pieces' columns
    * become all columns of the new set; otherwise they are kept.
    */
   setData: (patch: Partial<DataConfig>) => void;
@@ -68,7 +69,8 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
           };
         }
       }
-      set({ graph: next });
+      if (JSON.stringify(next) === JSON.stringify(graph)) return;
+      get().apply({ ok: true, graph: next });
     },
     resample: () => {
       const { graph, setData } = get();
@@ -82,7 +84,8 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
       const { graph, dataInfo } = get();
       const keep = dataInfo.columns.filter((c) => columns.includes(c));
       if (keep.length === 0) return;
-      set({
+      get().apply({
+        ok: true,
         graph: {
           ...graph,
           nodes: graph.nodes.map((n) =>

@@ -19,6 +19,7 @@ export function InputFields({ node }: { node: NodeOf<'input'> }) {
           >
             <input
               type="checkbox"
+              style={{ accentColor: 'var(--accent)' }}
               data-testid={`input-col-${c}`}
               checked={on}
               disabled={on && node.columns.length === 1}

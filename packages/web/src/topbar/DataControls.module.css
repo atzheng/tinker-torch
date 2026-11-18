@@ -46,3 +46,7 @@
 .check {
   color: var(--text);
 }
+
+.check input {
+  accent-color: var(--accent);
+}

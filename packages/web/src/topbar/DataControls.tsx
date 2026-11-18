@@ -62,15 +62,22 @@ function NumField(props: {
         min={props.min * scale}
         max={props.max * scale}
         step={props.step}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          const v = Number(e.target.value);
-          if (e.target.value.trim() === '' || !Number.isFinite(v)) return;
-          if (props.integer && !Number.isInteger(v)) return;
-          if (v < props.min * scale || v > props.max * scale) return;
-          props.onCommit(v / scale);
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
         }}
-        onBlur={() => setDraft(shown)}
+        onBlur={() => {
+          // One undo step per committed edit: commit on blur or Enter, not on every keystroke.
+          const v = Number(draft);
+          const ok =
+            draft.trim() !== '' &&
+            Number.isFinite(v) &&
+            (!props.integer || Number.isInteger(v)) &&
+            v >= props.min * scale &&
+            v <= props.max * scale;
+          if (ok) props.onCommit(v / scale);
+          else setDraft(shown);
+        }}
       />
     </label>
   );
