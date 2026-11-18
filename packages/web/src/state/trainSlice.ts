@@ -68,6 +68,13 @@ export type TrainSlice = {
   pause: () => void;
   reset: () => void;
   restoreBest: () => void;
+  /**
+   * Predictions of the current parameters (dropout off, after the link) for the rows of `x`
+   * (row-major [n, dataColumns], already standardised if on); [n, width], or null when there is
+   * no compiled model. Allocates only the result. Every distinct `n` costs one retrace in the
+   * engine (about 2 ms), so callers keep n fixed per dataset (a constant grid).
+   */
+  predictGrid: (x: Float32Array, n: number) => Float32Array | null;
   setSpeed: (n: number) => void;
   /** Commit a learning rate (one undo step). Committed on release or blur by the UI. */
   setLearningRate: (lr: number) => void;
@@ -251,6 +258,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       }
     }
     const canTrain = rt.state !== null;
+    if (get().diverged) rt.trainLoss = null; // the last finite loss is from before the blow-up
     const keepRunning = !structural && wasRunning && canTrain;
     // One store update, so a reader never sees the new analysis with the old host.
     publish({ analysis, trainIssue: issue, canTrain, running: false, diverged: false });
@@ -313,7 +321,15 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       ok = guardedStep();
       if (performance.now() - t0 >= FRAME_BUDGET_MS) break;
     }
-    publish();
+    try {
+      publish();
+    } catch (e) {
+      set({
+        trainIssue: e instanceof Error ? e.message : 'Training stopped on an error.',
+        running: false,
+      });
+      return;
+    }
     if (ok && get().running) rt.raf = requestAnimationFrame(frame);
   }
 
@@ -382,12 +398,22 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
         rt.state = engine.startTraining(model, params, rt.seed);
         rt.batches = batchSchedule(get().dataset.nTrain, get().graph.train.batch, rt.seed);
         rt.valLoss = best.val;
+        rt.trainLoss = null; // no loss was computed for the restored parameters yet
         publish({ running: false, diverged: false });
       } catch (e) {
         set({
           trainIssue: e instanceof Error ? e.message : 'The best parameters could not be restored.',
           running: false,
         });
+      }
+    },
+    predictGrid: (x, n) => {
+      const { engine, model, state } = rt;
+      if (!engine || !model || !state) return null;
+      try {
+        return engine.predict(model, state.params, x, n);
+      } catch {
+        return null;
       }
     },
     setSpeed: (n) => set({ speed: Math.max(1, Math.round(n)) }),

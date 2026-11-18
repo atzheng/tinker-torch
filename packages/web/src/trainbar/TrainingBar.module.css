@@ -94,3 +94,9 @@
 .diverged {
   flex: none;
 }
+
+@media (pointer: coarse) {
+  .field input[type='range'] {
+    height: 32px;
+  }
+}

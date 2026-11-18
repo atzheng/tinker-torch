@@ -45,7 +45,23 @@ function LearningRate() {
 
 export function TrainingBar() {
   useEngine(); // starts loading the engine; the train slice compiles when it is ready
-  const s = useStore();
+  const s = {
+    stepOnce: useStore((x) => x.stepOnce),
+    run: useStore((x) => x.run),
+    pause: useStore((x) => x.pause),
+    reset: useStore((x) => x.reset),
+    restoreBest: useStore((x) => x.restoreBest),
+    setSpeed: useStore((x) => x.setSpeed),
+    engineStatus: useStore((x) => x.engineStatus),
+    trainIssue: useStore((x) => x.trainIssue),
+    canTrain: useStore((x) => x.canTrain),
+    running: useStore((x) => x.running),
+    diverged: useStore((x) => x.diverged),
+    step: useStore((x) => x.step),
+    speed: useStore((x) => x.speed),
+    best: useStore((x) => x.best),
+    analysis: useStore((x) => x.analysis),
+  };
   const [, bump] = useState(0);
   // Dev only: refresh the live-array readout when the step changes.
   useEffect(() => {
