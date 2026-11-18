@@ -95,6 +95,7 @@ type TrainConfig = {
 type Graph = { version: 1; nodes: Node[]; edges: Edge[]; data: DataConfig; train: TrainConfig };
 ```
 
+- Also exported from `graph.ts`: `DatasetName` and the `*_NAMES`/`*_FNS` const lists, `NodeBody`, `parsePort(ref) -> {node, port | null}`, `resolveEdge(nodes, edge)` (fills default ports, one sentence on a bad edge) and `inputPortsOf(type)`. Types are inferred from the zod schema.
 - `parseGraph(json: unknown): { ok: true; graph: Graph } | { ok: false; error: string }`. Fills defaults (`standardize: false`, huber `delta: 1`). Unknown fields are rejected. The error is one plain sentence.
 - `serializeGraph(graph)`: stable key order, two-space JSON.
 - The weight penalty is the `penalty` field on the loss node. In the palette it is a piece ("Weight penalty"); dropping it on the loss sets this field. It has no node of its own.
@@ -114,14 +115,16 @@ type CorePiece<N extends Node> = {
   defaults: () => Omit<N, 'id'>;
   outWidth(node: N, inWidths: Record<string, number>, ctx: WidthCtx): number | WidthError;
   paramShapes(node: N, inWidth: number): { W?: [rows: number, cols: number]; b?: [number] }; // W is [in, out]
-  torch(node: N): string;                 // e.g. "nn.Linear(4, 8, bias=True)"; used by the later code view
+  torch(node: N, inWidth?: number): string; // e.g. "nn.Linear(4, 8, bias=True)" (needs inWidth); used by the later code view
 };
 type WidthCtx = { dataColumns: number; numClasses: number };
 type WidthError = { error: string };      // one plain sentence, e.g. "Add needs both inputs to have the same width: 4 and 8."
 const CORE_PIECES: { [T in PieceType]: CorePiece<Extract<Node, { type: T }>> };
 
 // a palette entry (one per row of the SPEC pieces table, 14 entries)
-type PaletteEntry = { key: string; label: string; family: Family | 'penalties'; make: () => Omit<Node,'id'> | Penalty };
+type PaletteEntry = { key: string; label: string; family: Family | 'penalties'; make: () => NodeBody | Penalty };
+// NodeBody = Omit<Node, 'id'> distributed over the union. Target is in family 'outputs'.
+// The weight penalty's make() gives { kind: 'l2', lambda: 0.01 }.
 const PALETTE: PaletteEntry[];
 
 // engine/src/pieces/index.ts
