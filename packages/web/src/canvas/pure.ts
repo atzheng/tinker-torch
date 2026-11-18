@@ -1,0 +1,263 @@
+/** Pure helpers for the layer view: no React, no store. Unit tested in test/canvasPure.test.ts. */
+import {
+  resolveEdge,
+  type Analysis,
+  type Graph,
+  type LayerLayout,
+  type Issue,
+  type NodeId,
+  type PortRef,
+} from '@tinker/core';
+
+export type Transform = { scale: number; tx: number; ty: number };
+
+/** Scale and centre a drawing of `size` abstract units into a `view` of pixels, with a margin. */
+export function fitTransform(
+  size: readonly [number, number],
+  view: { w: number; h: number },
+  margin = 24,
+  maxScale = 1.4,
+): Transform {
+  const sw = Math.max(1, size[0]);
+  const sh = Math.max(1, size[1]);
+  const scale = Math.max(
+    0.05,
+    Math.min(maxScale, (view.w - 2 * margin) / sw, (view.h - 2 * margin) / sh),
+  );
+  return { scale, tx: (view.w - sw * scale) / 2, ty: (view.h - sh * scale) / 2 };
+}
+
+/** Smallest touch target, in screen pixels (CONTRACTS.md section 10). */
+export const HIT_MIN_PX = 32;
+
+/**
+ * Extra margin to add on each side of a shape that is `size` abstract units across so its hit
+ * shape is at least `minPx` on screen at `scale`. Drawn shapes keep their size; only the
+ * transparent hit shape grows (neuron view scales down to about 0.5).
+ */
+export function hitPad(size: number, scale: number, minPx = HIT_MIN_PX): number {
+  return Math.max(0, (minPx / scale - size) / 2);
+}
+
+/** Index of the first edge with these endpoints (as stored), or -1. */
+export function edgeIndexOf(graph: Graph, from: PortRef, to: PortRef): number {
+  return graph.edges.findIndex((e) => e[0] === from && e[1] === to);
+}
+
+export type PlacedIssues = {
+  /** Issues drawn at a wire (that has geometry). */
+  byEdge: Map<number, string[]>;
+  /** Issues drawn at a piece. */
+  byNode: Map<NodeId, string[]>;
+  /** Issues with no place on the canvas: one line each. */
+  global: string[];
+};
+
+/**
+ * Decide where each issue is shown. An issue with an edge that has a wire goes on the wire (its
+ * node is still outlined, see `errorNodes`); otherwise on its node when that exists; otherwise it
+ * is global. An edge that does not resolve has no wire, so it falls back to its node or to the
+ * global line.
+ */
+export function placeIssues(
+  issues: readonly Issue[],
+  wireEdges: ReadonlySet<number>,
+  nodeIds: ReadonlySet<NodeId>,
+  wireOfNode: (node: NodeId) => number | undefined = () => undefined,
+): PlacedIssues {
+  const out: PlacedIssues = { byEdge: new Map(), byNode: new Map(), global: [] };
+  const add = <K>(m: Map<K, string[]>, k: K, msg: string) => {
+    const list = m.get(k);
+    if (!list) m.set(k, [msg]);
+    else if (!list.includes(msg)) list.push(msg);
+  };
+  for (const { at, message } of issues) {
+    if (at.edge !== undefined && wireEdges.has(at.edge)) add(out.byEdge, at.edge, message);
+    else if (at.node !== undefined && nodeIds.has(at.node)) {
+      const wire = wireOfNode(at.node);
+      if (wire !== undefined && wireEdges.has(wire)) add(out.byEdge, wire, message);
+      else add(out.byNode, at.node, message);
+    } else if (!out.global.includes(message)) out.global.push(message);
+  }
+  return out;
+}
+
+/**
+ * The wire a node-level issue is really about. Only the Output-versus-loss compatibility issues
+ * (link does not suit the loss, output width) belong on the wire into `loss.pred`. They are the
+ * only node issues an Output gets while it is the prediction (`analysis.predNode`), its width is
+ * known and its id is unique; "needs an input" (width unknown), a cycle (width unknown) and a
+ * duplicate id stay at the piece, as does every other piece's issue.
+ */
+export function wireOfNode(graph: Graph, analysis: Analysis, node: NodeId): number | undefined {
+  const n = graph.nodes.find((x) => x.id === node);
+  if (n?.type !== 'output' || analysis.predNode !== node) return undefined;
+  if (analysis.outWidth[node] === undefined) return undefined;
+  if (graph.nodes.filter((x) => x.id === node).length !== 1) return undefined;
+  const i = graph.edges.findIndex((e) => {
+    const r = resolveEdge(graph.nodes, e);
+    if (!r.ok) return false;
+    const to = graph.nodes.find((x) => x.id === r.to.node);
+    return r.from.node === node && to?.type === 'loss' && r.to.port === 'pred';
+  });
+  return i >= 0 ? i : undefined;
+}
+
+/** Pieces to outline red: any issue naming them, wherever the sentence is shown. */
+export function errorNodes(issues: readonly Issue[]): Set<NodeId> {
+  const s = new Set<NodeId>();
+  for (const i of issues) if (i.at.node !== undefined) s.add(i.at.node);
+  return s;
+}
+
+/** Indices of the edges that resolve (the layout draws exactly these). */
+export function resolvedEdges(graph: Graph): Set<number> {
+  const s = new Set<number>();
+  graph.edges.forEach((e, i) => {
+    if (!('error' in resolveEdge(graph.nodes, e))) s.add(i);
+  });
+  return s;
+}
+
+export type HeatMap = { rows: number; cols: number; values: number[]; maxAbs: number };
+
+/**
+ * Weights `W` (row-major [rows, cols]) reduced to at most `maxCells` per side by averaging
+ * blocks, for the small heat map in a Linear box. Never writes into `W`. Returns null when
+ * the array does not have rows * cols entries.
+ */
+export function heatMap(
+  W: Float32Array,
+  rows: number,
+  cols: number,
+  maxCells = 10,
+): HeatMap | null {
+  if (rows < 1 || cols < 1 || W.length !== rows * cols) return null;
+  const r = Math.min(rows, maxCells);
+  const c = Math.min(cols, maxCells);
+  const values: number[] = [];
+  let maxAbs = 0;
+  for (let bi = 0; bi < r; bi++) {
+    const i0 = Math.floor((bi * rows) / r);
+    const i1 = Math.floor(((bi + 1) * rows) / r);
+    for (let bj = 0; bj < c; bj++) {
+      const j0 = Math.floor((bj * cols) / c);
+      const j1 = Math.floor(((bj + 1) * cols) / c);
+      let sum = 0;
+      for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) sum += W[i * cols + j] ?? 0;
+      const v = sum / ((i1 - i0) * (j1 - j0));
+      values.push(v);
+      maxAbs = Math.max(maxAbs, Math.abs(v));
+    }
+  }
+  return { rows: r, cols: c, values, maxAbs };
+}
+
+export function pointsToPath(points: readonly (readonly [number, number])[]): string {
+  return points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x} ${y}`).join(' ');
+}
+
+export type InspectorPlacement = { left: number } & ({ top: number } | { bottom: number });
+
+/**
+ * Where to put the inspector (`width` px wide, about `needH` px tall) for a target spanning
+ * `top`..`bottom` px at horizontal centre `cx` inside a `view`: centred under the target when there
+ * is room below, else above it (anchored by `bottom`, so its height need not be known), kept
+ * inside the view horizontally.
+ */
+export function placeInspector(
+  target: { cx: number; top: number; bottom: number },
+  view: { w: number; h: number },
+  width: number,
+  needH = 230,
+  gap = 16,
+): InspectorPlacement {
+  const left = Math.min(Math.max(4, target.cx - width / 2), Math.max(4, view.w - width - 4));
+  if (view.h - (target.bottom + gap) >= needH || target.top - gap < needH) {
+    return { left, top: Math.min(target.bottom + gap, Math.max(4, view.h - 120)) };
+  }
+  return { left, bottom: view.h - (target.top - gap) };
+}
+
+/** Size in abstract units of the pill drawn behind a wire's width text, at `scale` px per unit. */
+export function labelSize(text: string, scale: number): { fs: number; lw: number; lh: number } {
+  const fs = 12 / scale;
+  return { fs, lw: text.length * 0.62 * fs + 0.8 * fs, lh: 1.4 * fs };
+}
+
+export type HitRect = { x: number; y: number; w: number; h: number };
+export type HitShape =
+  ({ kind: 'node'; id: NodeId } & HitRect) | ({ kind: 'wire'; edge: number } & HitRect);
+
+/**
+ * Hit shapes of the layer view in paint order (the last one wins a press): every piece, then every
+ * wire label on top, so a label is always tappable. A label's rectangle is at least 32 screen px
+ * each way. A piece's is its box, grown to 32 px tall when short, and horizontally only when the box
+ * is narrower than 32 px, by at most 6 units, so it never reaches into the gap where labels sit.
+ * `widths[i]` is the label text of wire edge i (null: no label, so no label shape).
+ */
+export function layerHitShapes(
+  layout: LayerLayout,
+  scale: number,
+  widths: readonly (number | null | undefined)[],
+): HitShape[] {
+  const shapes: HitShape[] = [];
+  for (const [id, b] of Object.entries(layout.nodes)) {
+    const px = b.w * scale >= HIT_MIN_PX ? 0 : Math.min(hitPad(b.w, scale), 6);
+    const py = hitPad(b.h, scale);
+    shapes.push({ kind: 'node', id, x: b.x - px, y: b.y - py, w: b.w + 2 * px, h: b.h + 2 * py });
+  }
+  const labels: { shape: HitShape & { kind: 'wire' }; cy: number; half: number }[] = [];
+  for (const w of layout.wires) {
+    const width = widths[w.edge];
+    if (width === null || width === undefined) continue;
+    const { lw, lh } = labelSize(String(width), scale);
+    const hw = Math.max(lw, HIT_MIN_PX / scale);
+    const hh = Math.max(lh, HIT_MIN_PX / scale);
+    labels.push({
+      shape: {
+        kind: 'wire',
+        edge: w.edge,
+        x: w.labelAt[0] - hw / 2,
+        y: w.labelAt[1] - hh / 2,
+        w: hw,
+        h: hh,
+      },
+      cy: w.labelAt[1],
+      half: lh / 2,
+    });
+  }
+  // Two labels whose rectangles overlap (a skip wire's label sits just above a row of labels):
+  // the higher one moves up until its rectangle ends where the other begins (its centre stays inside), so each
+  // label owns a full region.
+  for (let pass = 0; pass < labels.length; pass++) {
+    let moved = false;
+    for (const a of labels) {
+      for (const b of labels) {
+        if (a === b || a.cy > b.cy) continue;
+        const sa = a.shape;
+        const sb = b.shape;
+        const overlap =
+          sa.x < sb.x + sb.w && sb.x < sa.x + sa.w && sa.y < sb.y + sb.h && sb.y < sa.y + sa.h;
+        if (!overlap || (a.cy === b.cy && a.shape.edge > b.shape.edge)) continue;
+        const y = Math.min(sa.y, sb.y - sa.h);
+        if (y + sa.h >= a.cy && y !== sa.y) {
+          sa.y = y;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+  for (const l of labels) shapes.push(l.shape);
+  return shapes;
+}
+
+/** Topmost shape containing the point (abstract units), if any. Mirrors how the browser resolves a press. */
+export function hitAt(shapes: readonly HitShape[], x: number, y: number): HitShape | undefined {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i];
+    if (s && x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return s;
+  }
+  return undefined;
+}
