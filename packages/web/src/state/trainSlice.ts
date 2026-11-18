@@ -72,8 +72,12 @@ export type TrainSlice = {
    * Install saved weights after `loadGraph` (tinker-ysl.1). `host` belongs to the current graph
    * (already filtered by `paramsFromJson`); nodes it lacks keep their fresh initialisation.
    * Starts a new run (history and best cleared) from these weights. No-op while the graph is invalid.
+   * Returns false when the engine is ready but the model did not compile or start (weights not
+   * installed); true otherwise (also when the engine is still loading: the weights are kept).
    */
-  loadHost: (host: HostParams) => void;
+  loadHost: (host: HostParams) => boolean;
+  /** Set the run seed (init of new layers, batch order, dropout) before applying a loaded graph. */
+  setRunSeed: (seed: number) => void;
   /**
    * Predictions of the current parameters (dropout off, after the link) for the rows of `x`
    * (row-major [n, dataColumns], already standardised if on); [n, width], or null when there is
@@ -415,7 +419,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     },
     loadHost: (loaded) => {
       const { analysis, graph } = get();
-      if (!analysis.trainable || !rt.host) return;
+      if (!analysis.trainable || !rt.host) return false;
       const merged = Object.assign(Object.create(null) as HostParams, rt.host, loaded);
       stopLoop();
       disposeState();
@@ -434,6 +438,10 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
         }
       }
       publish({ trainIssue: issue, canTrain: rt.state !== null, running: false, diverged: false });
+      return !engine || rt.state !== null;
+    },
+    setRunSeed: (seed) => {
+      rt.seed = seed;
     },
     predictGrid: (x, n) => {
       const { engine, model, state } = rt;

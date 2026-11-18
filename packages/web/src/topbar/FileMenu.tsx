@@ -20,16 +20,25 @@ export function loadText(text: string): { ok: boolean; message: string | null } 
   if (!parsed.ok) return { ok: false, message: parsed.error };
   const { file } = parsed;
   const s = useStore.getState();
-  s.loadGraph(file.graph);
+  // The file's seed drives init of unsaved layers, batch order and dropout; one undo step.
+  s.setRunSeed(file.graph.train.seed);
+  s.apply({ ok: true, graph: file.graph });
   if (!file.params) return { ok: true, message: null };
   const after = useStore.getState();
   if (!after.analysis.trainable) {
     return { ok: true, message: 'The saved weights were not loaded because the graph has issues.' };
   }
   const { params, dropped } = paramsFromJson(file.params, file.graph, after.analysis);
-  after.loadHost(params);
+  if (!after.loadHost(params)) {
+    return {
+      ok: true,
+      message: 'The saved weights were not loaded because the model could not be built.',
+    };
+  }
   if (dropped.length === 0) return { ok: true, message: null };
-  const names = dropped.map((d) => `"${d}"`).join(', ');
+  const shown = dropped.slice(0, 3).map((d) => `"${d}"`);
+  const names =
+    dropped.length > 3 ? `${shown.join(', ')} and ${dropped.length - 3} more` : shown.join(', ');
   return {
     ok: true,
     message: `Saved weights for ${names} did not fit this graph and were left out; those layers start fresh.`,

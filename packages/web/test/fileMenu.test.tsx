@@ -2,7 +2,13 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { paramsToJson, parseFileText, setLinearOut, serializeGraph } from '@tinker/core';
+import {
+  type Graph,
+  paramsToJson,
+  parseFileText,
+  setLinearOut,
+  serializeGraph,
+} from '@tinker/core';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { useStore } from '../src/state/store.js';
 import { FileMenu, loadText, saveText } from '../src/topbar/FileMenu.js';
@@ -27,7 +33,7 @@ test('saveText with weights round-trips through loadText', () => {
   expect(r).toEqual({ ok: true, message: null });
   expect(serializeGraph(s().graph)).toBe(before);
   expect(Array.from(s().host?.lin1?.W ?? [])).toEqual(w);
-  expect(s().canUndo).toBe(false); // a load replaces the graph and clears history
+  expect(s().canUndo).toBe(true); // a load is one undo step
   expect(s().step).toBe(0);
 });
 
@@ -87,4 +93,48 @@ test('Save downloads through a Blob URL that is revoked; Load reads a file', asy
   });
   expect(q('file-note').textContent).toContain('not valid JSON');
   await act(async () => root.unmount());
+});
+
+test('a load is one undo step and undo returns the previous graph', () => {
+  const g = s().graph;
+  s().apply(setLinearOut(g, 'lin1', 6));
+  const edited = s().graph;
+  const text = saveText(false);
+  s().undo();
+  const pastLen = s().past.length;
+  expect(loadText(text).ok).toBe(true);
+  expect(s().past.length).toBe(pastLen + 1);
+  expect(s().graph.nodes.find((n) => n.id === 'lin1')).toMatchObject({ out: 6 });
+  s().undo();
+  expect(s().graph).toBe(g);
+  expect(edited).not.toBe(g);
+});
+
+function withLin1(g: Graph, out: number): Graph {
+  const r = setLinearOut(g, 'lin1', out);
+  if (!r.ok) throw new Error(r.error);
+  return r.graph;
+}
+
+test("the file's train.seed becomes the run seed, with or without weights", () => {
+  const doc = JSON.parse(saveText(false)) as { graph: { train: { seed: number } } };
+  // The current graph has another lin1 width, so loading re-initialises lin1 from the run seed.
+  const lin1W = (fileSeed: number, currentSeed: number): string => {
+    s().loadGraph(withLin1(initialGraph(), 2));
+    s().setRunSeed(currentSeed);
+    doc.graph.train.seed = fileSeed;
+    loadText(JSON.stringify(doc));
+    return JSON.stringify(Array.from(s().host?.lin1?.W ?? []));
+  };
+  const a = lin1W(4242, 1);
+  expect(lin1W(4242, 99)).toBe(a);
+  expect(lin1W(4243, 1)).not.toBe(a);
+});
+
+test('the dropped-weights notice names the dropped layers', () => {
+  const old = JSON.parse(saveText(true)) as { params: unknown };
+  s().apply({ ok: true, graph: withLin1(s().graph, 6) });
+  const r = loadText(JSON.stringify({ ...JSON.parse(saveText(false)), params: old.params }));
+  expect(r.message).toContain('"lin1", "lin2"');
+  expect(r.message).not.toContain('more');
 });
