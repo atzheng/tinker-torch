@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "tinker",
+  "project_id": "0c542d8e-05e7-4acb-8a25-8cb553a8b57c"
+}
