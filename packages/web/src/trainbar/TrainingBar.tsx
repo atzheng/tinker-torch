@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { getEngine, useEngine } from '../engine.js';
 import { SPEEDS } from '../state/trainSlice.js';
 import { useStore } from '../state/store.js';
@@ -62,11 +62,7 @@ export function TrainingBar() {
     best: useStore((x) => x.best),
     analysis: useStore((x) => x.analysis),
   };
-  const [, bump] = useState(0);
-  // Dev only: refresh the live-array readout when the step changes.
-  useEffect(() => {
-    if (import.meta.env.DEV) bump((n) => n + 1);
-  }, [s.step]);
+  // The component re-renders on every step change, so the dev live-array readout below is fresh.
 
   const sinceReset = s.step;
   const message = s.engineStatus === 'loading' ? 'Loading the training engine' : s.trainIssue;
