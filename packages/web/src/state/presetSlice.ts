@@ -11,10 +11,10 @@ export type ActivePreset = {
 
 export type PresetSlice = {
   /**
-   * The preset that was last loaded, or null. Its `locked` list is what every edit refuses to change.
-   * It belongs to the load, not to the graph history: undo and redo keep it (a locked id that is no
-   * longer in the graph simply guards nothing), and it is cleared when a file without preset
-   * fields is loaded or `loadGraph` starts a new graph.
+   * The preset of the current graph, or null. Its `locked` list is what every edit refuses to
+   * change. It travels with the graph in the undo history (`graphSlice`): a file load sets it
+   * together with the graph (`apply(edit, preset)`), undo and redo restore it, a plain file or
+   * `loadGraph` (new graph) clears it.
    */
   preset: ActivePreset | null;
   /** True once the person dismissed the prompt line of the current preset. */

@@ -68,7 +68,15 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
             if (n.type !== 'input') continue;
             const r = setColumns(next, n.id, info.columns, { locked });
             if (!r.ok) {
-              get().apply(r);
+              get().apply(
+                locked.includes(n.id)
+                  ? {
+                      ok: false,
+                      error:
+                        'This dataset needs different input columns, but the Input piece is locked.',
+                    }
+                  : r,
+              );
               return;
             }
             next = r.graph;

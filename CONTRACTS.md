@@ -418,7 +418,7 @@ function serializeFile(graph: Graph, params?: Record<NodeId, { W: number[]; b?: 
 // TrainSlice: setRunSeed(seed): void; loadHost(host: HostParams): boolean  (false: engine ready but the model did not build)
 ```
 
-A file with `title`, `prompt` or `locked` is a Preset. Save writes `tinker-model.tinker.json`; "Weights" saves the live parameters (`host`), not the best snapshot. Load sets the run seed to the file's `train.seed`, then replaces the graph as one undo step (`graphSlice.apply`); undo returns the previous graph with its weights reconciled as for any edit. Loaded weights are installed with `loadHost` (new run: history and best cleared).
+A file with `title`, `prompt` or `locked` is a Preset. Save writes `tinker-model.tinker.json`; "Weights" saves the live parameters (`host`), not the best snapshot. Load sets the run seed to the file's `train.seed`, then replaces the graph as one undo step (`graphSlice.apply`); undo returns the previous graph with its weights reconciled as for any edit. The preset (title, prompt, locked; null for a plain file) travels with the graph in the undo history (`pastPresets`/`futurePresets` parallel to `past`/`future`; `apply(edit, preset?)` sets it with the graph): undo and redo restore the preset together with the graph, and `loadGraph` (a new graph) clears it. A locked list names ids of that graph only; ids it lacks are dropped on load. Loaded weights are installed with `loadHost` (new run: history and best cleared).
 
 Saved params whose shapes do not match the graph are dropped with a notice, not an error. Bundled presets live in `web/src/presets/*.json`; `?preset=<name>` loads a bundled preset on start, and a preset file can also be opened through Load.
 

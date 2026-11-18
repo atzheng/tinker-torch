@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { bundledPreset, PRESET_NAMES, presetTitle } from '../presets/index.js';
 import { loadParsed } from './FileMenu.js';
 import styles from './PresetMenu.module.css';
@@ -15,8 +15,32 @@ export function loadBundled(name: string): boolean {
 export function PresetMenu() {
   const [left, setLeft] = useState<number | null>(null);
   const open = left !== null;
+  const root = useRef<HTMLDivElement>(null);
+  // While open: a press outside the menu, Escape, a scroll (the top bar scrolls on narrow
+  // screens) or a resize closes it. The listeners are removed when it closes.
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setLeft(null);
+    const onDown = (e: PointerEvent) => {
+      if (e.target instanceof Node && root.current?.contains(e.target)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
   return (
-    <div className={styles.row} data-testid="preset-menu">
+    <div ref={root} className={styles.row} data-testid="preset-menu">
       <button
         type="button"
         className={styles.button}

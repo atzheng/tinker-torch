@@ -72,22 +72,69 @@ test('a locked input refuses a column change through the data slice', () => {
   expect(s().error).toBe('This piece is locked.');
 });
 
-test('a plain file or loadGraph clears the preset; undo keeps it', () => {
+test('a plain file or loadGraph clears the preset', () => {
   loadText(presetText({ title: 'T', prompt: 'P', locked: ['act1'] }));
   expect(s().preset).toEqual({ title: 'T', prompt: 'P', locked: ['act1'] });
-  s().undo();
-  expect(lockedIds()).toEqual(['act1']);
-  const plain = (() => {
-    const { title: _t, prompt: _p, locked: _l, ...rest } = JSON.parse(saveText(false));
-    return JSON.stringify(rest);
-  })();
-  loadText(plain);
+  loadText(plainText());
   expect(s().preset).toBeNull();
   loadText(presetText({ title: 'T' }));
   expect(s().preset).not.toBeNull();
   s().loadGraph(initialGraph());
   expect(s().preset).toBeNull();
   expect(lockedIds()).toEqual([]);
+  expect(s().pastPresets).toEqual([]);
+});
+
+function plainText(): string {
+  const { title: _t, prompt: _p, locked: _l, ...rest } = JSON.parse(saveText(false));
+  return JSON.stringify(rest);
+}
+
+test('undo past a preset load restores the earlier graph with no preset; redo brings it back', () => {
+  loadText(presetText({ title: 'T', prompt: 'P', locked: ['act1'] }));
+  s().undo();
+  expect(s().preset).toBeNull();
+  expect(lockedIds()).toEqual([]);
+  s().redo();
+  expect(s().preset).toEqual({ title: 'T', prompt: 'P', locked: ['act1'] });
+});
+
+test('load plain file then undo returns the locked graph with its locks', () => {
+  loadText(presetText({ title: 'T', locked: ['act1'] }));
+  const locked = s().graph;
+  loadText(plainText());
+  expect(s().preset).toBeNull();
+  s().undo();
+  expect(s().graph).toBe(locked);
+  expect(lockedIds()).toEqual(['act1']);
+  expect(deleteNode(s().graph, 'act1', { locked: lockedIds() }).ok).toBe(false);
+});
+
+test('load B then undo gives A with A locks', () => {
+  loadText(presetText({ title: 'A', prompt: 'pa', locked: ['act1'] }));
+  loadText(presetText({ title: 'B', locked: ['lin1'] }));
+  expect(lockedIds()).toEqual(['lin1']);
+  s().undo();
+  expect(s().preset).toEqual({ title: 'A', prompt: 'pa', locked: ['act1'] });
+  s().redo();
+  expect(s().preset?.title).toBe('B');
+});
+
+test('an edit keeps the preset in history', () => {
+  loadText(presetText({ title: 'T', locked: ['act1'] }));
+  s().apply(setSetting(s().graph, 'act1', 'fn', 'relu'));
+  s().undo();
+  expect(lockedIds()).toEqual(['act1']);
+  expect(s().pastPresets.length).toBe(s().past.length);
+});
+
+test('a dataset switch blocked by a locked Input says so', () => {
+  loadText(presetText({ title: 'T', locked: ['x'] }));
+  s().setData({ set: 'xor' });
+  expect(s().error).toBe(
+    'This dataset needs different input columns, but the Input piece is locked.',
+  );
+  expect(s().graph.data.set).toBe('sine');
 });
 
 test('Save of a preset keeps title, prompt and locked', () => {

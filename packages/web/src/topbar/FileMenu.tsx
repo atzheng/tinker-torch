@@ -7,6 +7,7 @@ import {
   type Preset,
   type SaveFile,
 } from '@tinker/core';
+import type { ActivePreset } from '../state/presetSlice.js';
 import { useStore } from '../state/store.js';
 import styles from './FileMenu.module.css';
 
@@ -41,20 +42,18 @@ export function loadText(text: string): { ok: boolean; message: string | null } 
  */
 export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: string | null } {
   const s = useStore.getState();
+  let active: ActivePreset | null = null;
   if ('title' in file) {
     const ids = new Set(file.graph.nodes.map((n) => n.id));
-    const active: { title: string; prompt?: string; locked: string[] } = {
+    active = {
       title: file.title,
       locked: (file.locked ?? []).filter((id) => ids.has(id)),
     };
     if (file.prompt !== undefined) active.prompt = file.prompt;
-    s.setPreset(active);
-  } else {
-    s.setPreset(null);
   }
   // The file's seed drives init of unsaved layers, batch order and dropout; one undo step.
   s.setRunSeed(file.graph.train.seed);
-  s.apply({ ok: true, graph: file.graph });
+  s.apply({ ok: true, graph: file.graph }, active);
   if (!file.params) return { ok: true, message: null };
   const after = useStore.getState();
   if (!after.analysis.trainable) {
