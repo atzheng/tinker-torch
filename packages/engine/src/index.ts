@@ -21,7 +21,15 @@ import { probeLiveArrays } from './probe.js';
 import { lossGrid } from './surface.js';
 import type { Engine, Model, Params, StepResult, TrainState } from './types.js';
 
-export type { Engine, Model, ParamAxis, Params, StepResult, TrainState } from './types.js';
+export type {
+  Engine,
+  ManyResult,
+  Model,
+  ParamAxis,
+  Params,
+  StepResult,
+  TrainState,
+} from './types.js';
 
 export const ENGINE_NAME = '@tinker/engine';
 export const ENGINE_CORE = CORE_NAME;
@@ -142,7 +150,7 @@ function makeEngine(): Engine {
       const loss = lossArr.item();
       const check = checkArr.item();
       deadStates.add(state);
-      if (!Number.isFinite(loss) || !Number.isFinite(check)) {
+      if (!Number.isFinite(loss) || check !== 0) {
         tree.dispose(newTree);
         tree.dispose(newOpt);
         newKey.dispose();
@@ -195,12 +203,13 @@ function makeEngine(): Engine {
       return guarded([pRef, x, y], () => m.evalFn()(pRef, x, y)).item();
     },
 
-    lossGrid() {
-      return lossGrid();
+    /** Borrows `model` and `params`. [a.length, b.length] row-major; dropout off. */
+    lossGrid(model, params, batch, axes, a, b) {
+      return lossGrid(model, peekParams(params), batch, axes, a, b);
     },
 
-    trainMany() {
-      return trainMany();
+    trainMany(model, seeds, data, steps) {
+      return trainMany(model, seeds, data, steps);
     },
 
     /** Borrows `params`; the clone shares the immutable arrays by reference count and is independent to dispose. */
