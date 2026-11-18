@@ -59,6 +59,7 @@ function manyStep(m: Internals): ManyStepFn {
     return [newP, newO, finite.equal(count + 1).astype(np.float32), newK];
   }) as unknown as ManyStepFn;
   manySteps.set(m, fn);
+  m.disposables.add(fn as unknown as { dispose(): void });
   return fn;
 }
 
