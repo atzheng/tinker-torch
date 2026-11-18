@@ -18,13 +18,11 @@ export type PieceCtx = {
    */
   takeX(): JArray;
   takeY(): JArray;
-  /** A fresh dropout subkey; each call splits the walk's key. The caller consumes it. */
-  nextKey(): JArray;
   /**
-   * Test-only seam: a 0/1 keep mask [n, width] for a Dropout node instead of sampling (CONTRACTS.md
-   * section 11). The caller consumes it.
+   * The 0/1 keep mask [n, width] of a Dropout node for this pass (sampled by the step, or injected by
+   * the test-only `debugTrainPass`, CONTRACTS.md section 11). The caller consumes it.
    */
-  dropoutMask?(nodeId: string): JArray | undefined;
+  dropoutMask(nodeId: string): JArray;
 };
 
 /**

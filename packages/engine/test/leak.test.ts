@@ -93,6 +93,41 @@ test('compiling many dropout and feature models leaves no constants behind', asy
   }
 }, 120_000);
 
+test.each(['momentum', 'adam'] as const)(
+  '%s: 3,000 steps (with diverged steps) leave the live buffer count flat',
+  async (optimizer) => {
+    const engine = await createEngine();
+    const { fx, graph, data } = loadFixture('mlp_tanh_sgd_5steps');
+    const model = engine.compile({ ...graph, train: { ...graph.train, optimizer } }, data);
+    const batch = toBatch(fx);
+    const bad = { ...batch, y: Float32Array.from(batch.y, () => NaN) };
+    let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 1);
+    const once = (i: number) => {
+      const r = engine.step(model, state, batch);
+      expect(r.diverged).toBe(false);
+      state = r.state;
+      if (i % 200 === 0) {
+        // divergence returns the optimizer state unchanged
+        const d = engine.step(model, state, bad);
+        expect(d.diverged).toBe(true);
+        state = d.state;
+      }
+    };
+    for (let i = 1; i <= 60; i++) once(i);
+    const baseline = engine.liveArrays();
+    expect(baseline).toBeGreaterThan(0);
+    const samples: number[] = [];
+    for (let i = 1; i <= 3_000; i++) {
+      once(i);
+      if (i % 500 === 0) samples.push(engine.liveArrays());
+    }
+    expect(samples).toEqual(samples.map(() => baseline));
+    engine.dispose(state);
+    expect(engine.liveArrays()).toBeLessThanOrEqual(2);
+  },
+  120_000,
+);
+
 test('failing calls (params of another model) leak no buffers', async () => {
   const engine = await createEngine();
   const a = loadFixture('mlp_tanh_sgd_5steps');

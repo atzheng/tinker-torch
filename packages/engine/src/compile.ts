@@ -156,13 +156,13 @@ export function compile(graph: Graph, data: DataInfo): Model {
     predictFn() {
       // jit consumes params and x
       predictFn ??= jit((params: ParamTree, x: JArray) =>
-        walk(self, params, x, null, 'predict', { train: false, key: null }),
+        walk(self, params, x, null, 'predict', { train: false, masks: null }),
       ) as unknown as PredictFn;
       return predictFn;
     },
     evalFn() {
       evalFn ??= jit((params: ParamTree, x: JArray, y: JArray) =>
-        walk(self, params, x, y, 'loss', { train: false, key: null }),
+        walk(self, params, x, y, 'loss', { train: false, masks: null }),
       ) as unknown as LossFn;
       return evalFn;
     },
@@ -177,11 +177,12 @@ export function compile(graph: Graph, data: DataInfo): Model {
       // `.ref`ed for it and consumed again by applyUpdates.
       stepFn = jit(
         (params: ParamTree, optState: optax.OptState, x: JArray, y: JArray, key: JArray) => {
-          // np.unstack consumes the parent key (destructuring the split would leak it, docs/spike.md)
-          const [newKey, sub] = np.unstack(random.split(key, 2)) as [JArray, JArray];
-          const [loss, grads] = valueAndGrad((p: ParamTree, xx: JArray, yy: JArray, kk: JArray) =>
-            walk(self, p, xx, yy, 'loss', { train: true, key: kk }),
-          )(tree.ref(params), x, y, sub);
+          // The masks are sampled outside valueAndGrad: random ops traced under it leave one
+          // constant buffer per compiled model that jit never frees.
+          const [newKey, masks] = sampleMasks(self, key, x.shape[0] ?? 0);
+          const [loss, grads] = valueAndGrad((p: ParamTree, xx: JArray, yy: JArray, mm: Masks) =>
+            walk(self, p, xx, yy, 'loss', { train: true, masks: mm }),
+          )(tree.ref(params), x, y, masks);
           const [updates, newOpt] = optimizer.update(grads, optState);
           const newParams = optax.applyUpdates(params, updates) as ParamTree;
           // One scalar that is non-finite when any updated parameter is (read next to the loss).
@@ -200,11 +201,33 @@ export function compile(graph: Graph, data: DataInfo): Model {
   return model;
 }
 
-/** `train`: dropout on. `key`: the dropout key (consumed; null when nothing samples). `masks`: test-only. */
-type WalkOpts = { train: boolean; key: JArray | null; masks?: Record<NodeId, number[][]> };
+/** Dropout keep masks (0/1, [n, width]) by Dropout node id. */
+type Masks = Record<NodeId, JArray>;
+
+/** `train`: dropout on. `masks`: one per Dropout node when training (consumed; unused ones are disposed). */
+type WalkOpts = { train: boolean; masks: Masks | null };
 
 /**
- * Forward pass in topological order. Consumes `params`, `x`, `y` and `opts.key` (y may be null in
+ * Splits `key` (consumed) into the next key and one subkey per Dropout node on the loss path, and
+ * samples the keep masks for a batch of `n` rows. Returns [next key, masks].
+ */
+function sampleMasks(m: Internals, key: JArray, n: number): [JArray, Masks] {
+  const masks: Masks = {};
+  let k = key;
+  for (const s of m.steps) {
+    if (s.node.type !== 'dropout' || s.node.p <= 0) continue;
+    const width = m.analysis.inWidth[s.node.id] ?? 0;
+    // np.unstack consumes the parent key (destructuring the split would leak it, docs/spike.md)
+    const [next, sub] = np.unstack(random.split(k, 2)) as [JArray, JArray];
+    k = next;
+    masks[s.node.id] = random.uniform(sub, [n, width]).greaterEqual(s.node.p).astype(np.float32);
+  }
+  const [next] = np.unstack(random.split(k, 2)) as [JArray, JArray];
+  return [next, masks];
+}
+
+/**
+ * Forward pass in topological order. Consumes `params`, `x`, `y` and `opts.masks` (y may be null in
  * predict mode). 'predict' returns the post-link prediction [n, width]; 'loss' returns the mean loss
  * plus the weight penalty (taken from `tree.ref(params)` before the walk).
  * A value feeding several consumers is `.ref`ed for all but the last.
@@ -217,7 +240,7 @@ function walk(
   mode: Mode,
   opts: WalkOpts,
 ): JArray {
-  let key = opts.key;
+  const masks = new Map(Object.entries(opts.masks ?? {}));
   const lossStep = mode === 'loss' ? m.steps.find((s) => s.node.type === 'loss') : undefined;
   const pen = lossStep?.node.type === 'loss' ? lossStep.node.penalty : undefined;
   const penalty = pen && pen.lambda > 0 ? penaltyTerm(pen, tree.ref(params)) : null;
@@ -235,27 +258,13 @@ function walk(
       if (!y) throw new Error('This pass has no target.');
       return --yLeft > 0 ? y.ref : y;
     },
-    nextKey: () => {
-      throw new Error('Internal error: nextKey is set below.');
+    dropoutMask: (id) => {
+      const mask = masks.get(id);
+      if (!mask) throw new Error('Internal error: this pass has no dropout mask.');
+      masks.delete(id);
+      return mask;
     },
   };
-  ctx.nextKey = () => {
-    if (!key) throw new Error('This pass has no dropout key.');
-    const [next, sub] = np.unstack(random.split(key, 2)) as [JArray, JArray];
-    key = next;
-    return sub;
-  };
-  const injected = opts.masks;
-  if (injected) {
-    ctx.dropoutMask = (id) => {
-      const rows = injected[id];
-      if (!rows) return undefined;
-      return np.array(Float32Array.from(rows.flat()), {
-        shape: [rows.length, rows[0]?.length ?? 0],
-        dtype: np.float32,
-      });
-    };
-  }
   const take = (id: NodeId): JArray => {
     const v = values.get(id);
     if (!v) throw new Error(`Internal error: "${id}" has no value yet.`);
@@ -294,7 +303,7 @@ function walk(
   for (const v of values.values()) v.dispose();
   if (xLeft > 0) x.dispose();
   if (y && yLeft > 0) y.dispose();
-  if (key) key.dispose();
+  for (const mk of masks.values()) mk.dispose();
   return penalty ? result.add(penalty) : result;
 }
 
@@ -310,17 +319,26 @@ export function debugTrainPass(
   masks: Record<NodeId, number[][]>,
 ): { pred: Float32Array; loss: number; grads: HostParams } {
   const m = internals(model);
+  const hostMasks = (): Masks => {
+    const out: Masks = {};
+    for (const [id, rows] of Object.entries(masks)) {
+      out[id] = np.array(Float32Array.from(rows.flat()), {
+        shape: [rows.length, rows[0]?.length ?? 0],
+        dtype: np.float32,
+      });
+    }
+    return out;
+  };
   const first = batchArrays(m, batch);
   first.y.dispose();
   const pred = walk(m, tree.ref(params), first.x, null, 'predict', {
     train: true,
-    key: null,
-    masks,
+    masks: hostMasks(),
   });
   const predHost = Float32Array.from(pred.dataSync() as Float32Array);
   const { x, y } = batchArrays(m, batch);
   const [loss, grads] = valueAndGrad((p: ParamTree, xx: JArray, yy: JArray) =>
-    walk(m, p, xx, yy, 'loss', { train: true, key: null, masks }),
+    walk(m, p, xx, yy, 'loss', { train: true, masks: hostMasks() }),
   )(tree.ref(params), x, y);
   const lossValue = loss.item();
   const host = treeToHost(grads as ParamTree);
