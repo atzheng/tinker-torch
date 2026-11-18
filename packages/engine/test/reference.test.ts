@@ -32,6 +32,8 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   penalty_l2: {},
   penalty_l1: {},
   mlp_tanh_sgd_5steps: {},
+  mlp_tanh_momentum_5steps: {},
+  mlp_tanh_adam_5steps: {},
 };
 
 /** Skipped until the named bead lands. */
@@ -39,8 +41,6 @@ const PENDING: Record<string, string> = {
   feature_deg3_sin_cos_products: 'tinker-hj4.3',
   add_skip: 'tinker-hj4.3',
   'dropout_p0.5': 'tinker-hj4.3',
-  mlp_tanh_momentum_5steps: 'tinker-hj4.4',
-  mlp_tanh_adam_5steps: 'tinker-hj4.4 (compare at 5e-3)',
 };
 
 /** Never compared (owner decision, tinker-e1h.2): they pin torch's at-zero subgradients. */
@@ -85,8 +85,9 @@ describe('fixtures', () => {
       report.push(`loss ${cl.maxAbs.toExponential(2)}`);
       expect(cl.ok, `loss ${loss} vs ${fx.expect.loss}`).toBe(true);
 
-      // grads, from one step with lr 1 (borrows `params`; startTraining consumes a clone)
-      const m1 = engine.compile(withLr(graph, 1), data);
+      // grads, from one plain SGD step with lr 1 (borrows `params`; startTraining consumes a clone)
+      const sgd1 = withLr(graph, 1);
+      const m1 = engine.compile({ ...sgd1, train: { ...sgd1.train, optimizer: 'sgd' } }, data);
       const p1 = engine.fromHost(m1, toHostParams(fx.params));
       const s1 = engine.startTraining(m1, p1, 0);
       const r1 = engine.step(m1, s1, batch);
