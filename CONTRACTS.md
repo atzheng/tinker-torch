@@ -329,6 +329,14 @@ function layoutNeurons(g: Graph, a: Analysis): NeuronLayout;    // a Linear expa
 
 Layout is deterministic and stored nowhere.
 
+Choices fixed by `layout.ts` (constants in the exported `LAYOUT`; all in abstract units):
+
+- Both functions lay out the whole node set, not `analysis.order`. Duplicate ids: the first node wins. An edge that does not resolve (`resolveEdge` fails) gets no wire. Records are prototype-free.
+- Columns: longest path; the edge from a target into a loss does not count; a cycle is broken at its first node in graph order; a node with no wires (other than Input and Target) goes in the last column. Rows: a node follows its first-listed source's row, moving down past taken rows; a target sits one row below the prediction in the prediction's column.
+- A wire's `points` run from the right-middle of the source box to the left side of the destination box, entering at height `(k+1)/(ports+1)` of the box for input port k (so `add.a` and `add.b` differ). Adjacent columns: one elbow in the gap. Any other wire (skip, same column, backwards) rises into a lane above every box (shorter spans nearer the boxes), runs across, and drops in the gap left of the destination, so no segment enters a box interior. Each wire also has `labelAt: [x, y]`, the midpoint of its longest horizontal segment (first on ties); the web puts the width label there. Edges that do not resolve get no wire geometry (their issues must be shown at node or global level); doubly-fed edges, extra losses and cycle edges do get wires.
+- Neuron view uses a wider column gap. Unit circles per node: Input (`in`, one per column), expanded Linear (`sum`, one per output), an Activation whose first source is an expanded Linear (`act`, same count), Output (`out`), Target (`target`, one); only when the width is known and at most 8. Everything else is a box. `boxes` covers every node (a unit column's box is the bounding box of its circles); `wires` connect boxes in both views.
+- `edges[].from` is the unit centre of the upstream node when it has as many units as the Linear has inputs, else a point on the upstream box's right side spread evenly. `to` is the `sum` unit centre. Endpoints are centres; the web trims by the circle radius. Biases are not edges. `edges` is ordered by node (graph order), then i-major then j, so a node's edge index is `i*out + j`, matching HostParams `W` row-major `[in, out]`. `collapsed` lists every Linear that is not expanded, including ones with unknown widths.
+
 ## 10. Web conventions
 
 - Store slices (section 1) are owned by beads; other beads read them through selectors and call their actions, and do not add fields to a slice they do not own without saying so in the PR body.
