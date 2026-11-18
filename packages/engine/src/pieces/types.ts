@@ -4,7 +4,7 @@ import type { Layer } from '../convert.js';
 
 /** What a piece sees besides its inputs. */
 export type PieceCtx = {
-  /** True while training (dropout on). */
+  /** True while training (dropout on); false in predict and evaluate. */
   train: boolean;
   /** True when the Output piece must return the pre-link value (the loss applies or fuses the link). */
   rawOutput: boolean;
@@ -18,6 +18,11 @@ export type PieceCtx = {
    */
   takeX(): JArray;
   takeY(): JArray;
+  /**
+   * The 0/1 keep mask [n, width] of a Dropout node for this pass (sampled by the step, or injected by
+   * the test-only `debugTrainPass`, CONTRACTS.md section 11). The caller consumes it.
+   */
+  dropoutMask(nodeId: string): JArray;
 };
 
 /**

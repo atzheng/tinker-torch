@@ -3,12 +3,22 @@
 // Ownership (jax-js: functions consume their array arguments, `.ref` adds a reference). Every
 // jitted function below CONSUMES all its array arguments; callers pass `tree.ref(...)` for what
 // they keep. Jitted functions are built lazily on first use and cached on the model.
-import { jit, numpy as np, tree, valueAndGrad } from '@jax-js/jax';
+import { jit, numpy as np, random, tree, valueAndGrad } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import * as optax from '@jax-js/optax';
 import { analyse, resolveEdge } from '@tinker/core';
-import type { Analysis, Batch, DataInfo, Graph, Node, NodeId, OutputLink } from '@tinker/core';
+import type {
+  Analysis,
+  Batch,
+  DataInfo,
+  Graph,
+  HostParams,
+  Node,
+  NodeId,
+  OutputLink,
+} from '@tinker/core';
 import { CORE_PIECES } from '@tinker/core';
+import { treeToHost } from './convert.js';
 import type { LayerShape, ParamTree } from './convert.js';
 import { LOSSES } from './losses.js';
 import { OPTIMIZERS } from './optim.js';
@@ -27,7 +37,8 @@ type StepFn = (
   opt: optax.OptState,
   x: JArray,
   y: JArray,
-) => [ParamTree, optax.OptState, JArray, JArray];
+  key: JArray,
+) => [ParamTree, optax.OptState, JArray, JArray, JArray];
 
 /** Private compiled state behind a Model. */
 export type Internals = {
@@ -145,13 +156,13 @@ export function compile(graph: Graph, data: DataInfo): Model {
     predictFn() {
       // jit consumes params and x
       predictFn ??= jit((params: ParamTree, x: JArray) =>
-        walk(self, params, x, null, 'predict'),
+        walk(self, params, x, null, 'predict', { train: false, masks: null }),
       ) as unknown as PredictFn;
       return predictFn;
     },
     evalFn() {
       evalFn ??= jit((params: ParamTree, x: JArray, y: JArray) =>
-        walk(self, params, x, y, 'loss'),
+        walk(self, params, x, y, 'loss', { train: false, masks: null }),
       ) as unknown as LossFn;
       return evalFn;
     },
@@ -162,21 +173,26 @@ export function compile(graph: Graph, data: DataInfo): Model {
     stepFn() {
       if (stepFn) return stepFn;
       const optimizer = self.optimizer();
-      // jit consumes params, opt, x and y. valueAndGrad consumes its arguments, so params is
+      // jit consumes params, opt, x, y and key (the new key is returned). valueAndGrad consumes its arguments, so params is
       // `.ref`ed for it and consumed again by applyUpdates.
-      stepFn = jit((params: ParamTree, optState: optax.OptState, x: JArray, y: JArray) => {
-        const [loss, grads] = valueAndGrad((p: ParamTree, xx: JArray, yy: JArray) =>
-          walk(self, p, xx, yy, 'loss'),
-        )(tree.ref(params), x, y);
-        const [updates, newOpt] = optimizer.update(grads, optState);
-        const newParams = optax.applyUpdates(params, updates) as ParamTree;
-        // One scalar that is non-finite when any updated parameter is (read next to the loss).
-        // leaf * 0 is 0 for every finite value (even 3e38, where a plain sum would overflow) and NaN for inf/NaN.
-        let check = np.array(0);
-        for (const leaf of tree.leaves(tree.ref(newParams)) as JArray[])
-          check = check.add(leaf.mul(0).sum());
-        return [newParams, newOpt, loss, check];
-      }) as unknown as StepFn;
+      stepFn = jit(
+        (params: ParamTree, optState: optax.OptState, x: JArray, y: JArray, key: JArray) => {
+          // The masks are sampled outside valueAndGrad: random ops traced under it leave one
+          // constant buffer per compiled model that jit never frees.
+          const [newKey, masks] = sampleMasks(self, key, x.shape[0] ?? 0);
+          const [loss, grads] = valueAndGrad((p: ParamTree, xx: JArray, yy: JArray, mm: Masks) =>
+            walk(self, p, xx, yy, 'loss', { train: true, masks: mm }),
+          )(tree.ref(params), x, y, masks);
+          const [updates, newOpt] = optimizer.update(grads, optState);
+          const newParams = optax.applyUpdates(params, updates) as ParamTree;
+          // One scalar that is non-finite when any updated parameter is (read next to the loss).
+          // leaf * 0 is 0 for every finite value (even 3e38, where a plain sum would overflow) and NaN for inf/NaN.
+          let check = np.array(0);
+          for (const leaf of tree.leaves(tree.ref(newParams)) as JArray[])
+            check = check.add(leaf.mul(0).sum());
+          return [newParams, newOpt, loss, check, newKey];
+        },
+      ) as unknown as StepFn;
       return stepFn;
     },
   };
@@ -185,13 +201,46 @@ export function compile(graph: Graph, data: DataInfo): Model {
   return model;
 }
 
+/** Dropout keep masks (0/1, [n, width]) by Dropout node id. */
+type Masks = Record<NodeId, JArray>;
+
+/** `train`: dropout on. `masks`: one per Dropout node when training (consumed; unused ones are disposed). */
+type WalkOpts = { train: boolean; masks: Masks | null };
+
 /**
- * Forward pass in topological order. Consumes `params`, `x` and `y` (y may be null in predict
- * mode). 'predict' returns the post-link prediction [n, width]; 'loss' returns the mean loss plus
- * the weight penalty (taken from `tree.ref(params)` before the walk).
+ * Splits `key` (consumed) into the next key and one subkey per Dropout node on the loss path, and
+ * samples the keep masks for a batch of `n` rows. Returns [next key, masks].
+ */
+function sampleMasks(m: Internals, key: JArray, n: number): [JArray, Masks] {
+  const masks: Masks = {};
+  let k = key;
+  for (const s of m.steps) {
+    if (s.node.type !== 'dropout' || s.node.p <= 0) continue;
+    const width = m.analysis.inWidth[s.node.id] ?? 0;
+    // np.unstack consumes the parent key (destructuring the split would leak it, docs/spike.md)
+    const [next, sub] = np.unstack(random.split(k, 2)) as [JArray, JArray];
+    k = next;
+    masks[s.node.id] = random.uniform(sub, [n, width]).greaterEqual(s.node.p).astype(np.float32);
+  }
+  const [next] = np.unstack(random.split(k, 2)) as [JArray, JArray];
+  return [next, masks];
+}
+
+/**
+ * Forward pass in topological order. Consumes `params`, `x`, `y` and `opts.masks` (y may be null in
+ * predict mode). 'predict' returns the post-link prediction [n, width]; 'loss' returns the mean loss
+ * plus the weight penalty (taken from `tree.ref(params)` before the walk).
  * A value feeding several consumers is `.ref`ed for all but the last.
  */
-function walk(m: Internals, params: ParamTree, x: JArray, y: JArray | null, mode: Mode): JArray {
+function walk(
+  m: Internals,
+  params: ParamTree,
+  x: JArray,
+  y: JArray | null,
+  mode: Mode,
+  opts: WalkOpts,
+): JArray {
+  const masks = new Map(Object.entries(opts.masks ?? {}));
   const lossStep = mode === 'loss' ? m.steps.find((s) => s.node.type === 'loss') : undefined;
   const pen = lossStep?.node.type === 'loss' ? lossStep.node.penalty : undefined;
   const penalty = pen && pen.lambda > 0 ? penaltyTerm(pen, tree.ref(params)) : null;
@@ -200,7 +249,7 @@ function walk(m: Internals, params: ParamTree, x: JArray, y: JArray | null, mode
   let xLeft = m.steps.filter((s) => s.node.type === 'input').length;
   let yLeft = mode === 'loss' ? m.steps.filter((s) => s.node.type === 'target').length : 0;
   const ctx: PieceCtx = {
-    train: mode === 'loss',
+    train: opts.train,
     rawOutput: mode === 'loss',
     link: m.link,
     dataColumns: m.dataColumns,
@@ -208,6 +257,12 @@ function walk(m: Internals, params: ParamTree, x: JArray, y: JArray | null, mode
     takeY: () => {
       if (!y) throw new Error('This pass has no target.');
       return --yLeft > 0 ? y.ref : y;
+    },
+    dropoutMask: (id) => {
+      const mask = masks.get(id);
+      if (!mask) throw new Error('Internal error: this pass has no dropout mask.');
+      masks.delete(id);
+      return mask;
     },
   };
   const take = (id: NodeId): JArray => {
@@ -248,7 +303,47 @@ function walk(m: Internals, params: ParamTree, x: JArray, y: JArray | null, mode
   for (const v of values.values()) v.dispose();
   if (xLeft > 0) x.dispose();
   if (y && yLeft > 0) y.dispose();
+  for (const mk of masks.values()) mk.dispose();
   return penalty ? result.add(penalty) : result;
+}
+
+/**
+ * Test-only (CONTRACTS.md section 11, "Dropout fixtures"; not part of `Engine`): the training
+ * forward and backward with dropout ON and the given keep masks instead of sampling. Borrows
+ * `params`. Returns the post-link prediction, the objective (mean loss plus penalty) and the gradients.
+ */
+export function debugTrainPass(
+  model: Model,
+  params: ParamTree,
+  batch: Batch,
+  masks: Record<NodeId, number[][]>,
+): { pred: Float32Array; loss: number; grads: HostParams } {
+  const m = internals(model);
+  const hostMasks = (): Masks => {
+    const out: Masks = {};
+    for (const [id, rows] of Object.entries(masks)) {
+      out[id] = np.array(Float32Array.from(rows.flat()), {
+        shape: [rows.length, rows[0]?.length ?? 0],
+        dtype: np.float32,
+      });
+    }
+    return out;
+  };
+  const first = batchArrays(m, batch);
+  first.y.dispose();
+  const pred = walk(m, tree.ref(params), first.x, null, 'predict', {
+    train: true,
+    masks: hostMasks(),
+  });
+  const predHost = Float32Array.from(pred.dataSync() as Float32Array);
+  const { x, y } = batchArrays(m, batch);
+  const [loss, grads] = valueAndGrad((p: ParamTree, xx: JArray, yy: JArray) =>
+    walk(m, p, xx, yy, 'loss', { train: true, masks: hostMasks() }),
+  )(tree.ref(params), x, y);
+  const lossValue = loss.item();
+  const host = treeToHost(grads as ParamTree);
+  tree.dispose(grads);
+  return { pred: predHost, loss: lossValue, grads: host };
 }
 
 /** Throws a plain sentence when a batch does not fit the model (before anything is consumed). */

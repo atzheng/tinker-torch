@@ -3,6 +3,8 @@
 // to IMPLEMENTED. Gradients are not part of the Engine interface, so they are read from one SGD
 // step with learning rate 1: grad = (W before - W after).
 import { beforeAll, describe, expect, test } from 'vitest';
+import { debugTrainPass } from '../src/compile.js';
+import { peekParams } from '../src/convert.js';
 import { createEngine } from '../src/index.js';
 import type { Engine } from '../src/index.js';
 import { compare, fixtureNames, loadFixture, toBatch, toHostParams, withLr } from './util.js';
@@ -32,16 +34,15 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   penalty_l2: {},
   penalty_l1: {},
   mlp_tanh_sgd_5steps: {},
+  feature_deg3_sin_cos_products: {},
+  add_skip: {},
+  'dropout_p0.5': {},
   mlp_tanh_momentum_5steps: {},
   mlp_tanh_adam_5steps: {},
 };
 
 /** Skipped until the named bead lands. */
-const PENDING: Record<string, string> = {
-  feature_deg3_sin_cos_products: 'tinker-hj4.3',
-  add_skip: 'tinker-hj4.3',
-  'dropout_p0.5': 'tinker-hj4.3',
-};
+const PENDING: Record<string, string> = {};
 
 /** Never compared (owner decision, tinker-e1h.2): they pin torch's at-zero subgradients. */
 const SKIPPED = ['act_relu_zero_preact', 'penalty_l1_zero_weight'];
@@ -73,9 +74,39 @@ describe('fixtures', () => {
       const batch = toBatch(fx);
       const report: string[] = [];
 
-      // pred and loss
       const model = engine.compile(graph, data);
       const params = engine.fromHost(model, toHostParams(fx.params));
+
+      // Dropout cases: pred, loss and grads are the dropout-ON pass with the fixture's mask
+      // (injected through the test-only debugTrainPass); predict/evaluate must give the dropout-off values.
+      const mask = fx.expect.dropoutMask;
+      if (mask) {
+        const dropId = graph.nodes.find((n) => n.type === 'dropout')?.id ?? '';
+        const on = debugTrainPass(model, peekParams(params), batch, { [dropId]: mask });
+        const cp = compare(on.pred, fx.expect.pred, tol);
+        const cl = compare([on.loss], [fx.expect.loss], tol);
+        const gotG = ids.flatMap((id) => [...(on.grads[id]?.W ?? []), ...(on.grads[id]?.b ?? [])]);
+        const cg = compare(gotG, flat(fx.expect.grads, ids), tol);
+        const pe = engine.predict(model, params, batch.x, batch.n);
+        const cpe = compare(pe, fx.expect.predEval ?? [], tol);
+        const cle = compare(
+          [engine.evaluate(model, params, batch)],
+          [fx.expect.lossEval ?? NaN],
+          tol,
+        );
+        console.log(
+          `[ref] ${name} tol ${tol}: pred ${cp.maxAbs.toExponential(2)}, loss ${cl.maxAbs.toExponential(2)}, grads ${cg.maxAbs.toExponential(2)}, predEval ${cpe.maxAbs.toExponential(2)}, lossEval ${cle.maxAbs.toExponential(2)}`,
+        );
+        expect(cp.ok, `pred max abs error ${cp.maxAbs}`).toBe(true);
+        expect(cl.ok, `loss ${on.loss} vs ${fx.expect.loss}`).toBe(true);
+        expect(cg.ok, `grads max abs error ${cg.maxAbs}`).toBe(true);
+        expect(cpe.ok, `predEval max abs error ${cpe.maxAbs}`).toBe(true);
+        expect(cle.ok, `lossEval max abs error ${cle.maxAbs}`).toBe(true);
+        engine.dispose(params);
+        return;
+      }
+
+      // pred and loss
       const pred = engine.predict(model, params, batch.x, batch.n);
       const cp = compare(pred, fx.expect.pred, tol);
       report.push(`pred ${cp.maxAbs.toExponential(2)}`);
