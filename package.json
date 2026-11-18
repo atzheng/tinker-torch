@@ -1,0 +1,25 @@
+{
+  "name": "tinker-torch",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.21.0",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "test": "pnpm -r run test",
+    "typecheck": "tsc -b",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "build": "pnpm -r run build",
+    "dev": "pnpm --filter @tinker/web run dev",
+    "torch-ref": "uv run tools/torch-ref/gen.py"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "prettier": "^3.10.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.73.0"
+  }
+}

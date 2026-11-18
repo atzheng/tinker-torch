@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "node_modules/.tmp/tsc",
+    "tsBuildInfoFile": "node_modules/.tmp/tsc/tsconfig.tsbuildinfo",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
+  },
+  "include": ["src", "test", "vite.config.ts"],
+  "references": [{ "path": "../core" }, { "path": "../engine" }]
+}

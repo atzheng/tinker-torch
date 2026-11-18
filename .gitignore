@@ -3,3 +3,12 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Build and tooling
+node_modules/
+dist/
+dist-tsc/
+coverage/
+*.tsbuildinfo
+.wrangler/
+.claude/worktrees/
