@@ -90,6 +90,8 @@ describe('parseGraph', () => {
       (g) => (g['nodes'][1].color = 'red'),
       /Node "lin1" has an unknown field "color"\./,
     ],
+    ['node with no type', (g) => delete g['nodes'][1].type, /Node "lin1" has no type;/],
+    ['non-string edge endpoint', (g) => (g['edges'][0] = [5, 'lin1']), /must be a node name/],
     ['unknown top-level field', (g) => (g['extra'] = 1), /unknown field "extra"/],
     [
       'edge to a missing node',

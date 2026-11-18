@@ -89,9 +89,10 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       if (node.sin) terms.push('torch.sin(x)');
       if (node.cos) terms.push('torch.cos(x)');
       if (node.products) {
-        const d = inWidth ?? 2;
-        for (let i = 0; i < d; i++)
-          for (let j = i + 1; j < d; j++) terms.push(`x[:, [${i}]] * x[:, [${j}]]`);
+        if (inWidth === undefined) terms.push('x[:, [?]] * x[:, [?]]');
+        else
+          for (let i = 0; i < inWidth; i++)
+            for (let j = i + 1; j < inWidth; j++) terms.push(`x[:, [${i}]] * x[:, [${j}]]`);
       }
       return `torch.cat([${terms.join(', ')}], dim=-1)`;
     },

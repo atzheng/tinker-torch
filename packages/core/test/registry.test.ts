@@ -105,6 +105,16 @@ describe('CORE_PIECES', () => {
         2,
       ),
     ).toBe('torch.cat([x, x**2, torch.sin(x), x[:, [0]] * x[:, [1]]], dim=-1)');
+    expect(
+      CORE_PIECES.feature.torch({
+        id: 'f',
+        type: 'feature',
+        degree: 1,
+        sin: false,
+        cos: false,
+        products: true,
+      }),
+    ).toBe('torch.cat([x, x[:, [?]] * x[:, [?]]], dim=-1)');
     expect(CORE_PIECES.input.torch({ id: 'x', type: 'input', columns: ['x1', 'x2'] })).toBe(
       'x[:, [0, 1]]',
     );

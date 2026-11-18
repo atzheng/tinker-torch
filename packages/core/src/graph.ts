@@ -39,7 +39,7 @@ export const NODE_TYPES = [
 ] as const;
 
 const oneOf = (values: readonly string[]) => `must be one of ${values.join(', ')}`;
-const NUMBER = 'must be a number';
+const NODE_NAME = 'must be a node name (text)';
 
 function num(message: string, ok: (n: number) => boolean) {
   return z
@@ -115,7 +115,7 @@ const nodeSchema = z.discriminatedUnion('type', [
     }),
 ]);
 
-const edgeSchema = z.tuple([z.string({ error: NUMBER }), z.string({ error: NUMBER })], {
+const edgeSchema = z.tuple([z.string({ error: NODE_NAME }), z.string({ error: NODE_NAME })], {
   error: 'must be a pair of node names',
 });
 
@@ -292,6 +292,12 @@ export function parseGraph(json: unknown): ParseResult {
       const type = raw['type'];
       if (typeof type !== 'string' || !(NODE_TYPES as readonly string[]).includes(type)) {
         const id = typeof raw['id'] === 'string' ? `"${raw['id']}"` : `number ${i + 1}`;
+        if (type === undefined) {
+          return {
+            ok: false,
+            error: `Node ${id} has no type; the types are ${NODE_TYPES.join(', ')}.`,
+          };
+        }
         return {
           ok: false,
           error: `Node ${id} has an unknown type ${JSON.stringify(type)}; the types are ${NODE_TYPES.join(', ')}.`,
