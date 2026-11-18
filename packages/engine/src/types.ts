@@ -3,6 +3,7 @@ import type { Analysis, Batch, DataInfo, Graph, HostParams, NodeId } from '@tink
 
 export type { Batch };
 
+/** Call `Engine.disposeModel` when done with it: the jitted functions hold memory. */
 export type Model = { readonly graph: Graph; readonly analysis: Analysis };
 /** Opaque; owns jax arrays. Becomes unusable once consumed or disposed (later use throws). */
 export type Params = { readonly __brand: 'Params' };
@@ -35,6 +36,7 @@ export interface Engine {
     b: Float32Array,
   ): Float32Array;
   trainMany(model: Model, seeds: number[], data: Batch[], steps: number): ManyResult[];
+  disposeModel(model: Model): void;
   clone(params: Params): Params;
   dispose(x: Params | TrainState): void;
   liveArrays(): number;
