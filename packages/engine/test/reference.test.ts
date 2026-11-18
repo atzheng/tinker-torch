@@ -9,7 +9,7 @@ import { compare, fixtureNames, loadFixture, toBatch, toHostParams, withLr } fro
 import type { JsonParams } from './util.js';
 
 /** Compared now. Value: tolerance overrides (CONTRACTS.md section 11, "Engine exceptions"). */
-const IMPLEMENTED: Record<string, { tol?: number }> = {
+const IMPLEMENTED: Record<string, { tol?: number; afterTol?: number }> = {
   linear_nobias_d1: {},
   linear_bias_d1: {},
   linear_nobias_d2: {},
@@ -24,6 +24,9 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   loss_squared_error_sigmoid: {},
   two_param: {},
   mlp_tanh_sgd_5steps: {},
+  mlp_tanh_momentum_5steps: {},
+  // optax Adam differs from torch by about 1.5e-3 after 5 steps (CONTRACTS.md section 11)
+  mlp_tanh_adam_5steps: { afterTol: 5e-3 },
 };
 
 /** Skipped until the named bead lands. */
@@ -39,8 +42,6 @@ const PENDING: Record<string, string> = {
   feature_deg3_sin_cos_products: 'tinker-hj4.3',
   add_skip: 'tinker-hj4.3',
   'dropout_p0.5': 'tinker-hj4.3',
-  mlp_tanh_momentum_5steps: 'tinker-hj4.4',
-  mlp_tanh_adam_5steps: 'tinker-hj4.4 (compare at 5e-3)',
 };
 
 /** Never compared (owner decision, tinker-e1h.2): they pin torch's at-zero subgradients. */
@@ -85,8 +86,9 @@ describe('fixtures', () => {
       report.push(`loss ${cl.maxAbs.toExponential(2)}`);
       expect(cl.ok, `loss ${loss} vs ${fx.expect.loss}`).toBe(true);
 
-      // grads, from one step with lr 1 (borrows `params`; startTraining consumes a clone)
-      const m1 = engine.compile(withLr(graph, 1), data);
+      // grads, from one plain SGD step with lr 1 (borrows `params`; startTraining consumes a clone)
+      const sgd1 = withLr(graph, 1);
+      const m1 = engine.compile({ ...sgd1, train: { ...sgd1.train, optimizer: 'sgd' } }, data);
       const p1 = engine.fromHost(m1, toHostParams(fx.params));
       const s1 = engine.startTraining(m1, p1, 0);
       const r1 = engine.step(m1, s1, batch);
@@ -118,7 +120,7 @@ describe('fixtures', () => {
           losses.push(r.loss);
           state = r.state;
         }
-        const tolAfter = 1e-4;
+        const tolAfter = IMPLEMENTED[name]?.afterTol ?? 1e-4;
         const cL = compare(losses, exp.losses, tolAfter);
         const host = engine.toHost(state.params);
         const got = ids.flatMap((id) => [...(host[id]?.W ?? []), ...(host[id]?.b ?? [])]);

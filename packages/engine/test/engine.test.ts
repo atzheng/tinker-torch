@@ -112,10 +112,27 @@ describe('compile', () => {
     expect(() => engine.compile(noLoss, data)).toThrow(Error);
   });
 
+  test.each(['sgd', 'momentum', 'adam'] as const)(
+    '%s: step works with varying batch sizes and keeps training',
+    (optimizer) => {
+      const { graph, data, host, batch } = mlp();
+      const model = engine.compile({ ...graph, train: { ...graph.train, optimizer } }, data);
+      let state = engine.startTraining(model, engine.fromHost(model, host), 1);
+      const dim = batch.x.length / batch.n;
+      // Each new batch size traces the jitted step once (jax-js caches by shape); repeats reuse it.
+      for (const n of [batch.n, 3, 2, batch.n, 3, 2, 3]) {
+        const b = { x: batch.x.slice(0, n * dim), y: batch.y.slice(0, n), n };
+        const r = engine.step(model, state, b);
+        expect(r.diverged).toBe(false);
+        expect(Number.isFinite(r.loss)).toBe(true);
+        state = r.state;
+      }
+      engine.dispose(state);
+    },
+  );
+
   test('unimplemented pieces, losses and optimizers are rejected at compile with one sentence', () => {
     const { graph, data } = mlp();
-    const adam: Graph = { ...graph, train: { ...graph.train, optimizer: 'adam' } };
-    expect(() => engine.compile(adam, data)).toThrow('The adam optimizer is not implemented yet.');
     const huber: Graph = {
       ...graph,
       nodes: graph.nodes.map((n) =>
