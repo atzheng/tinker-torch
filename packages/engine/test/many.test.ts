@@ -1,10 +1,12 @@
 // trainMany (CONTRACTS.md section 7): each copy equals training that copy alone with `step`.
 import { installProbe } from '../src/probe.js';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { loadFixture, toBatch } from './util.js';
 import type { Batch } from '@tinker/core';
 
 installProbe();
+// Logic tests, no timing assertions: a loaded machine (parallel agents, CI) must not fail them on vitest's 5 s default.
+vi.setConfig({ testTimeout: 60_000 });
 const { createEngine } = await import('../src/index.js');
 const engine = await createEngine();
 
