@@ -1,12 +1,37 @@
-import { REGIONS, WEB_DEPS } from './index.js';
+import styles from './App.module.css';
+import { Canvas } from './canvas/Canvas.js';
+import { Palette } from './palette/Palette.js';
+import { FitPlot } from './results/FitPlot.js';
+import { LossCurves } from './results/LossCurves.js';
+import { TopBar } from './topbar/TopBar.js';
+import { TrainingBar } from './trainbar/TrainingBar.js';
+
+export const NOTICE = 'Tinker needs a wider screen. Rotate your tablet or use a laptop.';
 
 export function App() {
   return (
-    <div>
-      <p>{WEB_DEPS.join(' + ')}</p>
-      {REGIONS.map((name) => (
-        <section key={name}>{name}</section>
-      ))}
-    </div>
+    <>
+      <div className={styles.app}>
+        <header className={`${styles.region} ${styles.top}`} data-region="top-bar">
+          <TopBar />
+        </header>
+        <nav className={`${styles.region} ${styles.palette}`} data-region="palette">
+          <Palette />
+        </nav>
+        <main className={`${styles.region} ${styles.canvas}`} data-region="canvas">
+          <Canvas />
+        </main>
+        <section className={`${styles.region} ${styles.results}`} data-region="results">
+          <FitPlot />
+          <LossCurves />
+        </section>
+        <footer className={`${styles.region} ${styles.train}`} data-region="training-bar">
+          <TrainingBar />
+        </footer>
+      </div>
+      <div className={styles.notice} role="status" data-testid="narrow-notice">
+        {NOTICE}
+      </div>
+    </>
   );
 }

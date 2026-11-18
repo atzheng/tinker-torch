@@ -118,7 +118,7 @@ All version 1 datasets are synthetic, drawn from a known true function plus nois
 | Resample | Draws a fresh training set from the same generator |  |
 
 - The dataset appears on the canvas as Input dots and a Target dot. Columns can be switched off at the Input piece.
-- Inputs are standardised by default, with a toggle to turn that off.
+- Inputs are left in raw units by default, with a toggle to standardise them using training-set statistics.
 - The true function is hidden by default and shown by a toggle on the fit plot.
 
 ## Training
