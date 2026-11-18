@@ -169,7 +169,8 @@ class Model(nn.Module):
                      "gelu": nn.GELU()}[n["fn"]]  # nn.GELU() default = exact erf form
                 v[i] = f(get())
             elif t == "dropout":
-                v[i] = get() * self.mask / (1.0 - n["p"])
+                # mask None = eval mode (dropout off)
+                v[i] = get() if self.mask is None else get() * self.mask / (1.0 - n["p"])
             elif t == "add":
                 v[i] = get("a") + get("b")
             elif t == "output":
@@ -232,7 +233,8 @@ def init_params(rng, nodes, edges):
 
 
 def make_case(name, seed, nodes, edges, *, n=6, d=1, ytype="reg",
-              optimizer=None, steps=5, lr=0.1, mask_for=None, xscale=1.5):
+              optimizer=None, steps=5, lr=0.1, mask_for=None, xscale=1.5,
+              zero_weights=(), zero_x_rows=()):
     rng = np.random.default_rng(seed)
     x = rng.uniform(-xscale, xscale, size=(n, d))
     if ytype == "reg":
@@ -241,7 +243,11 @@ def make_case(name, seed, nodes, edges, *, n=6, d=1, ytype="reg",
     else:  # class index as float, 0/1; guarantee both classes
         y = (rng.uniform(size=(n, 1)) > 0.5).astype(float)
         y[0, 0], y[1, 0] = 0.0, 1.0
+    for r in zero_x_rows:  # exact zeros in the input row -> exact zero pre-activations (bias-free)
+        x[r, :] = 0.0
     params = init_params(rng, nodes, edges)
+    for node, idx in zero_weights:  # exact zero weights (for sign(0) = 0 in the L1 penalty)
+        params[node]["W"][idx] = 0.0
     mask = None
     if mask_for:
         dn = next(k for k in nodes if k["type"] == "dropout")
@@ -257,6 +263,10 @@ def make_case(name, seed, nodes, edges, *, n=6, d=1, ytype="reg",
     expect = {"pred": pred.detach().flatten().tolist(), "loss": obj.item(), "grads": m.host("grads")}
     if mask is not None:
         expect["dropoutMask"] = mask.tolist()
+        # dropout-off (eval) forward: what predict()/evaluate() must return
+        pe, oe = Model(nodes, edges, params, None)(xt, yt)
+        expect["predEval"] = pe.detach().flatten().tolist()
+        expect["lossEval"] = oe.item()
 
     if optimizer:
         m2 = Model(nodes, edges, params, maskt)
@@ -272,11 +282,11 @@ def make_case(name, seed, nodes, edges, *, n=6, d=1, ytype="reg",
             opt.step()
         expect["after"] = {"steps": steps, "params": m2.host("params"), "losses": losses}
 
-    # data/train blocks are placeholders: the batch above is explicit.
+    # data/train blocks are placeholders (n=40 satisfies parseGraph, n >= 10); the batch above is explicit.
     graph = {
         "version": 1, "nodes": nodes, "edges": edges,
         "data": {"set": "blobs" if ytype == "cls" else {1: "sine", 2: "plane"}[d],
-                 "n": n, "noise": 0.1, "val": 0.25, "seed": 1, "standardize": False},
+                 "n": 40, "noise": 0.1, "val": 0.25, "seed": 1, "standardize": False},
         "train": {"optimizer": optimizer or "sgd", "lr": lr, "batch": "full", "seed": 1},
     }
     fx = {"name": name, "graph": graph, "params": params,
@@ -328,6 +338,12 @@ def main():
     for kind in ("l2", "l1"):
         add(f"penalty_{kind}",
             mlp(2, [3], "tanh", loss_node=loss("squared_error", penalty={"kind": kind, "lambda": 0.1})), d=2)
+
+    # at-zero conventions: sign(0) = 0 for L1, relu'(0) = 0
+    add("penalty_l1_zero_weight",
+        mlp(2, [3], "tanh", loss_node=loss("squared_error", penalty={"kind": "l1", "lambda": 0.1})),
+        d=2, zero_weights=[("lin1", 0), ("lin2", 1)])
+    add("act_relu_zero_preact", mlp(2, [3], "relu", bias=False), d=2, zero_x_rows=[0, 3])
 
     # feature: degree 3, sin, cos, products, d = 2 -> width 11
     nodes = [inp(2),

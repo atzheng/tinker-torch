@@ -1,3 +1,5 @@
+/// <reference types="node" />
+import { parseGraph } from '@tinker/core';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
@@ -17,6 +19,8 @@ type Fixture = {
     grads: Params;
     after?: { steps: number; params: Params; losses: number[] };
     dropoutMask?: number[][];
+    predEval?: number[];
+    lossEval?: number;
   };
 };
 
@@ -56,6 +60,8 @@ test('fixtures exist for every listed case', () => {
     'feature_deg3_sin_cos_products',
     'add_skip',
     'dropout_p0.5',
+    'penalty_l1_zero_weight',
+    'act_relu_zero_preact',
     'mlp_tanh_sgd_5steps',
     'mlp_tanh_momentum_5steps',
     'mlp_tanh_adam_5steps',
@@ -69,6 +75,8 @@ for (const file of files) {
   test(`${file} parses and is shape-consistent`, () => {
     const fx = JSON.parse(readFileSync(dir + file, 'utf8')) as Fixture;
     expect(fx.name + '.json').toBe(file);
+    const parsed = parseGraph(fx.graph);
+    expect(parsed.ok ? 'ok' : parsed.error).toBe('ok');
     const { n } = fx.batch;
     const input = fx.graph.nodes.find((x) => x.type === 'input') as unknown as {
       columns: string[];

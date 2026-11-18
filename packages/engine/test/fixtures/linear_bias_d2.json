@@ -52,7 +52,7 @@
   ],
   "data": {
    "set": "plane",
-   "n": 5,
+   "n": 40,
    "noise": 0.1,
    "val": 0.25,
    "seed": 1,
