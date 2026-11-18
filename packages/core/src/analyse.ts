@@ -39,14 +39,25 @@ function isWidthError(v: number | { error: string }): v is { error: string } {
 
 export function analyse(graph: Graph, data: DataInfo): Analysis {
   const issues: Issue[] = [];
-  const byId = new Map<NodeId, Node>(graph.nodes.map((n) => [n.id, n]));
+  // Defensive: `parseGraph` rejects duplicate ids, but an unparsed graph may have them. The first wins.
+  const seen = new Set<NodeId>();
+  const nodes: Node[] = [];
+  for (const n of graph.nodes) {
+    if (seen.has(n.id)) {
+      issues.push({ at: { node: n.id }, message: `Two nodes are both called "${n.id}".` });
+      continue;
+    }
+    seen.add(n.id);
+    nodes.push(n);
+  }
+  const byId = new Map<NodeId, Node>(nodes.map((n) => [n.id, n]));
 
   // ---- resolve edges; each input port keeps its first wire
   type Used = { index: number; from: NodeId };
   const inEdges = new Map<NodeId, Map<string, Used>>();
   const used: { index: number; from: NodeId; to: NodeId; port: string }[] = [];
   graph.edges.forEach((edge, index) => {
-    const r = resolveEdge(graph.nodes, edge);
+    const r = resolveEdge(nodes, edge);
     if (!r.ok) {
       issues.push({ at: { edge: index }, message: r.error });
       return;
@@ -66,14 +77,14 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   });
 
   // ---- topological sort (Kahn, in node order so the result is stable)
-  const indeg = new Map<NodeId, number>(graph.nodes.map((n) => [n.id, 0]));
-  const succ = new Map<NodeId, NodeId[]>(graph.nodes.map((n) => [n.id, []]));
+  const indeg = new Map<NodeId, number>(nodes.map((n) => [n.id, 0]));
+  const succ = new Map<NodeId, NodeId[]>(nodes.map((n) => [n.id, []]));
   for (const e of used) {
     indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
     succ.get(e.from)?.push(e.to);
   }
   const topo: NodeId[] = [];
-  const ready = graph.nodes.filter((n) => indeg.get(n.id) === 0).map((n) => n.id);
+  const ready = nodes.filter((n) => indeg.get(n.id) === 0).map((n) => n.id);
   while (ready.length > 0) {
     const id = ready.shift();
     if (id === undefined) break;
@@ -85,9 +96,9 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     }
   }
   const done = new Set(topo);
-  if (done.size < graph.nodes.length) {
+  if (done.size < nodes.length) {
     // Peel off blocked nodes with no blocked successor; what remains lies on a cycle.
-    const stuck = new Set(graph.nodes.filter((n) => !done.has(n.id)).map((n) => n.id));
+    const stuck = new Set(nodes.filter((n) => !done.has(n.id)).map((n) => n.id));
     let changed = true;
     while (changed) {
       changed = false;
@@ -98,7 +109,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
         }
       }
     }
-    const members = graph.nodes.filter((n) => stuck.has(n.id)).map((n) => n.id);
+    const members = nodes.filter((n) => stuck.has(n.id)).map((n) => n.id);
     const first = members[0];
     if (first !== undefined) {
       const self = members.length === 1 && succ.get(first)?.includes(first);
@@ -113,9 +124,9 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
 
   // ---- widths, in topological order (unknown stays absent)
   const ctx = { dataColumns: data.columns.length, numClasses: data.numClasses };
-  const inWidth: Record<NodeId, number> = {};
-  const outWidth: Record<NodeId, number> = {};
-  const params: Record<NodeId, number> = {};
+  const inWidth: Record<NodeId, number> = Object.create(null) as Record<NodeId, number>; // no prototype: ids like "constructor" are safe
+  const outWidth: Record<NodeId, number> = Object.create(null) as Record<NodeId, number>; // no prototype: ids like "constructor" are safe
+  const params: Record<NodeId, number> = Object.create(null) as Record<NodeId, number>; // no prototype: ids like "constructor" are safe
 
   for (const id of topo) {
     const node = byId.get(id);
@@ -178,7 +189,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   }
 
   // ---- parameters
-  for (const n of graph.nodes) {
+  for (const n of nodes) {
     const w = inWidth[n.id];
     if (w === undefined) continue;
     const shapes = (CORE_PIECES[n.type].paramShapes as ShapeFn)(n, w);
@@ -186,7 +197,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   }
 
   // ---- loss, output and target
-  const losses = graph.nodes.filter((n) => n.type === 'loss');
+  const losses = nodes.filter((n) => n.type === 'loss');
   let lossNode: NodeId | null = null;
   let predNode: NodeId | null = null;
   const firstLoss = losses[0];

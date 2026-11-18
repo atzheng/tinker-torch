@@ -591,3 +591,52 @@ describe('analyse: inputs the parser accepts', () => {
     ]);
   });
 });
+
+describe('analyse: defensive cases', () => {
+  test('duplicate node ids are an issue at the duplicate', () => {
+    const gr = spec();
+    gr.nodes.push(lin('l1', 9));
+    const a = analyse(gr, reg);
+    expect(a.trainable).toBe(false);
+    expect(a.issues).toEqual([{ at: { node: 'l1' }, message: 'Two nodes are both called "l1".' }]);
+    expect(a.order.filter((id) => id === 'l1')).toHaveLength(1);
+    expect(a.outWidth['l1']).toBe(4);
+  });
+
+  test('ids that collide with Object.prototype are safe', () => {
+    for (const name of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+      const gr = spec();
+      gr.nodes[1] = lin(name, 4);
+      gr.edges = gr.edges.map(([f, t]) => [f === 'l1' ? name : f, t === 'l1' ? name : t]);
+      gr.edges.splice(0, 1); // leave the Linear unconnected
+      const a = analyse(gr, reg);
+      expect(a.issues).toEqual([{ at: { node: name }, message: 'Linear needs an input.' }]);
+      expect(a.edgeWidth.every((w) => w === null || typeof w === 'number')).toBe(true);
+      expect(Number.isFinite(a.totalParams)).toBe(true);
+      expect(a.params[name]).toBeUndefined();
+      expect(a.inWidth[name]).toBeUndefined();
+      expect(a.outWidth[name]).toBeUndefined();
+      // and a connected one still analyses
+      const ok = spec();
+      ok.nodes[1] = lin(name, 4);
+      ok.edges = ok.edges.map(([f, t]) => [f === 'l1' ? name : f, t === 'l1' ? name : t]);
+      const b = analyse(ok, reg);
+      expect(b.trainable).toBe(true);
+      expect(b.params[name]).toBe(8);
+      expect(b.totalParams).toBe(13);
+    }
+  });
+
+  test('accepts a deep-frozen graph', () => {
+    const deepFreeze = <T>(o: T): T => {
+      if (typeof o === 'object' && o !== null) {
+        Object.values(o).forEach(deepFreeze);
+        Object.freeze(o);
+      }
+      return o;
+    };
+    const a = analyse(deepFreeze(spec()), reg);
+    expect(a.trainable).toBe(true);
+    expect(a.totalParams).toBe(13);
+  });
+});
