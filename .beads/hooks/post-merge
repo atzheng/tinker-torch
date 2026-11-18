@@ -1,4 +1,7 @@
 #!/usr/bin/env sh
+# Coordinator guard: linked git worktrees (agent worktrees) share the main Dolt DB.
+# Importing their older issues.jsonl reverts bead state, so skip beads here.
+if [ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ]; then exit 0; fi
 # --- BEGIN BEADS INTEGRATION v1.0.4 ---
 # This section is managed by beads. Do not remove these markers.
 if command -v bd >/dev/null 2>&1; then
