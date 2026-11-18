@@ -48,7 +48,10 @@ export function parseFile(json: unknown): ParseFileResult {
     if (prompt !== undefined && typeof prompt !== 'string') {
       return fail('The preset prompt must be text.');
     }
-    if (locked !== undefined && !(Array.isArray(locked) && locked.every((x) => typeof x === 'string'))) {
+    if (
+      locked !== undefined &&
+      !(Array.isArray(locked) && locked.every((x) => typeof x === 'string'))
+    ) {
       return fail('The preset list of locked pieces must be a list of piece ids.');
     }
     const preset: Preset = { ...file, title };
