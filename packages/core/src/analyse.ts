@@ -101,9 +101,12 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     const members = graph.nodes.filter((n) => stuck.has(n.id)).map((n) => n.id);
     const first = members[0];
     if (first !== undefined) {
+      const self = members.length === 1 && succ.get(first)?.includes(first);
       issues.push({
         at: { node: first },
-        message: `The wires form a loop through ${members.map((m) => `"${m}"`).join(', ')}; remove one wire to break it.`,
+        message: self
+          ? `"${first}" is wired to itself; remove that wire.`
+          : `The wires form a loop through ${members.map((m) => `"${m}"`).join(', ')}; remove one wire to break it.`,
       });
     }
   }
@@ -133,6 +136,13 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
       else inW[port] = w;
     }
     if (node.type === 'input') {
+      const dup = node.columns.filter((c, i) => node.columns.indexOf(c) !== i);
+      if (dup.length > 0) {
+        issues.push({
+          at: { node: id },
+          message: `Input lists ${[...new Set(dup)].map((c) => `"${c}"`).join(', ')} more than once; switch each column on only once.`,
+        });
+      }
       const unknown = node.columns.filter((c) => !data.columns.includes(c));
       if (unknown.length > 0) {
         issues.push({

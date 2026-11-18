@@ -543,3 +543,51 @@ describe('analyse: parameter limit', () => {
     expect(a.trainable).toBe(true);
   });
 });
+
+describe('analyse: inputs the parser accepts', () => {
+  test('a self-edge is reported and does not break widths or order', () => {
+    const gr = spec();
+    gr.nodes.push(act('s'));
+    gr.edges.push(['s', 's']);
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([
+      { at: { node: 's' }, message: '"s" is wired to itself; remove that wire.' },
+    ]);
+    expect(a.order).not.toContain('s');
+    expect(a.outWidth['l2']).toBe(1);
+    expect(a.edgeWidth[6]).toBeNull();
+    expect(a.trainable).toBe(false);
+  });
+
+  test('a self-edge on a node on the model path blocks it without throwing', () => {
+    const gr = spec();
+    gr.nodes[2] = { id: 'a1', type: 'activation', fn: 'tanh' };
+    gr.edges[1] = ['a1', 'a1'];
+    const a = analyse(gr, reg);
+    expect(a.issues.map((i) => i.message)).toContain('"a1" is wired to itself; remove that wire.');
+    expect(a.outWidth['a1']).toBeUndefined();
+    expect(a.trainable).toBe(false);
+  });
+
+  test('duplicate Input columns', () => {
+    const gr = spec();
+    gr.nodes[0] = input(['x1', 'x1']);
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([
+      {
+        at: { node: 'in' },
+        message: 'Input lists "x1" more than once; switch each column on only once.',
+      },
+    ]);
+    expect(a.trainable).toBe(false);
+  });
+
+  test('unknown Input column names the column', () => {
+    const gr = spec();
+    gr.nodes[0] = input(['x2']);
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([
+      { at: { node: 'in' }, message: 'Input uses "x2", which this dataset does not have.' },
+    ]);
+  });
+});

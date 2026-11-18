@@ -160,6 +160,18 @@ function analyse(graph: Graph, data: DataInfo): Analysis;
 
 Trainable means: no cycles; exactly one loss; every input port connected; a path input -> ... -> output -> loss.pred and target -> loss.target; widths resolve; the output/loss/target combination is in the table below; total parameters <= 10,000. Each failure gives one Issue with one plain sentence.
 
+`analyse` does not assume `parseGraph` rejected anything beyond unknown nodes/ports: cycles, self-edges, doubly-fed ports, duplicate or unknown Input columns and bad edges all become issues. Behaviour fixed here for later beads:
+
+- `order`: with exactly one loss that is not on a cycle, the ancestors of the loss (the loss last) in topological order, so dangling nodes are left out. With no loss, several losses, or a loss on a cycle, every node not blocked by a cycle, in topological order. Nodes on or downstream of a cycle are never in `order`.
+- `inWidth` and `outWidth` have no key where the width is unknown (never NaN or null). `inWidth` is absent for Input and Target; for Add it is the shared width and absent when the two inputs differ or one is missing; for the loss it is the width of `pred`. `outWidth` of a loss is absent.
+- `params` has a key for every node whose input width is known. `totalParams` sums only nodes in `order`.
+- Issues are reported at the root cause only: a node whose upstream width is unknown gets no issue of its own.
+- An Add width mismatch is one issue with both `node` (the Add) and `edge` (the wire into `b`). Other issues about one wire carry `edge`, and `node` too when a node is the cause.
+- A doubly-fed input port: the first wire (lowest edge index) is used for widths and order; each later wire gets an issue with its `edge` and the receiving `node`, and `edgeWidth` for it is null.
+- A self-edge or any cycle: one issue at the first node on the cycle; those nodes have unknown widths.
+- Wiring rules: Output may only feed `loss.pred` and Target only `loss.target` (issue on the edge otherwise); `loss.pred` must come from an Output and `loss.target` from a Target; an Input listing a column twice or a column the dataset lacks is an issue at the Input node.
+- `predNode` is the Output feeding `loss.pred` and `lossNode` the loss; both are null unless there is exactly one loss (`predNode` also null if `pred` is unconnected or not from an Output).
+
 | Loss | Output link | Prediction width | Target |
 | --- | --- | --- | --- |
 | squared_error, absolute_error, huber | identity or sigmoid | 1 | regression or binary (as 0/1 numbers) |
