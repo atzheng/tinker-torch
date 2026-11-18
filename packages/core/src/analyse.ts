@@ -1,14 +1,8 @@
 /** Analysis (CONTRACTS.md section 4): order, widths, parameter counts and the issues that disable Train. */
-import type { Graph, LossFn, Node, NodeId } from './graph.js';
+import type { DataInfo, Graph, LossFn, Node, NodeId } from './graph.js';
 import { resolveEdge } from './graph.js';
 import { CORE_PIECES } from './registry.js';
 
-/** What the dataset says about itself; `sample(...).info` has this shape. */
-export type DataInfo = {
-  columns: string[];
-  kind: 'regression' | 'binary';
-  numClasses: number;
-};
 export type Issue = { at: { node?: NodeId; edge?: number }; message: string };
 export type Analysis = {
   /** Topological order of the nodes on the path to the loss (all acyclic nodes when there is no single loss). */

@@ -160,6 +160,12 @@ export type PortRef = string;
 export type Edge = [from: PortRef, to: PortRef];
 export type DataConfig = z.infer<typeof dataSchema>;
 export type TrainConfig = z.infer<typeof trainSchema>;
+/** What the dataset says about itself (CONTRACTS.md section 4). */
+export type DataInfo = {
+  columns: string[];
+  kind: 'regression' | 'binary';
+  numClasses: number;
+};
 export type Graph = {
   version: 1;
   nodes: Node[];
