@@ -30,6 +30,8 @@ packages/engine/src/          the only package that imports @jax-js/*
   many.ts         trainMany (vmap)
   surface.ts      lossGrid for the loss-surface view
   convert.ts      HostParams <-> jax arrays; the only place arrays cross the boundary
+  types.ts        the public types of section 7 (Engine, Model, Params, TrainState, ...)
+  probe.ts        test-only live-buffer probe behind liveArrays()
 packages/engine/test/
   fixtures/*.json   PyTorch reference values (section 11), generated, committed
   reference.test.ts  compares every fixture to the engine
@@ -290,7 +292,15 @@ function createEngine(): Promise<Engine>; // awaits jax init(); Wasm device; nev
   - ReLU, abs and GELU use the jax-js built-ins (`nn.relu`, `np.abs`, `nn.gelu` with its default tanh approximation). Their at-zero gradients (relu'(0) = 0.5, |x|'(0) = 1) differ from torch; accepted.
   - Laziness: jax-js evaluates lazily, so `step` and `trainMany` read the loss back every step. Without a read the pending computation grows with each step and the run slows and runs out of memory.
   - `step` keeps a `.ref` of the pre-step state until the loss is read, so a diverged step can return the state unchanged; the leak test includes a diverged step.
-  - `liveArrays()` counts the Wasm backend's live buffers through the test-only hook in `docs/spike.md` (it finds jax-js's private slot map by intercepting `Map.prototype.set` until the first allocation). It is tied to the pinned version and is never used by the app.
+  - `liveArrays()` counts the Wasm backend's live buffers through the test-only hook in `docs/spike.md` (it finds jax-js's private slot map by intercepting `Map.prototype.set` until the first allocation). It is tied to the pinned version and is never used by the app: the hook lives in `engine/src/probe.ts` and is off unless a test calls `installProbe()` and then loads the engine with a dynamic `import()` (see `test/leak.test.ts`); without it `liveArrays()` returns 0. The package exports it as `@tinker/engine/probe` so a dev build of the app can do the same.
+  - Engine structure fixed by `tinker-hj4.1` (later engine beads fill files and flags, they do not change these):
+    - `EnginePiece<N> = { implemented: boolean; forward(node, inputs: Record<port, JArray>, layer, ctx): JArray }` in `pieces/types.ts`; `forward` consumes its inputs and layer. `compile` walks `analysis.order`; a piece, loss (`losses.ts` `LOSSES`), penalty (`penalty.ts` `PENALTY_IMPLEMENTED`) or optimizer (`optim.ts` `OPTIMIZERS`) with `implemented: false` makes `compile` throw "The <thing> is not implemented yet."
+    - In loss mode the Output piece returns the pre-link value and the loss applies or fuses the link itself (`LossImpl.compute(node, z, y, link)`: z pre-link, y `[n]`, result the mean loss); in predict mode the Output applies the link. The penalty is added in `compile.ts` `walk` (hj4.2).
+    - Batch x is `[n, dataColumns]` (all dataset columns, `DataInfo.columns`); the Input piece selects its own `columns`.
+    - A consumed `Params` or `TrainState` throws "already consumed or disposed" instead of touching freed arrays; `dispose` is idempotent. `step` consumes the state and its `params`: after a successful step the old `state.params` is dead; after a diverged step the returned state reuses the same `Params` object.
+    - `diverged` is true when the loss is non-finite or any updated parameter is non-finite (a non-finite update is never kept); `loss` is then the value read, which may be finite. A batch that does not fit the model throws before anything is consumed.
+    - `TrainState.key` is created from the seed and carried through `step` unchanged; the Dropout bead (hj4.3) splits it.
+    - Jitted functions are built lazily per model and never disposed (the interface has no model disposal), so each `compile` leaves one set until garbage collection.
   - Ownership pitfalls found by the spike: optax `update` disposes its `params` argument; destructuring a jax Array leaks the parent (use `np.unstack` for split keys).
 
 ## 8. Edits (`core/edit.ts`)
@@ -384,7 +394,9 @@ type Fixture = {
 };
 ```
 
-Details: in dropout cases `pred`, `loss` and `grads` are the dropout-ON training forward and backward with the given mask (how the engine test injects the mask is the engine's choice); `predEval` and `lossEval` are the dropout-off values that `predict` and `evaluate` must return. At-zero conventions are pinned by fixtures: the L1 penalty has subgradient sign(0) = 0 (`penalty_l1_zero_weight`) and relu'(0) = 0 (`act_relu_zero_preact`). `dropoutMask` is a 0/1 keep mask shaped [n][width of the dropout node]; the engine multiplies by mask/(1−p). Classification targets in `batch.y` are class indices stored as floats (0 or 1). `after.losses[k]` is the objective before update k+1 (so `losses[0] == loss`). GELU is the exact erf form (`nn.GELU()`); jax-js `gelu` defaults to the tanh approximation, so the engine must pass `approximate: false`.
+Details: in dropout cases `pred`, `loss` and `grads` are the dropout-ON training forward and backward with the given mask (how the engine test injects the mask is the engine's choice); `predEval` and `lossEval` are the dropout-off values that `predict` and `evaluate` must return. At-zero conventions are pinned by fixtures: the L1 penalty has subgradient sign(0) = 0 (`penalty_l1_zero_weight`) and relu'(0) = 0 (`act_relu_zero_preact`). `dropoutMask` is a 0/1 keep mask shaped [n][width of the dropout node]; the engine multiplies by mask/(1−p). Classification targets in `batch.y` are class indices stored as floats (0 or 1). `after.losses[k]` is the objective before update k+1 (so `losses[0] == loss`). GELU is the exact erf form (`nn.GELU()`); the engine uses jax-js `gelu` in its default tanh form instead (see "Engine exceptions" below).
+
+Gradients are not part of `Engine`, so the engine reference test reads them from one SGD step with learning rate 1 (grad = W before - W after).
 
 Tolerance: 1e-5 absolute and relative on pred, loss and grads; 1e-4 on `after.params` after 5 steps. The case list is in the fixtures bead (`tinker-7x7.3`).
 
