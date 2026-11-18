@@ -63,10 +63,10 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
         const info = sample({ ...data, n: 10 }).info;
         if (info.columns.join() !== dataInfo.columns.join()) {
           // Sequential core edits, applied once below, so the data change and the resets are one undo step.
-          // No store-level locked list exists yet (presets bead); pass `{ locked }` here when it does.
+          const locked = get().preset?.locked ?? [];
           for (const n of graph.nodes) {
             if (n.type !== 'input') continue;
-            const r = setColumns(next, n.id, info.columns);
+            const r = setColumns(next, n.id, info.columns, { locked });
             if (!r.ok) {
               get().apply(r);
               return;
@@ -90,8 +90,8 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
       const { graph, dataInfo } = get();
       const keep = dataInfo.columns.filter((c) => columns.includes(c));
       if (keep.length === 0) return;
-      // Locked pieces: pass `{ locked }` as the 4th argument once the store has a locked list.
-      get().apply(setColumns(graph, id, keep));
+      const locked = get().preset?.locked ?? [];
+      get().apply(setColumns(graph, id, keep, { locked }));
     },
   };
 };

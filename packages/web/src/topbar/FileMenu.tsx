@@ -1,5 +1,12 @@
 import { useRef, useState } from 'react';
-import { paramsFromJson, paramsToJson, parseFileText, serializeFile } from '@tinker/core';
+import {
+  paramsFromJson,
+  paramsToJson,
+  parseFileText,
+  serializeFile,
+  type Preset,
+  type SaveFile,
+} from '@tinker/core';
 import { useStore } from '../state/store.js';
 import styles from './FileMenu.module.css';
 
@@ -7,8 +14,15 @@ export const SAVE_FILE_NAME = 'tinker-model.tinker.json';
 
 /** Text of the file Save would write; weights only when asked for and available. */
 export function saveText(withWeights: boolean): string {
-  const { graph, host } = useStore.getState();
-  return serializeFile(graph, withWeights && host ? paramsToJson(host) : undefined);
+  const { graph, host, preset } = useStore.getState();
+  const text = serializeFile(graph, withWeights && host ? paramsToJson(host) : undefined);
+  if (!preset) return text;
+  // A preset that is being edited stays a preset: title, prompt and locked ids are written back.
+  const doc = JSON.parse(text) as Record<string, unknown>;
+  doc['title'] = preset.title;
+  if (preset.prompt !== undefined) doc['prompt'] = preset.prompt;
+  if (preset.locked.length > 0) doc['locked'] = preset.locked;
+  return JSON.stringify(doc, null, 2) + '\n';
 }
 
 /**
@@ -18,8 +32,26 @@ export function saveText(withWeights: boolean): string {
 export function loadText(text: string): { ok: boolean; message: string | null } {
   const parsed = parseFileText(text);
   if (!parsed.ok) return { ok: false, message: parsed.error };
-  const { file } = parsed;
+  return loadParsed(parsed.file);
+}
+
+/**
+ * Loads a parsed file (also a bundled preset). A preset's title, prompt and locked ids are kept in
+ * the store (locked ids the graph does not have are ignored); a plain file clears any preset.
+ */
+export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: string | null } {
   const s = useStore.getState();
+  if ('title' in file) {
+    const ids = new Set(file.graph.nodes.map((n) => n.id));
+    const active: { title: string; prompt?: string; locked: string[] } = {
+      title: file.title,
+      locked: (file.locked ?? []).filter((id) => ids.has(id)),
+    };
+    if (file.prompt !== undefined) active.prompt = file.prompt;
+    s.setPreset(active);
+  } else {
+    s.setPreset(null);
+  }
   // The file's seed drives init of unsaved layers, batch order and dropout; one undo step.
   s.setRunSeed(file.graph.train.seed);
   s.apply({ ok: true, graph: file.graph });

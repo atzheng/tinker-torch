@@ -1,0 +1,13 @@
+/* Lock badge on a locked piece */
+.tk-lock-bg {
+  fill: var(--surface);
+  stroke: var(--border);
+}
+.tk-lock-body {
+  fill: var(--text);
+}
+.tk-lock-shackle {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.8;
+}
