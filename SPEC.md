@@ -215,7 +215,7 @@ interface Engine {
   step(model: Model, state: TrainState, batch: Batch): TrainState;     // one optimizer update
   read(params: Params): Record<string, Float32Array>;                  // for drawing weights
   write(params: Params, nodeId: string, values: Float32Array): Params; // hand-set weights
-  trainMany(model: Model, seeds: number[], data: Batch[], steps: number): Params[];
+  trainMany(model: Model, seeds: number[], data: Batch[], steps: number): { params: HostParams; diverged: boolean }[];
 }
 ```
 

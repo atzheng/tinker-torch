@@ -21,7 +21,15 @@ import { probeLiveArrays } from './probe.js';
 import { lossGrid } from './surface.js';
 import type { Engine, Model, Params, StepResult, TrainState } from './types.js';
 
-export type { Engine, Model, ParamAxis, Params, StepResult, TrainState } from './types.js';
+export type {
+  Engine,
+  ManyResult,
+  Model,
+  ParamAxis,
+  Params,
+  StepResult,
+  TrainState,
+} from './types.js';
 
 export const ENGINE_NAME = '@tinker/engine';
 export const ENGINE_CORE = CORE_NAME;
@@ -199,8 +207,8 @@ function makeEngine(): Engine {
       return lossGrid();
     },
 
-    trainMany() {
-      return trainMany();
+    trainMany(model, seeds, data, steps) {
+      return trainMany(model, seeds, data, steps);
     },
 
     /** Borrows `params`; the clone shares the immutable arrays by reference count and is independent to dispose. */
