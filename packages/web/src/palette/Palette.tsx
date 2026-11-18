@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { PALETTE, type PaletteEntry } from '@tinker/core';
 import { dnd } from '../canvas/dnd.js';
 import { startDrag } from '../gestures/drag.js';
@@ -23,6 +23,7 @@ const GROUPS: { family: PaletteEntry['family']; label: string }[] = [
 export function Palette() {
   const drag = useSyncExternalStore(dnd.subscribe, dnd.get, () => null);
   const dragging = drag?.payload.kind === 'palette' ? drag.payload.entry : null;
+  useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no ghost
   return (
     <div className="tk-palette" data-testid="palette">
       {GROUPS.map((g) => (
@@ -37,10 +38,20 @@ export function Palette() {
               data-dragging={dragging?.key === entry.key}
               onPointerDown={(e) => {
                 if (e.pointerType === 'mouse' && e.button !== 0) return;
+                // Touch: the palette scrolls vertically (`touch-action: pan-y`), so a drag begins
+                // only once the movement is mostly horizontal; a vertical swipe is left to scroll.
+                const touch = e.pointerType !== 'mouse';
+                let begun = false;
                 startDrag(e, {
-                  onStart: (p) => dnd.begin({ kind: 'palette', entry }, p.x, p.y),
-                  onMove: (p) => dnd.move(p.x, p.y),
-                  onEnd: (p) => dnd.end(p.x, p.y),
+                  onMove: (p) => {
+                    if (!begun) {
+                      if (touch && Math.abs(p.dx) < Math.abs(p.dy)) return;
+                      begun = true;
+                      dnd.begin({ kind: 'palette', entry }, p.x, p.y);
+                    }
+                    dnd.move(p.x, p.y);
+                  },
+                  onEnd: (p) => (begun ? dnd.end(p.x, p.y) : undefined),
                   onCancel: () => dnd.cancel(),
                 });
               }}

@@ -8,6 +8,7 @@ import {
   type NodeId,
   type Penalty,
 } from '@tinker/core';
+import { lockedIds } from '../../state/locks.js';
 import { useStore } from '../../state/store.js';
 
 function run(make: (g: ReturnType<typeof useStore.getState>['graph']) => EditResult): void {
@@ -16,9 +17,11 @@ function run(make: (g: ReturnType<typeof useStore.getState>['graph']) => EditRes
 }
 
 export const editSetting = (id: NodeId, key: string, value: unknown) =>
-  run((g) => setSetting(g, id, key, value));
-export const editOut = (id: NodeId, out: number) => run((g) => setLinearOut(g, id, out));
-export const editPenalty = (id: NodeId, p: Penalty | null) => run((g) => setPenalty(g, id, p));
+  run((g) => setSetting(g, id, key, value, { locked: lockedIds() }));
+export const editOut = (id: NodeId, out: number) =>
+  run((g) => setLinearOut(g, id, out, { locked: lockedIds() }));
+export const editPenalty = (id: NodeId, p: Penalty | null) =>
+  run((g) => setPenalty(g, id, p, { locked: lockedIds() }));
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

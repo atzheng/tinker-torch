@@ -10,6 +10,7 @@ import {
   resolveDrop,
   type DragPayload,
 } from './dnd.js';
+import { lockedIds } from '../state/locks.js';
 import { Inspector } from './Inspector.js';
 import { LayerView } from './LayerView.js';
 import { Toast } from './Toast.js';
@@ -95,6 +96,7 @@ export function Canvas() {
   const selectNode = useStore((s) => s.selectNode);
   const drag = useSyncExternalStore(dnd.subscribe, dnd.get, () => null);
   useEditShortcuts();
+  useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no preview
 
   const layout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
   const t: Transform = useMemo(() => fitTransform(layout.size, view), [layout.size, view]);
@@ -132,7 +134,7 @@ export function Canvas() {
           coarse ? 32 : 20,
         ),
       commit: (payload, target) => {
-        const edit = editForDrop(graph, payload, target);
+        const edit = editForDrop(graph, payload, target, { locked: lockedIds() });
         if (!edit) return;
         const result = apply(edit);
         if (result.ok && result.select !== undefined) selectNode(result.select);

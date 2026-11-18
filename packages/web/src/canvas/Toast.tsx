@@ -14,7 +14,7 @@ export function Toast() {
   }, [error, clearError]);
   if (!error) return null;
   return (
-    <div className="tk-toast" role="alert" data-testid="toast" onClick={clearError}>
+    <div className="tk-toast" role="alert" data-testid="toast">
       {error}
     </div>
   );

@@ -133,3 +133,32 @@ test('Delete removes the selected piece, Cmd+Z restores, and a cycle shows the t
   expect(s().graph).toBe(original);
   expect(must('toast').textContent?.length).toBeGreaterThan(5);
 });
+
+test('edits during a run: a drop and a delete do not throw and pause the run; a refused drop toasts', () => {
+  act(() => useStore.setState({ running: true }));
+  const [lx, ly] = screenOf((l) => {
+    const w = l.wires.find((x) => x.edge === 1);
+    return w ? w.labelAt : [0, 0];
+  });
+  expect(() => dragEntry('dropout', [lx, ly])()).not.toThrow();
+  expect(s().graph.nodes.some((n) => n.id === 'dropout1')).toBe(true);
+  expect(s().running).toBe(false);
+
+  act(() => useStore.setState({ running: true }));
+  act(() => s().selectNode('dropout1'));
+  expect(() =>
+    act(() => void window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace' }))),
+  ).not.toThrow();
+  expect(s().graph.nodes.some((n) => n.id === 'dropout1')).toBe(false);
+  expect(s().running).toBe(false);
+
+  // Target onto the Output: same family, but the edit refuses it.
+  const before = s().graph;
+  const [yx, yy] = screenOf((l) => {
+    const b = l.nodes['yhat'];
+    return b ? [b.x + b.w / 2, b.y + b.h / 2] : [0, 0];
+  });
+  dragEntry('target', [yx, yy])();
+  expect(s().graph).toBe(before);
+  expect(must('toast').textContent?.length).toBeGreaterThan(5);
+});

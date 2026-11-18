@@ -307,7 +307,7 @@ path.tk-hit {
   border-radius: var(--radius);
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
   font-size: 13px;
-  cursor: pointer;
+  pointer-events: none; /* never swallows a canvas tap; it fades by itself */
 }
 .tk-inspector-delete {
   position: absolute;

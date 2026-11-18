@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { deleteEdge, deleteNode } from '@tinker/core';
+import { lockedIds } from '../state/locks.js';
 import { useStore } from '../state/store.js';
 import { edgeIndexOf } from './pure.js';
 
@@ -8,12 +9,12 @@ export function deleteSelection(): void {
   const { graph, selection, apply, select } = useStore.getState();
   if (!selection) return;
   if (selection.kind === 'node') {
-    if (apply(deleteNode(graph, selection.id)).ok) select(null);
+    if (apply(deleteNode(graph, selection.id, { locked: lockedIds() })).ok) select(null);
     return;
   }
   const i = edgeIndexOf(graph, selection.from, selection.to);
   if (i < 0) return;
-  if (apply(deleteEdge(graph, i)).ok) select(null);
+  if (apply(deleteEdge(graph, i, { locked: lockedIds() })).ok) select(null);
 }
 
 /** Whether keyboard shortcuts should leave this event target to the browser (typing in a field). */
