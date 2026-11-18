@@ -284,6 +284,14 @@ function createEngine(): Promise<Engine>; // awaits jax init(); Wasm device; nev
 - Huber follows `nn.HuberLoss(delta)`. Dropout follows `nn.Dropout` (inverted scaling 1/(1−p)).
 - Optimizers: sgd = `optax.sgd(lr)`; momentum = `optax.sgd(lr, { momentum: 0.9 })` (equal to torch SGD with momentum 0.9, dampening 0); adam = `optax.adam(lr)` with b1 0.9, b2 0.999, eps 1e-8 (torch defaults).
 - `step` never throws on divergence; it returns `diverged: true` and the state is unchanged.
+- jax-js decisions (go/no-go `tinker-e1h.2`, from `docs/spike.md`; jax-js 0.1.27 and optax 0.1.3 stay pinned exactly):
+  - Use `optax.adam` as is. It is slightly inexact in its first steps (float32 bias correction), which is accepted; the tool does not need to match torch exactly.
+  - Sigmoid is computed as `0.5 * (1 + tanh(x / 2))` (jax-js `nn.sigmoid` has a NaN gradient below about −88), and the fused sigmoid + log_loss as `logsumexp([z, 0]) − z·y` (jax-js `softplus`/`logSigmoid` overflow in float32). These keep large logits from reporting a false "diverged".
+  - ReLU, abs and GELU use the jax-js built-ins (`nn.relu`, `np.abs`, `nn.gelu` with its default tanh approximation). Their at-zero gradients (relu'(0) = 0.5, |x|'(0) = 1) differ from torch; accepted.
+  - Laziness: jax-js evaluates lazily, so `step` and `trainMany` read the loss back every step. Without a read the pending computation grows with each step and the run slows and runs out of memory.
+  - `step` keeps a `.ref` of the pre-step state until the loss is read, so a diverged step can return the state unchanged; the leak test includes a diverged step.
+  - `liveArrays()` counts the Wasm backend's live buffers through the test-only hook in `docs/spike.md` (it finds jax-js's private slot map by intercepting `Map.prototype.set` until the first allocation). It is tied to the pinned version and is never used by the app.
+  - Ownership pitfalls found by the spike: optax `update` disposes its `params` argument; destructuring a jax Array leaks the parent (use `np.unstack` for split keys).
 
 ## 8. Edits (`core/edit.ts`)
 
@@ -373,6 +381,8 @@ type Fixture = {
 Details: in dropout cases `pred`, `loss` and `grads` are the dropout-ON training forward and backward with the given mask (how the engine test injects the mask is the engine's choice); `predEval` and `lossEval` are the dropout-off values that `predict` and `evaluate` must return. At-zero conventions are pinned by fixtures: the L1 penalty has subgradient sign(0) = 0 (`penalty_l1_zero_weight`) and relu'(0) = 0 (`act_relu_zero_preact`). `dropoutMask` is a 0/1 keep mask shaped [n][width of the dropout node]; the engine multiplies by mask/(1−p). Classification targets in `batch.y` are class indices stored as floats (0 or 1). `after.losses[k]` is the objective before update k+1 (so `losses[0] == loss`). GELU is the exact erf form (`nn.GELU()`); jax-js `gelu` defaults to the tanh approximation, so the engine must pass `approximate: false`.
 
 Tolerance: 1e-5 absolute and relative on pred, loss and grads; 1e-4 on `after.params` after 5 steps. The case list is in the fixtures bead (`tinker-7x7.3`).
+
+Engine exceptions (decided in `tinker-e1h.2`, because the engine uses jax-js built-ins and optax rather than torch-exact forms): `act_relu_zero_preact` and `penalty_l1_zero_weight` are skipped by the engine comparison test (they pin torch's at-zero subgradients); `act_gelu` is compared at 1e-4 (tanh-form GELU differs by about 3e-5); `mlp_tanh_adam_5steps` is compared at 5e-3 on `after.params` and `after.losses` (optax Adam differs by about 1.5e-3 after 5 steps). The fixtures stay as generated.
 
 ## 12. Files and presets (`core/file.ts`)
 
