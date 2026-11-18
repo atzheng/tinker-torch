@@ -131,24 +131,48 @@ describe('compile', () => {
     },
   );
 
-  test('unimplemented pieces, losses and optimizers are rejected at compile with one sentence', () => {
-    const { graph, data } = mlp();
-    const huber: Graph = {
-      ...graph,
-      nodes: graph.nodes.map((n) =>
-        n.type === 'loss' ? { ...n, fn: 'huber' as const, delta: 1 } : n,
-      ),
-    };
-    expect(() => engine.compile(huber, data)).toThrow('The huber loss is not implemented yet.');
-    const withPenalty: Graph = {
-      ...graph,
-      nodes: graph.nodes.map((n) =>
-        n.type === 'loss' ? { ...n, penalty: { kind: 'l2' as const, lambda: 0.1 } } : n,
-      ),
-    };
-    expect(() => engine.compile(withPenalty, data)).toThrow(
-      'The weight penalty is not implemented yet.',
+  test('a state from another optimizer is rejected before consuming anything', () => {
+    const { graph, data, host, batch } = mlp();
+    const mk = (optimizer: 'sgd' | 'momentum' | 'adam') =>
+      engine.compile({ ...graph, train: { ...graph.train, optimizer } }, data);
+    const adamModel = mk('adam');
+    for (const other of ['momentum', 'sgd'] as const) {
+      const model = mk(other);
+      const state = engine.startTraining(adamModel, engine.fromHost(adamModel, host), 1);
+      const live = engine.liveArrays();
+      expect(() => engine.step(model, state, batch)).toThrow(
+        'This training state was started for a different optimizer; start training again.',
+      );
+      expect(engine.liveArrays()).toBe(live);
+      // still valid for its own model
+      const r = engine.step(adamModel, state, batch);
+      expect(r.diverged).toBe(false);
+      engine.dispose(r.state);
+    }
+  });
+
+  test('adam first step moves each parameter by -lr * sign(grad)', () => {
+    const { graph, data, host, batch } = mlp();
+    const lr = 0.01;
+    const model = engine.compile(
+      { ...graph, train: { ...graph.train, optimizer: 'adam', lr } },
+      data,
     );
+    const r = engine.step(
+      model,
+      engine.startTraining(model, engine.fromHost(model, host), 1),
+      batch,
+    );
+    const after = engine.toHost(r.state.params);
+    for (const id of Object.keys(host)) {
+      const w0 = host[id]?.W ?? new Float32Array();
+      w0.forEach((w, i) => {
+        const d = Math.abs(w - (after[id]?.W[i] ?? NaN));
+        // a zero gradient gives a zero update; otherwise the step is lr
+        if (d > 1e-9) expect(Math.abs(d - lr)).toBeLessThan(1e-5);
+      });
+    }
+    engine.dispose(r.state);
   });
 
   test('an Input that selects some of the dataset columns', () => {

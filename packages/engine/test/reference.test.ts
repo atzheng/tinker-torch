@@ -9,7 +9,7 @@ import { compare, fixtureNames, loadFixture, toBatch, toHostParams, withLr } fro
 import type { JsonParams } from './util.js';
 
 /** Compared now. Value: tolerance overrides (CONTRACTS.md section 11, "Engine exceptions"). */
-const IMPLEMENTED: Record<string, { tol?: number; afterTol?: number }> = {
+const IMPLEMENTED: Record<string, { tol?: number }> = {
   linear_nobias_d1: {},
   linear_bias_d1: {},
   linear_nobias_d2: {},
@@ -23,22 +23,21 @@ const IMPLEMENTED: Record<string, { tol?: number; afterTol?: number }> = {
   loss_squared_error: {},
   loss_squared_error_sigmoid: {},
   two_param: {},
+  link_softmax: {},
+  loss_absolute_error: {},
+  loss_huber_delta1: {},
+  'loss_huber_delta0.5': {},
+  loss_log_loss: {},
+  loss_cross_entropy: {},
+  penalty_l2: {},
+  penalty_l1: {},
   mlp_tanh_sgd_5steps: {},
   mlp_tanh_momentum_5steps: {},
-  // optax Adam differs from torch by about 1.5e-3 after 5 steps (CONTRACTS.md section 11)
-  mlp_tanh_adam_5steps: { afterTol: 5e-3 },
+  mlp_tanh_adam_5steps: {},
 };
 
 /** Skipped until the named bead lands. */
 const PENDING: Record<string, string> = {
-  link_softmax: 'tinker-hj4.2 (needs cross_entropy)',
-  loss_absolute_error: 'tinker-hj4.2',
-  loss_huber_delta1: 'tinker-hj4.2',
-  'loss_huber_delta0.5': 'tinker-hj4.2',
-  loss_log_loss: 'tinker-hj4.2',
-  loss_cross_entropy: 'tinker-hj4.2',
-  penalty_l2: 'tinker-hj4.2',
-  penalty_l1: 'tinker-hj4.2',
   feature_deg3_sin_cos_products: 'tinker-hj4.3',
   add_skip: 'tinker-hj4.3',
   'dropout_p0.5': 'tinker-hj4.3',
@@ -120,7 +119,7 @@ describe('fixtures', () => {
           losses.push(r.loss);
           state = r.state;
         }
-        const tolAfter = IMPLEMENTED[name]?.afterTol ?? 1e-4;
+        const tolAfter = 1e-4;
         const cL = compare(losses, exp.losses, tolAfter);
         const host = engine.toHost(state.params);
         const got = ids.flatMap((id) => [...(host[id]?.W ?? []), ...(host[id]?.b ?? [])]);
