@@ -265,7 +265,7 @@ describe('analyse: structure', () => {
         ['in', 's'],
       ],
     );
-    expect(analyse(self, reg).issues.some((i) => i.message.includes('loop'))).toBe(true);
+    expect(analyse(self, reg).issues.some((i) => i.message.includes('wired to itself'))).toBe(true);
   });
 
   test('missing loss', () => {
