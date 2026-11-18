@@ -191,9 +191,17 @@ function makeRng(seed: number): Rng;   // sfc32 or splitmix32; same seed -> same
 // core/params.ts
 type HostParams = Record<NodeId, { W: Float32Array; b?: Float32Array }>; // W row-major [in, out]; only linear nodes
 function initParams(graph: Graph, analysis: Analysis, seed: number): HostParams;
+function reconcileParams(old: HostParams, oldGraph: Graph, oldAnalysis: Analysis, graph: Graph, analysis: Analysis, seed: number): HostParams;
+function countParams(host: HostParams): number;
+function paramsToJson(host: HostParams): Record<NodeId, { W: number[]; b?: number[] }>; // prototype-free object
+function paramsFromJson(json: unknown, graph: Graph, analysis: Analysis): { params: HostParams; dropped: NodeId[] };
 ```
 
 Initialisation follows `nn.Linear`: W and b both uniform on ±1/√in. Different seeds give different values; the same seed always gives the same values. Note the layout: torch stores `weight` as [out, in]; HostParams stores [in, out] so that the forward pass is `x @ W + b`. Fixtures (section 11) are written in HostParams layout.
+
+HostParams has an entry for exactly the linear nodes on `analysis.order` with a known input width (an entry has `b` iff the node has bias). Each node draws W then b from `makeRng(seed).fork(nodeId)`, so adding a node does not change the others' init. `reconcileParams` takes the graph and analysis the old params belong to (flat arrays alone cannot tell 2x3 from 3x2). Per node: W (the same array object) is kept when its old and new [in, out] are equal, even if bias was toggled; b is kept when both have it, drawn fresh from the node's rng stream when bias is turned on, and dropped when turned off; if [in, out] changed, the node is re-initialised; nodes that left the path are dropped; `old` is never mutated. `paramsFromJson` drops malformed entries (non-arrays, non-finite numbers, holes), shape-mismatched entries and unknown nodes, listing their ids in `dropped`; linear nodes with no saved entry are absent, so callers follow it with `reconcileParams`.
+
+HostParams arrays are immutable once created: `reconcileParams` shares unchanged arrays with `old` (and so with undo history), so nobody writes into them in place. The engine's `fromHost` copies into jax arrays and `toHost` creates new arrays.
 
 All data sampling, initialisation and mini-batch shuffling use `core/rng.ts`, never `Math.random` and never jax random. Only dropout masks use jax random, keyed from `TrainState.key`.
 
@@ -293,7 +301,7 @@ setColumns(g, inputNodeId, columns)
 // all edits refuse to change a node listed in `locked` (preset field, section 12): error "This piece is locked."
 ```
 
-Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, newGraph, newAnalysis, seed)` in `core/params.ts`).
+Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, oldGraph, oldAnalysis, newGraph, newAnalysis, seed)` in `core/params.ts`).
 
 ## 9. Layout geometry (`core/layout.ts`)
 
