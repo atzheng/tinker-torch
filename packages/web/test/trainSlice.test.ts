@@ -24,6 +24,18 @@ test('host and graph change in the same store update', () => {
   for (const x of seen) expect(x.wLen).toBe(x.out); // in = 1
 });
 
+test('optimizer and batch are graph.train changes with one undo step each', () => {
+  s().setOptimizer('adam');
+  s().setBatch(7);
+  expect(s().graph.train).toMatchObject({ optimizer: 'adam', batch: 7 });
+  s().undo();
+  expect(s().graph.train).toMatchObject({ optimizer: 'adam', batch: 'full' });
+  s().undo();
+  expect(s().graph.train.optimizer).toBe('sgd');
+  s().redo();
+  expect(s().graph.train.optimizer).toBe('adam');
+});
+
 test('an invalid graph clears host and disables training', () => {
   const g = s().graph;
   s().apply({ ok: true, graph: { ...g, edges: g.edges.slice(1) } });

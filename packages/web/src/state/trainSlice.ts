@@ -88,6 +88,10 @@ export type TrainSlice = {
   setSpeed: (n: number) => void;
   /** Commit a learning rate (one undo step). Committed on release or blur by the UI. */
   setLearningRate: (lr: number) => void;
+  /** Switching optimizer keeps the parameters and restarts the optimizer state. */
+  setOptimizer: (optimizer: Graph['train']['optimizer']) => void;
+  /** Batch size, or 'full'. The batch order restarts from the run seed. */
+  setBatch: (batch: Graph['train']['batch']) => void;
 };
 
 export const SPEEDS = [1, 2, 5, 10, 25, 50];
@@ -460,6 +464,16 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const { graph } = get();
       if (!(lr > 0) || lr === graph.train.lr) return;
       get().apply({ ok: true, graph: { ...graph, train: { ...graph.train, lr } } });
+    },
+    setOptimizer: (optimizer) => {
+      const { graph } = get();
+      if (optimizer === graph.train.optimizer) return;
+      get().apply({ ok: true, graph: { ...graph, train: { ...graph.train, optimizer } } });
+    },
+    setBatch: (batch) => {
+      const { graph } = get();
+      if (batch === graph.train.batch) return;
+      get().apply({ ok: true, graph: { ...graph, train: { ...graph.train, batch } } });
     },
   };
 };

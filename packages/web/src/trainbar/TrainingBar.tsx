@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { Graph } from '@tinker/core';
 import { getEngine, useEngine } from '../engine.js';
 import { SPEEDS } from '../state/trainSlice.js';
 import { useStore } from '../state/store.js';
@@ -9,6 +10,14 @@ const LR_MAX = 1;
 const toPos = (lr: number) => Math.log10(Math.min(LR_MAX, Math.max(LR_MIN, lr)));
 const fromPos = (p: number) => Number((10 ** p).toPrecision(3));
 const fmtLr = (lr: number) => (lr >= 0.1 ? lr.toFixed(2) : lr.toPrecision(2));
+
+const BATCH_SIZES = [1, 4, 16, 32, 64];
+/** Mini-batch sizes below the training-set size, plus the current one when it is not in the list (loaded graph). */
+function batchOptions(nTrain: number, current: 'full' | number): number[] {
+  const sizes = BATCH_SIZES.filter((n) => n < nTrain);
+  if (current !== 'full' && !sizes.includes(current)) sizes.push(current);
+  return sizes.sort((a, b) => a - b);
+}
 
 /** Learning rate log slider. The value is committed on release or blur, never per movement: lr is baked in at compile. */
 function LearningRate() {
@@ -61,6 +70,11 @@ export function TrainingBar() {
     speed: useStore((x) => x.speed),
     best: useStore((x) => x.best),
     analysis: useStore((x) => x.analysis),
+    optimizer: useStore((x) => x.graph.train.optimizer),
+    batch: useStore((x) => x.graph.train.batch),
+    nTrain: useStore((x) => x.dataset.nTrain),
+    setOptimizer: useStore((x) => x.setOptimizer),
+    setBatch: useStore((x) => x.setBatch),
   };
   // The component re-renders on every step change, so the dev live-array readout below is fresh.
 
@@ -129,31 +143,29 @@ export function TrainingBar() {
         </label>
         <label className={styles.field}>
           <select
-            value="sgd"
-            onChange={() => undefined}
+            value={s.optimizer}
+            onChange={(e) => s.setOptimizer(e.target.value as Graph['train']['optimizer'])}
             aria-label="Optimizer"
             data-testid="optimizer"
           >
             <option value="sgd">SGD</option>
-            <option value="momentum" disabled>
-              SGD with momentum
-            </option>
-            <option value="adam" disabled>
-              Adam
-            </option>
+            <option value="momentum">SGD with momentum</option>
+            <option value="adam">Adam</option>
           </select>
         </label>
         <label className={styles.field}>
           <select
-            value="full"
-            onChange={() => undefined}
+            value={String(s.batch)}
+            onChange={(e) => s.setBatch(e.target.value === 'full' ? 'full' : Number(e.target.value))}
             aria-label="Batch size"
             data-testid="batch"
           >
             <option value="full">Full batch</option>
-            <option value="mini" disabled>
-              Mini-batch
-            </option>
+            {batchOptions(s.nTrain, s.batch).map((n) => (
+              <option key={n} value={n}>
+                Batch {n}
+              </option>
+            ))}
           </select>
         </label>
       </div>
