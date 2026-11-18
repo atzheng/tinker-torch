@@ -1,16 +1,416 @@
-import type { StateCreator } from 'zustand';
+import type { StateCreator, StoreApi } from 'zustand';
+import {
+  analyse,
+  batchSchedule,
+  gatherBatch,
+  initParams,
+  makeRng,
+  reconcileParams,
+  sample,
+  type Analysis,
+  type Batch,
+  type Graph,
+  type HostParams,
+} from '@tinker/core';
+import type { Engine, Model, TrainState } from '@tinker/engine';
+import { getEngine, onEngineError, onEngineReady } from '../engine.js';
+import { initialGraph } from './graphSlice.js';
+import type { Store } from './store.js';
 
 /**
- * Empty slice, owned by tinker-27m.2 (training loop). Shape to fill in:
- *   TODO model: Model | null            from engine.compile(graph); null when the graph is invalid
- *   TODO state: TrainState | null       engine state; arrays never stored here (host copies only)
- *   TODO running: boolean               the requestAnimationFrame loop is active
- *   TODO diverged: boolean              a non-finite loss stopped the run
- *   TODO history: { step: number; train: number; val: number }[]   loss curves
- *   TODO best: { step: number; val: number; params: HostParams } | null
- *   TODO speed: number                  steps per frame
- *   TODO step(), run(), pause(), reset(), restoreBest()
+ * Train slice (tinker-27m.2).
+ *
+ * The store holds plain numbers and immutable HostParams only. The engine handles (Model,
+ * TrainState) live in the module-level runtime `rt` below and are disposed whenever they are
+ * replaced. HostParams arrays are never written into (they are shared with undo history).
+ *
+ * Policy on edits (see `resync`):
+ * - a structural change (nodes, edges, data) keeps the weights of unchanged layers
+ *   (`reconcileParams`), clears the loss history, the best snapshot and the step counter, and pauses;
+ * - a change to `graph.train` only (learning rate, optimizer, batch) recompiles and keeps the
+ *   weights, the history and the best; a running loop keeps running; a diverged run may continue
+ *   (the engine leaves the parameters unchanged on a diverged step);
+ * - an invalid graph disables training and shows its first issue; the weights are kept so that
+ *   fixing the graph brings the model back.
  */
-export type TrainSlice = Record<never, never>;
 
-export const createTrainSlice: StateCreator<TrainSlice, [], [], TrainSlice> = () => ({});
+export type HistoryPoint = {
+  step: number;
+  /** Loss of the batch used for this update, before the update. */
+  train: number;
+  /** Validation loss after the update; null on steps where it was not evaluated (see VAL_EVERY). */
+  val: number | null;
+};
+export type Best = { step: number; val: number; params: HostParams };
+
+export type TrainSlice = {
+  engineStatus: 'loading' | 'ready' | 'error';
+  /** Analysis of the current graph and dataset. */
+  analysis: Analysis;
+  /** Why training is disabled (first graph issue, a not-yet-implemented piece, or an engine failure); null when it can run. */
+  trainIssue: string | null;
+  /** The model compiled and a TrainState exists. */
+  canTrain: boolean;
+  running: boolean;
+  diverged: boolean;
+  /** Parameter updates done since the last Reset or structural edit. */
+  step: number;
+  trainLoss: number | null;
+  valLoss: number | null;
+  history: HistoryPoint[];
+  best: Best | null;
+  /** Steps per frame while running (12 ms budget per frame). */
+  speed: number;
+  /** Immutable snapshot of the current parameters, published at most once per frame. */
+  host: HostParams | null;
+  stepOnce: () => void;
+  run: () => void;
+  pause: () => void;
+  reset: () => void;
+  restoreBest: () => void;
+  setSpeed: (n: number) => void;
+  /** Commit a learning rate (one undo step). Committed on release or blur by the UI. */
+  setLearningRate: (lr: number) => void;
+};
+
+export const SPEEDS = [1, 2, 5, 10, 25, 50];
+export const DEFAULT_SPEED = 10;
+export const FRAME_BUDGET_MS = 12;
+export const MAX_HISTORY = 20000;
+
+/**
+ * Validation loss is evaluated after every k-th update, with k = 1 up to 100 validation points and
+ * ceil(nVal / 100) above (so at most 3 for the largest dataset, n = 500, val = 0.5).
+ */
+export function valEvery(nVal: number): number {
+  return nVal <= 100 ? 1 : Math.ceil(nVal / 100);
+}
+
+type Runtime = {
+  engine: Engine | null;
+  model: Model | null;
+  state: TrainState | null;
+  batches: Generator<Int32Array, never, undefined> | null;
+  raf: number | null;
+  seed: number;
+  /** Parameters between engine states, with the graph and analysis they belong to. */
+  host: HostParams | null;
+  hostGraph: Graph | null;
+  hostAnalysis: Analysis | null;
+  lastGraph: Graph | null;
+  lastDataset: unknown;
+  history: HistoryPoint[];
+  best: Best | null;
+  step: number;
+  trainLoss: number | null;
+  valLoss: number | null;
+  valBatch: Batch | null;
+};
+
+const rt: Runtime = {
+  engine: null,
+  model: null,
+  state: null,
+  batches: null,
+  raf: null,
+  seed: 0,
+  host: null,
+  hostGraph: null,
+  hostAnalysis: null,
+  lastGraph: null,
+  lastDataset: null,
+  history: [],
+  best: null,
+  step: 0,
+  trainLoss: null,
+  valLoss: null,
+  valBatch: null,
+};
+
+function structuralKey(g: Graph): string {
+  return JSON.stringify([g.nodes, g.edges, g.data]);
+}
+
+function initialAnalysis(): Analysis {
+  const g = initialGraph();
+  return analyse(g, sample(g.data).info);
+}
+
+function disposeState(): void {
+  if (rt.state && rt.engine) rt.engine.dispose(rt.state); // the TrainState, never state.params
+  rt.state = null;
+}
+
+function stopLoop(): void {
+  if (rt.raf !== null) cancelAnimationFrame(rt.raf);
+  rt.raf = null;
+}
+
+export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, get) => {
+  /** Publish the runtime to the store: once per frame while running, once per action otherwise. */
+  function publish(extra: Partial<TrainSlice> = {}): void {
+    const engine = rt.engine;
+    const host = rt.state && engine ? engine.toHost(rt.state.params) : rt.host;
+    set({
+      step: rt.step,
+      trainLoss: rt.trainLoss,
+      valLoss: rt.valLoss,
+      history: rt.history.slice(),
+      best: rt.best,
+      host,
+      ...extra,
+    });
+  }
+
+  function clearRun(): void {
+    rt.history = [];
+    rt.best = null;
+    rt.step = 0;
+    rt.trainLoss = null;
+    rt.valLoss = null;
+  }
+
+  /** Validation loss at step 0 so that "Restore best" can return to the initial parameters. */
+  function evaluateInitial(): void {
+    const { engine, model, state, valBatch } = rt;
+    if (!engine || !model || !state || !valBatch || valBatch.n === 0) return;
+    const val = engine.evaluate(model, state.params, valBatch);
+    if (Number.isFinite(val)) {
+      rt.valLoss = val;
+      rt.best = { step: 0, val, params: engine.toHost(state.params) };
+    }
+  }
+
+  /**
+   * Brings model, TrainState and params in line with the current graph and dataset. `fresh`
+   * discards the parameters (Reset).
+   */
+  function resync(fresh = false): void {
+    const { graph, dataset, dataInfo } = get();
+    const engine = rt.engine;
+    const structural =
+      fresh || !rt.lastGraph || structuralKey(graph) !== structuralKey(rt.lastGraph);
+    const wasRunning = get().running;
+    rt.lastGraph = graph;
+    rt.lastDataset = dataset;
+
+    // 1. Take the parameters out of the live state, then free it.
+    if (rt.state && engine) rt.host = engine.toHost(rt.state.params);
+    disposeState();
+    rt.model = null;
+    stopLoop();
+
+    const analysis = analyse(graph, dataInfo);
+    if (fresh) rt.host = null;
+    if (structural) clearRun();
+
+    // 2. Invalid graph: training off, weights kept for later.
+    if (!analysis.trainable) {
+      set({
+        analysis,
+        trainIssue: analysis.issues[0]?.message ?? 'The graph cannot be trained yet.',
+        canTrain: false,
+        running: false,
+        diverged: false,
+        host: null, // rt.host belongs to an earlier graph; the canvas must not see it with this one
+        step: rt.step,
+        trainLoss: rt.trainLoss,
+        valLoss: rt.valLoss,
+        history: rt.history.slice(),
+        best: rt.best,
+      });
+      return;
+    }
+
+    // 3. Weights: keep what still fits, draw the rest.
+    rt.host =
+      rt.host && rt.hostGraph && rt.hostAnalysis
+        ? reconcileParams(rt.host, rt.hostGraph, rt.hostAnalysis, graph, analysis, rt.seed)
+        : initParams(graph, analysis, rt.seed);
+    rt.hostGraph = graph;
+    rt.hostAnalysis = analysis;
+    if (structural) {
+      rt.best = null; // old best params do not fit a changed architecture
+    }
+    rt.batches = batchSchedule(dataset.nTrain, graph.train.batch, rt.seed);
+    rt.valBatch = { x: dataset.xVal, y: dataset.yVal, n: dataset.nVal };
+
+    // 4. Compile and start. Not-yet-implemented pieces surface here as an ordinary sentence.
+    let issue: string | null = null;
+    if (!engine) {
+      issue = get().engineStatus === 'error' ? 'The training engine could not be loaded.' : null;
+    } else {
+      try {
+        const model = engine.compile(graph, dataInfo);
+        const params = engine.fromHost(model, rt.host);
+        rt.state = engine.startTraining(model, params, rt.seed);
+        rt.model = model;
+        if (structural) evaluateInitial();
+      } catch (e) {
+        issue = e instanceof Error ? e.message : 'The model could not be compiled.';
+      }
+    }
+    const canTrain = rt.state !== null;
+    const keepRunning = !structural && wasRunning && canTrain;
+    // One store update, so a reader never sees the new analysis with the old host.
+    publish({ analysis, trainIssue: issue, canTrain, running: false, diverged: false });
+    if (keepRunning) startLoop();
+  }
+
+  function doStep(): boolean {
+    const { engine, model, state, batches } = rt;
+    const { dataset, dataInfo } = get();
+    if (!engine || !model || !state || !batches) return false;
+    const idx = batches.next().value;
+    const batch = gatherBatch(dataset.xTrain, dataset.yTrain, dataInfo.columns.length, idx);
+    const r = engine.step(model, state, batch);
+    rt.state = r.state;
+    if (r.diverged) return false;
+    rt.step += 1;
+    rt.trainLoss = r.loss;
+    let val: number | null = null;
+    const vb = rt.valBatch;
+    if (vb && vb.n > 0 && rt.step % valEvery(vb.n) === 0) {
+      const v = engine.evaluate(model, r.state.params, vb);
+      if (Number.isFinite(v)) {
+        val = v;
+        rt.valLoss = v;
+        if (!rt.best || v < rt.best.val) {
+          rt.best = { step: rt.step, val: v, params: engine.toHost(r.state.params) };
+        }
+      }
+    }
+    rt.history.push({ step: rt.step, train: r.loss, val });
+    if (rt.history.length > MAX_HISTORY) {
+      const last = rt.history.length - 1;
+      rt.history = rt.history.filter((_, i) => i % 2 === 0 || i === last);
+    }
+    return true;
+  }
+
+  /** Runs doStep and turns divergence or an engine error into store state. Returns whether to go on. */
+  function guardedStep(): boolean {
+    try {
+      if (doStep()) return true;
+      set({ diverged: true, running: false });
+      return false;
+    } catch (e) {
+      set({
+        trainIssue: e instanceof Error ? e.message : 'Training stopped on an error.',
+        running: false,
+      });
+      return false;
+    }
+  }
+
+  function frame(): void {
+    rt.raf = null;
+    if (!get().running) return;
+    const t0 = performance.now();
+    const speed = get().speed;
+    let ok = true;
+    for (let i = 0; i < speed && ok; i++) {
+      ok = guardedStep();
+      if (performance.now() - t0 >= FRAME_BUDGET_MS) break;
+    }
+    publish();
+    if (ok && get().running) rt.raf = requestAnimationFrame(frame);
+  }
+
+  function startLoop(): void {
+    set({ running: true });
+    stopLoop();
+    rt.raf = requestAnimationFrame(frame);
+  }
+
+  resyncRef = () => resync();
+
+  // Engine loading: compile as soon as it is ready.
+  onEngineReady((e) => {
+    rt.engine = e;
+    set({ engineStatus: 'ready' });
+    resync();
+  });
+  onEngineError(() => {
+    set({ engineStatus: 'error', trainIssue: 'The training engine could not be loaded.' });
+  });
+
+  return {
+    engineStatus: getEngine() ? 'ready' : 'loading',
+    analysis: initialAnalysis(),
+    trainIssue: null,
+    canTrain: false,
+    running: false,
+    diverged: false,
+    step: 0,
+    trainLoss: null,
+    valLoss: null,
+    history: [],
+    best: null,
+    speed: DEFAULT_SPEED,
+    host: null,
+    stepOnce: () => {
+      const s = get();
+      if (!s.canTrain || s.running || s.diverged) return;
+      guardedStep();
+      publish();
+    },
+    run: () => {
+      const s = get();
+      if (!s.canTrain || s.running || s.diverged) return;
+      startLoop();
+    },
+    pause: () => {
+      stopLoop();
+      set({ running: false });
+    },
+    reset: () => {
+      const s = get();
+      if (!s.analysis.trainable) return;
+      rt.seed = makeRng(rt.seed)
+        .fork('reset')
+        .int(2 ** 31);
+      resync(true);
+    },
+    restoreBest: () => {
+      const { engine, model, best } = rt;
+      if (!engine || !model || !best) return;
+      stopLoop();
+      try {
+        const params = engine.fromHost(model, best.params);
+        disposeState();
+        rt.state = engine.startTraining(model, params, rt.seed);
+        rt.batches = batchSchedule(get().dataset.nTrain, get().graph.train.batch, rt.seed);
+        rt.valLoss = best.val;
+        publish({ running: false, diverged: false });
+      } catch (e) {
+        set({
+          trainIssue: e instanceof Error ? e.message : 'The best parameters could not be restored.',
+          running: false,
+        });
+      }
+    },
+    setSpeed: (n) => set({ speed: Math.max(1, Math.round(n)) }),
+    setLearningRate: (lr) => {
+      const { graph } = get();
+      if (!(lr > 0) || lr === graph.train.lr) return;
+      get().apply({ ok: true, graph: { ...graph, train: { ...graph.train, lr } } });
+    },
+  };
+};
+
+/**
+ * Re-sync the model whenever the graph or the sampled dataset changes. Called from store.ts after
+ * the data subscription, so the dataset is already the one for the new `graph.data`. The seed
+ * starts at `graph.train.seed`.
+ */
+export function attachTrainLoop(store: StoreApi<Store>): void {
+  rt.seed = store.getState().graph.train.seed;
+  store.subscribe(() => {
+    const s = store.getState(); // the listener argument can be stale inside nested set() calls
+    if (s.graph !== rt.lastGraph || s.dataset !== rt.lastDataset) resyncRef?.();
+  });
+  resyncRef?.();
+}
+
+let resyncRef: (() => void) | null = null;

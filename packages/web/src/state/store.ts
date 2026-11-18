@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { sample } from '@tinker/core';
 import { createDataSlice, type DataSlice } from './dataSlice.js';
 import { createGraphSlice, type GraphSlice } from './graphSlice.js';
-import { createTrainSlice, type TrainSlice } from './trainSlice.js';
+import { attachTrainLoop, createTrainSlice, type TrainSlice } from './trainSlice.js';
 import { createViewSlice, type ViewSlice } from './viewSlice.js';
 
 export type Store = GraphSlice & DataSlice & TrainSlice & ViewSlice;
@@ -21,3 +21,6 @@ useStore.subscribe((s, prev) => {
     useStore.setState({ dataset, dataInfo: dataset.info });
   }
 });
+
+// After the data subscription: the train loop re-compiles on graph or dataset changes.
+attachTrainLoop(useStore);
