@@ -68,6 +68,7 @@ export function sample(config: DataConfig): Dataset {
   let standardization: Standardization | null = null;
   let xt: Float32Array = xTrain;
   let xv: Float32Array = xVal;
+  // standardization stays null only when nTrain is 0, which the schema (n >= 10, val <= 0.5) makes unreachable.
   if (config.standardize && nTrain > 0) {
     const mean: number[] = [];
     const std: number[] = [];

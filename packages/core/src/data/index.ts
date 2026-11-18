@@ -4,4 +4,5 @@ export { SETS, spread } from './sets.js';
 export type { SetSpec, SetKind } from './sets.js';
 export { grid1d, grid2d } from './grid.js';
 export type { Grid } from './grid.js';
-export { batchSchedule, stepsPerEpoch } from './batches.js';
+export { batchSchedule, gatherBatch, stepsPerEpoch } from './batches.js';
+export type { Batch } from './batches.js';

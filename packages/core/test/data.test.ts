@@ -3,6 +3,7 @@ import {
   DATASET_NAMES,
   SETS,
   batchSchedule,
+  gatherBatch,
   grid1d,
   grid2d,
   sample,
@@ -267,5 +268,20 @@ describe('batchSchedule', () => {
     const g = batchSchedule(6, 'full', 1);
     for (let i = 0; i < 3; i++) expect(Array.from(g.next().value)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(stepsPerEpoch(6, 'full')).toBe(1);
+  });
+});
+
+describe('gatherBatch', () => {
+  test('gathers the scheduled rows', () => {
+    const ds = sample(cfg('plane', { n: 20, val: 0, standardize: true }));
+    const idx = batchSchedule(ds.nTrain, 6, 5).next().value;
+    const b = gatherBatch(ds.xTrain, ds.yTrain, 2, idx);
+    expect(b.n).toBe(6);
+    expect(b.x.length).toBe(12);
+    idx.forEach((i, k) => {
+      expect(b.y[k]).toBe(ds.yTrain[i]);
+      expect(b.x[2 * k]).toBe(ds.xTrain[2 * i]);
+      expect(b.x[2 * k + 1]).toBe(ds.xTrain[2 * i + 1]);
+    });
   });
 });
