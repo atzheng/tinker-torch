@@ -28,7 +28,7 @@ export type LayerViewProps = {
 };
 
 /** Props for a piece's layer drawing, from the analysis and the weights. */
-function layerProps(
+export function layerProps(
   node: Node,
   box: { w: number; h: number },
   analysis: Analysis,

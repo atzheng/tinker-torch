@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { inputPortsOf as inputPortsOfType, layoutLayers } from '@tinker/core';
+import {
+  inputPortsOf as inputPortsOfType,
+  layoutLayers,
+  layoutNeurons,
+  type LayerLayout,
+} from '@tinker/core';
 import './canvas.css';
 import { useEditShortcuts } from './actions.js';
 import {
@@ -13,6 +18,7 @@ import {
 import { lockedIds } from '../state/locks.js';
 import { Inspector } from './Inspector.js';
 import { LayerView } from './LayerView.js';
+import { NeuronView } from './NeuronView.js';
 import { Toast } from './Toast.js';
 import {
   edgeIndexOf,
@@ -81,7 +87,7 @@ function Callout(props: { x: number; y: number; viewW: number; text: string[]; t
 /**
  * The canvas region: the layer view drawn to fit, issue callouts, and the inspector beside the
  * selected piece. Selection lives in the view slice (`selection`); tapping the background clears it.
- * Neuron view and the grain toggle are tinker-ran.1.
+ * `viewSlice.grain` picks the drawing: the layer view or the neuron view (tinker-ran.1).
  */
 export function Canvas() {
   const ref = useRef<HTMLDivElement>(null);
@@ -89,8 +95,10 @@ export function Canvas() {
   const graph = useStore((s) => s.graph);
   const select = useStore((s) => s.select);
   const analysis = useAnalysis();
-  const weights = useWeights(analysis);
-  const selection = useSelection();
+  const grain = useStore((s) => s.grain);
+  // Neuron view repaints its edges from `host` itself, so the canvas does not follow it per frame.
+  const weights = useWeights(analysis, grain === 'layer');
+  const selection = useSelection(analysis);
   const coarse = useCoarse();
   const apply = useStore((s) => s.apply);
   const selectNode = useStore((s) => s.selectNode);
@@ -98,7 +106,20 @@ export function Canvas() {
   useEditShortcuts();
   useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no preview
 
-  const layout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
+  const layerLayout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
+  const neuronLayout = useMemo(
+    () => (grain === 'neuron' ? layoutNeurons(graph, analysis) : null),
+    [grain, graph, analysis],
+  );
+  // Boxes and wires of the drawing on screen. The neuron layout has the same shape, so drops,
+  // callouts and the inspector anchor work in both grains.
+  const layout: LayerLayout = useMemo(
+    () =>
+      neuronLayout
+        ? { nodes: neuronLayout.boxes, wires: neuronLayout.wires, size: neuronLayout.size }
+        : layerLayout,
+    [neuronLayout, layerLayout],
+  );
   const t: Transform = useMemo(() => fitTransform(layout.size, view), [layout.size, view]);
   const placed = useMemo(
     () =>
@@ -113,15 +134,19 @@ export function Canvas() {
   const errNodes = useMemo(() => errorNodes(analysis.issues), [analysis]);
   const errEdges = useMemo(() => new Set(placed.byEdge.keys()), [placed]);
 
-  // Drag and drop: the palette and the port handles ask the canvas what is under the pointer.
-  useEffect(() => {
-    const toAbstract = (cx: number, cy: number) => {
+  const toAbstract = useMemo(
+    () => (cx: number, cy: number) => {
       const r = ref.current?.getBoundingClientRect();
       return {
         x: (cx - (r?.left ?? 0) - t.tx) / t.scale,
         y: (cy - (r?.top ?? 0) - t.ty) / t.scale,
       };
-    };
+    },
+    [t],
+  );
+
+  // Drag and drop: the palette and the port handles ask the canvas what is under the pointer.
+  useEffect(() => {
     return dnd.setHandler({
       resolve: (payload: DragPayload, cx, cy) =>
         resolveDrop(
@@ -140,7 +165,7 @@ export function Canvas() {
         if (result.ok && result.select !== undefined) selectNode(result.select);
       },
     });
-  }, [graph, layout, analysis, t, coarse, apply, selectNode]);
+  }, [graph, layout, analysis, t, coarse, apply, selectNode, toAbstract]);
 
   const px = (x: number) => x * t.scale + t.tx;
   const py = (y: number) => y * t.scale + t.ty;
@@ -153,6 +178,26 @@ export function Canvas() {
     if (box) {
       anchor = placeInspector(
         { cx: px(box.x + box.w / 2), top: py(box.y), bottom: py(box.y + box.h) },
+        view,
+        INSPECTOR_W,
+      );
+    }
+  } else if (selection?.kind === 'edge' || selection?.kind === 'unit') {
+    let at: [number, number] | undefined;
+    if (selection.kind === 'unit') {
+      const u = neuronLayout?.units.find(
+        (x) => x.node === selection.node && x.index === selection.index,
+      );
+      if (u) at = [u.x, u.y];
+    } else {
+      const e = neuronLayout?.edges.find(
+        (x) => x.node === selection.node && x.i === selection.i && x.j === selection.j,
+      );
+      if (e) at = [(e.from[0] + e.to[0]) / 2, (e.from[1] + e.to[1]) / 2];
+    }
+    if (at) {
+      anchor = placeInspector(
+        { cx: px(at[0]), top: py(at[1]) - 14, bottom: py(at[1]) + 14 },
         view,
         INSPECTOR_W,
       );
@@ -186,19 +231,35 @@ export function Canvas() {
         onPointerDown={() => select(null)}
       >
         <g transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}>
-          <LayerView
-            graph={graph}
-            analysis={analysis}
-            layout={layout}
-            weights={weights}
-            errorEdges={errEdges}
-            errorNodes={errNodes}
-            selection={selection}
-            select={select}
-            scale={t.scale}
-            coarse={coarse}
-            drag={drag}
-          />
+          {neuronLayout ? (
+            <NeuronView
+              graph={graph}
+              analysis={analysis}
+              layout={neuronLayout}
+              fallback={weights}
+              errorEdges={errEdges}
+              errorNodes={errNodes}
+              selection={selection}
+              select={select}
+              scale={t.scale}
+              coarse={coarse}
+              toAbstract={toAbstract}
+            />
+          ) : (
+            <LayerView
+              graph={graph}
+              analysis={analysis}
+              layout={layerLayout}
+              weights={weights}
+              errorEdges={errEdges}
+              errorNodes={errNodes}
+              selection={selection}
+              select={select}
+              scale={t.scale}
+              coarse={coarse}
+              drag={drag}
+            />
+          )}
         </g>
         {drag?.payload.kind === 'wire' &&
           (() => {
@@ -271,6 +332,7 @@ export function Canvas() {
           <Inspector
             selection={selection}
             analysis={analysis}
+            weights={weights}
             wireMessages={
               selection.kind === 'wire'
                 ? (placed.byEdge.get(edgeIndexOf(graph, selection.from, selection.to)) ?? [])

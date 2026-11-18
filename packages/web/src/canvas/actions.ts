@@ -12,6 +12,7 @@ export function deleteSelection(): void {
     if (apply(deleteNode(graph, selection.id, { locked: lockedIds() })).ok) select(null);
     return;
   }
+  if (selection.kind !== 'wire') return; // an edge or unit is not deleted (ran.2 removes units)
   const i = edgeIndexOf(graph, selection.from, selection.to);
   if (i < 0) return;
   if (apply(deleteEdge(graph, i, { locked: lockedIds() })).ok) select(null);

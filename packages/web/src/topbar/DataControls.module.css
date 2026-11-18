@@ -50,3 +50,8 @@
 .check input {
   accent-color: var(--accent);
 }
+
+.row button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
