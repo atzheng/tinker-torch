@@ -55,19 +55,26 @@ export function initParams(graph: Graph, analysis: Analysis, seed: number): Host
 }
 
 /**
- * Keep each node's arrays (same objects, bit-identical) when its shapes are unchanged; re-init the rest.
+ * Keep each node's arrays (same objects, bit-identical) when its shapes ([in, out] and [out]) are unchanged
+ * between the old and new graph; re-init the rest.
  * Nodes no longer on the loss path are dropped. Does not mutate `old`.
  */
 export function reconcileParams(
   old: HostParams,
+  oldGraph: Graph,
+  oldAnalysis: Analysis,
   graph: Graph,
   analysis: Analysis,
   seed: number,
 ): HostParams {
+  const oldShapes = linearShapes(oldGraph, oldAnalysis);
   const host: HostParams = Object.create(null) as HostParams;
   for (const [id, s] of linearShapes(graph, analysis)) {
     const prev = Object.hasOwn(old, id) ? old[id] : undefined;
-    host[id] = prev && matches(prev, s) ? prev : initNode(s, seed, id);
+    const os = oldShapes.get(id);
+    const same =
+      os !== undefined && os.W[0] === s.W[0] && os.W[1] === s.W[1] && os.b?.[0] === s.b?.[0];
+    host[id] = prev && same && matches(prev, s) ? prev : initNode(s, seed, id);
   }
   return host;
 }

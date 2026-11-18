@@ -72,25 +72,32 @@ type LossFn = 'squared_error' | 'absolute_error' | 'huber' | 'log_loss' | 'cross
 type Penalty = { kind: 'l2' | 'l1'; lambda: number }; // lambda >= 0
 
 type Node =
-  | { id: NodeId; type: 'input'; columns: string[] }          // subset of the dataset's columns, in order
+  | { id: NodeId; type: 'input'; columns: string[] } // subset of the dataset's columns, in order
   | { id: NodeId; type: 'feature'; degree: number; sin: boolean; cos: boolean; products: boolean } // degree 1..5
-  | { id: NodeId; type: 'linear'; out: number; bias: boolean }  // out 1..64
+  | { id: NodeId; type: 'linear'; out: number; bias: boolean } // out 1..64
   | { id: NodeId; type: 'activation'; fn: ActivationFn }
-  | { id: NodeId; type: 'dropout'; p: number }                  // 0 <= p < 1
+  | { id: NodeId; type: 'dropout'; p: number } // 0 <= p < 1
   | { id: NodeId; type: 'add' }
   | { id: NodeId; type: 'output'; link: OutputLink }
   | { id: NodeId; type: 'target' }
   | { id: NodeId; type: 'loss'; fn: LossFn; delta?: number; penalty?: Penalty }; // delta only for huber, default 1.0
 
-type PortRef = string;          // "node" (its default port) or "node.port"
+type PortRef = string; // "node" (its default port) or "node.port"
 type Edge = [from: PortRef, to: PortRef];
 
 type DataConfig = {
-  set: DatasetName; n: number; noise: number; val: number; seed: number;
-  standardize: boolean;         // default false (SPEC decision)
+  set: DatasetName;
+  n: number;
+  noise: number;
+  val: number;
+  seed: number;
+  standardize: boolean; // default false (SPEC decision)
 };
 type TrainConfig = {
-  optimizer: 'sgd' | 'momentum' | 'adam'; lr: number; batch: 'full' | number; seed: number;
+  optimizer: 'sgd' | 'momentum' | 'adam';
+  lr: number;
+  batch: 'full' | number;
+  seed: number;
 };
 type Graph = { version: 1; nodes: Node[]; edges: Edge[]; data: DataConfig; train: TrainConfig };
 ```
@@ -110,19 +117,24 @@ type Graph = { version: 1; nodes: Node[]; edges: Edge[]; data: DataConfig; train
 // core/registry.ts
 type Family = 'inputs' | 'features' | 'linear' | 'activations' | 'structure' | 'outputs' | 'losses';
 type CorePiece<N extends Node> = {
-  family: Family;                         // drop-to-swap is allowed only within a family
-  inputPorts: string[];                   // section 2
+  family: Family; // drop-to-swap is allowed only within a family
+  inputPorts: string[]; // section 2
   defaults: () => Omit<N, 'id'>;
   outWidth(node: N, inWidths: Record<string, number>, ctx: WidthCtx): number | WidthError;
   paramShapes(node: N, inWidth: number): { W?: [rows: number, cols: number]; b?: [number] }; // W is [in, out]
   torch(node: N, inWidth?: number): string; // e.g. "nn.Linear(4, 8, bias=True)" (needs inWidth); used by the later code view
 };
 type WidthCtx = { dataColumns: number; numClasses: number };
-type WidthError = { error: string };      // one plain sentence, e.g. "Add needs both inputs to have the same width: 4 and 8."
+type WidthError = { error: string }; // one plain sentence, e.g. "Add needs both inputs to have the same width: 4 and 8."
 const CORE_PIECES: { [T in PieceType]: CorePiece<Extract<Node, { type: T }>> };
 
 // a palette entry (one per row of the SPEC pieces table, 14 entries)
-type PaletteEntry = { key: string; label: string; family: Family | 'penalties'; make: () => NodeBody | Penalty };
+type PaletteEntry = {
+  key: string;
+  label: string;
+  family: Family | 'penalties';
+  make: () => NodeBody | Penalty;
+};
 // NodeBody = Omit<Node, 'id'> distributed over the union. Target is in family 'outputs'.
 // The weight penalty's make() gives { kind: 'l2', lambda: 0.01 }.
 const PALETTE: PaletteEntry[];
@@ -145,15 +157,17 @@ Parameter count of a Linear: in·out + (bias ? out : 0). Every other piece has 0
 ```ts
 // DataInfo is defined in core/graph.ts (not analyse.ts) so that data and analysis both import it.
 type DataInfo = { columns: string[]; kind: 'regression' | 'binary'; numClasses: number }; // from the dataset
-type Issue = { at: { node?: NodeId; edge?: number }; message: string };  // edge = index into graph.edges
+type Issue = { at: { node?: NodeId; edge?: number }; message: string }; // edge = index into graph.edges
 type Analysis = {
-  order: NodeId[];                          // topological order of nodes on the path to the loss
-  inWidth: Record<NodeId, number>;          // width entering each node (single-input pieces)
+  order: NodeId[]; // topological order of nodes on the path to the loss
+  inWidth: Record<NodeId, number>; // width entering each node (single-input pieces)
   outWidth: Record<NodeId, number>;
-  edgeWidth: (number | null)[];             // per graph.edges index, for the wire labels
-  params: Record<NodeId, number>; totalParams: number;
-  predNode: NodeId | null; lossNode: NodeId | null;
-  issues: Issue[];                          // empty when trainable
+  edgeWidth: (number | null)[]; // per graph.edges index, for the wire labels
+  params: Record<NodeId, number>;
+  totalParams: number;
+  predNode: NodeId | null;
+  lossNode: NodeId | null;
+  issues: Issue[]; // empty when trainable
   trainable: boolean;
 };
 function analyse(graph: Graph, data: DataInfo): Analysis;
@@ -175,65 +189,90 @@ Trainable means: no cycles; exactly one loss; every input port connected; a path
 - Duplicate node ids (only possible for an unparsed graph) give an issue at each later duplicate; the first node with the id is analysed.
 - `predNode` is the Output feeding `loss.pred` and `lossNode` the loss; both are null unless there is exactly one loss (`predNode` also null if `pred` is unconnected or not from an Output).
 
-| Loss | Output link | Prediction width | Target |
-| --- | --- | --- | --- |
-| squared_error, absolute_error, huber | identity or sigmoid | 1 | regression or binary (as 0/1 numbers) |
-| log_loss | sigmoid | 1 | binary |
-| cross_entropy | softmax | numClasses (2 for all v1 sets) | binary (as class index) |
+| Loss                                 | Output link         | Prediction width               | Target                                |
+| ------------------------------------ | ------------------- | ------------------------------ | ------------------------------------- |
+| squared_error, absolute_error, huber | identity or sigmoid | 1                              | regression or binary (as 0/1 numbers) |
+| log_loss                             | sigmoid             | 1                              | binary                                |
+| cross_entropy                        | softmax             | numClasses (2 for all v1 sets) | binary (as class index)               |
 
 ## 5. Parameters, initialisation, randomness
 
 ```ts
 // core/rng.ts
 type Rng = { next(): number; normal(): number; int(n: number): number; fork(label: string): Rng };
-function makeRng(seed: number): Rng;   // sfc32 or splitmix32; same seed -> same sequence on every platform
+function makeRng(seed: number): Rng; // sfc32 or splitmix32; same seed -> same sequence on every platform
 
 // core/params.ts
 type HostParams = Record<NodeId, { W: Float32Array; b?: Float32Array }>; // W row-major [in, out]; only linear nodes
 function initParams(graph: Graph, analysis: Analysis, seed: number): HostParams;
-function reconcileParams(old: HostParams, graph: Graph, analysis: Analysis, seed: number): HostParams;
+function reconcileParams(
+  old: HostParams,
+  oldGraph: Graph,
+  oldAnalysis: Analysis,
+  graph: Graph,
+  analysis: Analysis,
+  seed: number,
+): HostParams;
 function countParams(host: HostParams): number;
 function paramsToJson(host: HostParams): Record<NodeId, { W: number[]; b?: number[] }>;
-function paramsFromJson(json: unknown, graph: Graph, analysis: Analysis): { params: HostParams; dropped: NodeId[] };
+function paramsFromJson(
+  json: unknown,
+  graph: Graph,
+  analysis: Analysis,
+): { params: HostParams; dropped: NodeId[] };
 ```
 
 Initialisation follows `nn.Linear`: W and b both uniform on ±1/√in. Different seeds give different values; the same seed always gives the same values. Note the layout: torch stores `weight` as [out, in]; HostParams stores [in, out] so that the forward pass is `x @ W + b`. Fixtures (section 11) are written in HostParams layout.
 
-HostParams has an entry for exactly the linear nodes on `analysis.order` with a known input width (an entry has `b` iff the node has bias). Each node draws W then b from `makeRng(seed).fork(nodeId)`, so adding a node does not change the others' init. `reconcileParams` keeps a node's arrays (the same objects) when W and b lengths match the new shapes, re-inits the rest, and drops nodes that left the path; it never mutates `old`. `paramsFromJson` drops malformed or shape-mismatched entries and lists their ids in `dropped`; linear nodes with no saved entry are absent, so callers follow it with `reconcileParams`.
+HostParams has an entry for exactly the linear nodes on `analysis.order` with a known input width (an entry has `b` iff the node has bias). Each node draws W then b from `makeRng(seed).fork(nodeId)`, so adding a node does not change the others' init. `reconcileParams` takes the graph and analysis the old params belong to, and keeps a node's arrays (the same objects) when its old and new [in, out] and [out] shapes are equal (flat arrays alone cannot tell 2x3 from 3x2), re-inits the rest, and drops nodes that left the path; it never mutates `old`. `paramsFromJson` drops malformed or shape-mismatched entries and lists their ids in `dropped`; linear nodes with no saved entry are absent, so callers follow it with `reconcileParams`.
 
 All data sampling, initialisation and mini-batch shuffling use `core/rng.ts`, never `Math.random` and never jax random. Only dropout masks use jax random, keyed from `TrainState.key`.
 
 ## 6. Data (`core/data/*`)
 
 ```ts
-type DatasetName = 'line' | 'quadratic' | 'sine' | 'step' | 'wiggle'
-                 | 'plane' | 'bowl' | 'saddle'
-                 | 'blobs' | 'circle' | 'xor' | 'moons';
+type DatasetName =
+  | 'line'
+  | 'quadratic'
+  | 'sine'
+  | 'step'
+  | 'wiggle'
+  | 'plane'
+  | 'bowl'
+  | 'saddle'
+  | 'blobs'
+  | 'circle'
+  | 'xor'
+  | 'moons';
 type Dataset = {
   info: DataInfo;
-  xTrain: Float32Array; yTrain: Float32Array; nTrain: number;   // x row-major [n, d]
-  xVal: Float32Array;   yVal: Float32Array;   nVal: number;
-  standardization: { mean: number[]; std: number[] } | null;    // from training rows, applied to val and grids
-  domain: [lo: number, hi: number][];                           // per column, in raw units
+  xTrain: Float32Array;
+  yTrain: Float32Array;
+  nTrain: number; // x row-major [n, d]
+  xVal: Float32Array;
+  yVal: Float32Array;
+  nVal: number;
+  standardization: { mean: number[]; std: number[] } | null; // from training rows, applied to val and grids
+  domain: [lo: number, hi: number][]; // per column, in raw units
 };
 function sample(config: DataConfig): Dataset;
 function truth(set: DatasetName, xRaw: Float32Array): Float32Array; // regression: f*(x); classification: P(y=1|x) of the clean generator
 ```
 
-| Set | d | Domain | f* or rule |
-| --- | --- | --- | --- |
-| line | 1 | [-3, 3] | 0.8x + 0.5 |
-| quadratic | 1 | [-3, 3] | 0.5x² − 1 |
-| sine | 1 | [-3, 3] | sin(1.5x) |
-| step | 1 | [-3, 3] | x < 0 ? −1 : 1 |
-| wiggle | 1 | [-3, 3] | 0.5 sin(3x) + 0.3x |
-| plane | 2 | [-2, 2]² | 0.6x₁ − 0.4x₂ |
-| bowl | 2 | [-2, 2]² | 0.5(x₁² + x₂²) − 1 |
-| saddle | 2 | [-2, 2]² | 0.5(x₁² − x₂²) |
-| blobs | 2 | [-3, 3]² | two Gaussians at (−1, −1) and (1, 1), std 0.6 |
-| circle | 2 | [-2, 2]² | class 1 inside radius 1, class 0 in the ring 1.3 to 2 |
-| xor | 2 | [-2, 2]² | x uniform; class 1 when x₁x₂ > 0 |
-| moons | 2 | [-1.5, 2.5]×[-1, 1.5] | the two interleaved half circles of `sklearn.datasets.make_moons` |
+| Set       | d   | Domain                | f* or rule                                                        |
+| --------- | --- | --------------------- | ----------------------------------------------------------------- |
+| line      | 1   | [-3, 3]               | 0.8x + 0.5                                                        |
+| quadratic | 1   | [-3, 3]               | 0.5x² − 1                                                         |
+| sine      | 1   | [-3, 3]               | sin(1.5x)                                                         |
+| step      | 1   | [-3, 3]               | x < 0 ? −1 : 1                                                    |
+| wiggle    | 1   | [-3, 3]               | 0.5 sin(3x) + 0.3x                                                |
+| plane     | 2   | [-2, 2]²              | 0.6x₁ − 0.4x₂                                                     |
+| bowl      | 2   | [-2, 2]²              | 0.5(x₁² + x₂²) − 1                                                |
+| saddle    | 2   | [-2, 2]²              | 0.5(x₁² − x₂²)                                                    |
+| blobs     | 2   | [-3, 3]²              | two Gaussians at (−1, −1) and (1, 1), std 0.6                     |
+| circle    | 2   | [-2, 2]²              | class 1 inside radius 1, class 0 in the ring 1.3 to 2             |
+| xor       | 2   | [-2, 2]²              | x uniform; class 1 when x₁x₂ > 0                                  |
+| moons     | 2   | [-1.5, 2.5]×[-1, 1.5] | the two interleaved half circles of `sklearn.datasets.make_moons` |
 
 - Regression noise: y = f*(x) + noise · s · ε, ε ~ N(0, 1), where s is the standard deviation of f* over a uniform sample of the domain (a constant per set, computed once).
 - Classification noise: Gaussian jitter of point positions with std noise · 0.5 (blobs: noise scales its std, 0.6 · (0.5 + noise)). Classes are balanced.
@@ -249,27 +288,34 @@ function truth(set: DatasetName, xRaw: Float32Array): Float32Array; // regressio
 The SPEC interface, refined. All arrays crossing the interface are plain Float32Arrays; jax arrays never leave the package.
 
 ```ts
-type Batch = { x: Float32Array; y: Float32Array; n: number };      // x row-major [n, d], already standardised if on
+type Batch = { x: Float32Array; y: Float32Array; n: number }; // x row-major [n, d], already standardised if on
 type Model = { readonly graph: Graph; readonly analysis: Analysis }; // plus private compiled closures
-type Params = { readonly __brand: 'Params' };                        // opaque, owns jax arrays
+type Params = { readonly __brand: 'Params' }; // opaque, owns jax arrays
 type TrainState = { params: Params; opt: unknown; step: number; key: unknown };
 type StepResult = { state: TrainState; loss: number; diverged: boolean }; // loss before the update; diverged if non-finite
 
 interface Engine {
-  compile(graph: Graph, data: DataInfo): Model;               // throws Error(message) when !analysis.trainable
-  init(model: Model, seed: number): Params;                   // = fromHost(initParams(...))
+  compile(graph: Graph, data: DataInfo): Model; // throws Error(message) when !analysis.trainable
+  init(model: Model, seed: number): Params; // = fromHost(initParams(...))
   fromHost(model: Model, host: HostParams): Params;
-  toHost(params: Params): HostParams;                          // SPEC's read(); copies
+  toHost(params: Params): HostParams; // SPEC's read(); copies
   write(params: Params, nodeId: NodeId, values: { W?: Float32Array; b?: Float32Array }): Params; // consumes params
   startTraining(model: Model, params: Params, seed: number): TrainState; // consumes params; optimizer state from graph.train
-  step(model: Model, state: TrainState, batch: Batch): StepResult;       // consumes state; dropout on
+  step(model: Model, state: TrainState, batch: Batch): StepResult; // consumes state; dropout on
   predict(model: Model, params: Params, x: Float32Array, n: number): Float32Array; // dropout off; output after the link; [n, width]
-  evaluate(model: Model, params: Params, batch: Batch): number;          // mean loss + penalty, dropout off
-  lossGrid(model: Model, params: Params, batch: Batch, axes: [ParamAxis, ParamAxis], a: Float32Array, b: Float32Array): Float32Array; // [a.length, b.length]
+  evaluate(model: Model, params: Params, batch: Batch): number; // mean loss + penalty, dropout off
+  lossGrid(
+    model: Model,
+    params: Params,
+    batch: Batch,
+    axes: [ParamAxis, ParamAxis],
+    a: Float32Array,
+    b: Float32Array,
+  ): Float32Array; // [a.length, b.length]
   trainMany(model: Model, seeds: number[], data: Batch[], steps: number): HostParams[]; // vmap over k copies
   clone(params: Params): Params;
   dispose(x: Params | TrainState): void;
-  liveArrays(): number;                                        // for the leak test; method chosen by the spike
+  liveArrays(): number; // for the leak test; method chosen by the spike
 }
 type ParamAxis = { node: NodeId; tensor: 'W' | 'b'; index: number };
 function createEngine(): Promise<Engine>; // awaits jax init(); Wasm device; never WebGPU in v1
@@ -299,18 +345,33 @@ setColumns(g, inputNodeId, columns)
 // all edits refuse to change a node listed in `locked` (preset field, section 12): error "This piece is locked."
 ```
 
-Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, newGraph, newAnalysis, seed)` in `core/params.ts`).
+Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, oldGraph, oldAnalysis, newGraph, newAnalysis, seed)` in `core/params.ts`).
 
 ## 9. Layout geometry (`core/layout.ts`)
 
 ```ts
-type Box = { x: number; y: number; w: number; h: number };      // abstract units; the canvas scales to fit
-type LayerLayout = { nodes: Record<NodeId, Box & { col: number }>; wires: { edge: number; points: [number, number][] }[]; size: [number, number] };
-function layoutLayers(g: Graph, a: Analysis): LayerLayout;      // columns by longest path from inputs; target sits in the loss's column minus one, below the prediction; skip wires route above the main row
-type NeuronLayout = { units: { node: NodeId; index: number; kind: 'in' | 'sum' | 'act' | 'out' | 'target'; x: number; y: number }[];
-                      edges: { node: NodeId; i: number; j: number; from: [number, number]; to: [number, number] }[];  // one per weight W[i][j]
-                      collapsed: NodeId[]; boxes: LayerLayout['nodes']; wires: LayerLayout['wires']; size: [number, number] };
-function layoutNeurons(g: Graph, a: Analysis): NeuronLayout;    // a Linear expands only when in <= 8 and out <= 8; an activation directly after an expanded Linear is drawn as per-unit circles
+type Box = { x: number; y: number; w: number; h: number }; // abstract units; the canvas scales to fit
+type LayerLayout = {
+  nodes: Record<NodeId, Box & { col: number }>;
+  wires: { edge: number; points: [number, number][] }[];
+  size: [number, number];
+};
+function layoutLayers(g: Graph, a: Analysis): LayerLayout; // columns by longest path from inputs; target sits in the loss's column minus one, below the prediction; skip wires route above the main row
+type NeuronLayout = {
+  units: {
+    node: NodeId;
+    index: number;
+    kind: 'in' | 'sum' | 'act' | 'out' | 'target';
+    x: number;
+    y: number;
+  }[];
+  edges: { node: NodeId; i: number; j: number; from: [number, number]; to: [number, number] }[]; // one per weight W[i][j]
+  collapsed: NodeId[];
+  boxes: LayerLayout['nodes'];
+  wires: LayerLayout['wires'];
+  size: [number, number];
+};
+function layoutNeurons(g: Graph, a: Analysis): NeuronLayout; // a Linear expands only when in <= 8 and out <= 8; an activation directly after an expanded Linear is drawn as per-unit circles
 ```
 
 Layout is deterministic and stored nowhere.
@@ -332,18 +393,22 @@ Layout is deterministic and stored nowhere.
 
 ```ts
 type Fixture = {
-  name: string;                       // e.g. "linear_bias", "loss_huber_delta0.5", "mlp_relu_adam_5steps"
-  graph: Graph;                       // a complete trainable graph in the section 2 format
-  params: Record<NodeId, { W: number[]; b?: number[] }>;   // HostParams layout [in, out], float64 written in full
+  name: string; // e.g. "linear_bias", "loss_huber_delta0.5", "mlp_relu_adam_5steps"
+  graph: Graph; // a complete trainable graph in the section 2 format
+  params: Record<NodeId, { W: number[]; b?: number[] }>; // HostParams layout [in, out], float64 written in full
   batch: { x: number[]; y: number[]; n: number };
   expect: {
-    pred: number[];                   // predict(), post-link, [n, width] row-major
-    loss: number;                     // evaluate()
-    grads: Record<NodeId, { W: number[]; b?: number[] }>;  // d loss / d params
-    after?: { steps: number; params: Record<NodeId, { W: number[]; b?: number[] }>; losses: number[] }; // optimizer cases
-    dropoutMask?: number[][];         // dropout cases: the engine test injects this mask instead of sampling
-    predEval?: number[];              // dropout cases: dropout-off forward (what predict() returns)
-    lossEval?: number;                // dropout cases: dropout-off objective (what evaluate() returns)
+    pred: number[]; // predict(), post-link, [n, width] row-major
+    loss: number; // evaluate()
+    grads: Record<NodeId, { W: number[]; b?: number[] }>; // d loss / d params
+    after?: {
+      steps: number;
+      params: Record<NodeId, { W: number[]; b?: number[] }>;
+      losses: number[];
+    }; // optimizer cases
+    dropoutMask?: number[][]; // dropout cases: the engine test injects this mask instead of sampling
+    predEval?: number[]; // dropout cases: dropout-off forward (what predict() returns)
+    lossEval?: number; // dropout cases: dropout-off objective (what evaluate() returns)
   };
 };
 ```
@@ -355,9 +420,16 @@ Tolerance: 1e-5 absolute and relative on pred, loss and grads; 1e-4 on `after.pa
 ## 12. Files and presets (`core/file.ts`)
 
 ```ts
-type SaveFile = { kind: 'tinker'; version: 1; graph: Graph; params?: Record<NodeId, { W: number[]; b?: number[] }> };
+type SaveFile = {
+  kind: 'tinker';
+  version: 1;
+  graph: Graph;
+  params?: Record<NodeId, { W: number[]; b?: number[] }>;
+};
 type Preset = SaveFile & { title: string; prompt?: string; locked?: NodeId[] };
-function parseFile(json: unknown): { ok: true; file: SaveFile | Preset } | { ok: false; error: string };
+function parseFile(
+  json: unknown,
+): { ok: true; file: SaveFile | Preset } | { ok: false; error: string };
 ```
 
 Saved params whose shapes do not match the graph are dropped with a notice, not an error. Bundled presets live in `web/src/presets/*.json`; `?preset=<name>` loads a bundled preset on start, and a preset file can also be opened through Load.

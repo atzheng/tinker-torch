@@ -117,12 +117,12 @@ describe('reconcileParams', () => {
     const g1 = net([4, 1]);
     const h1 = initParams(g1, an(g1), 1);
     const g2 = net([5, 1]); // l1 resized, so l2 input width changes too
-    const h2 = reconcileParams(h1, g2, an(g2), 1);
+    const h2 = reconcileParams(h1, g1, an(g1), g2, an(g2), 1);
     expect(h2['l1']?.W.length).toBe(10);
     expect(h2['l2']?.W.length).toBe(5);
 
     const g3 = net([4, 1], { extra: true }); // l1, l2 unchanged
-    const h3 = reconcileParams(h1, g3, an(g3), 1);
+    const h3 = reconcileParams(h1, g1, an(g1), g3, an(g3), 1);
     expect(Array.from(h3['l1']?.W ?? [])).toEqual(Array.from(h1['l1']?.W ?? []));
     expect(Array.from(h3['l2']?.b ?? [])).toEqual(Array.from(h1['l2']?.b ?? []));
     expect(h3['zz']?.W.length).toBe(3);
@@ -132,20 +132,30 @@ describe('reconcileParams', () => {
     const g1 = net([3]);
     const h1 = initParams(g1, an(g1), 1);
     h1['l1']!.W[0] = 42; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    const same = reconcileParams(h1, g1, an(g1), 1);
+    const same = reconcileParams(h1, g1, an(g1), g1, an(g1), 1);
     expect(same['l1']?.W[0]).toBe(42);
     const g2 = net([3], { bias: false });
-    const h2 = reconcileParams(h1, g2, an(g2), 1);
+    const h2 = reconcileParams(h1, g1, an(g1), g2, an(g2), 1);
     expect(h2['l1']?.b).toBeUndefined();
     expect(h2['l1']?.W[0]).not.toBe(42);
     expect(h1['l1']?.b).toBeDefined();
+  });
+
+  test('re-inits when the shape changes but the element count does not', () => {
+    const g1 = net([2, 3]); // l2 is [2, 3]
+    const h1 = initParams(g1, an(g1), 1);
+    const g2 = net([3, 2]); // l2 is [3, 2]
+    const h2 = reconcileParams(h1, g1, an(g1), g2, an(g2), 1);
+    expect(h2['l2']).not.toBe(h1['l2']);
+    expect(h2['l2']?.W.length).toBe(6);
+    expect(Array.from(h2['l2']?.W ?? [])).not.toEqual(Array.from(h1['l2']?.W ?? []));
   });
 
   test('drops nodes that left the graph', () => {
     const g1 = net([4, 1]);
     const h1 = initParams(g1, an(g1), 1);
     const g2 = net([4]);
-    expect(Object.keys(reconcileParams(h1, g2, an(g2), 1))).toEqual(['l1']);
+    expect(Object.keys(reconcileParams(h1, g1, an(g1), g2, an(g2), 1))).toEqual(['l1']);
   });
 });
 
