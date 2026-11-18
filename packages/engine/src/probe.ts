@@ -6,6 +6,9 @@
 // Map.prototype.set. `installProbe()` must run BEFORE jax-js is loaded: the leak test calls it and
 // only then does a dynamic `import('../src/index.js')`. The app never calls it, so `liveArrays()`
 // is 0 there and Map.prototype.set is never touched.
+// Blind spot: jax-js keeps arrays with fewer than 128 elements whose values are all equal (scalars,
+// zeros/ones, 1-element arrays) as lazy symbolic constants with no backend buffer, so they are not
+// counted. They use no memory, so leaking them is harmless; real buffers they wrap are counted.
 // Tied to the pinned jax-js version: if the structure changes the count stays 0 and the leak test
 // fails loudly.
 let slotMap: Map<unknown, unknown> | null = null;
