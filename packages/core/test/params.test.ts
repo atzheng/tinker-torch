@@ -137,7 +137,10 @@ describe('reconcileParams', () => {
     const g2 = net([3], { bias: false });
     const h2 = reconcileParams(h1, g1, an(g1), g2, an(g2), 1);
     expect(h2['l1']?.b).toBeUndefined();
-    expect(h2['l1']?.W[0]).not.toBe(42);
+    expect(h2['l1']?.W[0]).toBe(42); // W kept when only bias was toggled
+    const back = reconcileParams(h2, g2, an(g2), g1, an(g1), 7);
+    expect(back['l1']?.W).toBe(h1['l1']?.W);
+    expect(back['l1']?.b?.length).toBe(3);
     expect(h1['l1']?.b).toBeDefined();
   });
 
@@ -160,6 +163,28 @@ describe('reconcileParams', () => {
 });
 
 describe('json', () => {
+  test('NaN, Infinity, holes and strings are dropped', () => {
+    const g = net([2]);
+    const a = an(g);
+    const bad = [
+      [NaN, 0, 0, 0],
+      [Infinity, 0, 0, 0],
+      [1, , 0, 0], // eslint-disable-line no-sparse-arrays
+      ['1', 0, 0, 0],
+    ];
+    for (const W of bad) {
+      const r = paramsFromJson({ l1: { W, b: [0, 0] } }, g, a);
+      expect(r.dropped).toEqual(['l1']);
+      expect(Object.keys(r.params)).toEqual([]);
+    }
+    expect(paramsFromJson({ l1: { W: [0, 0, 0, 0], b: [0, NaN] } }, g, a).dropped).toEqual(['l1']);
+  });
+
+  test('paramsToJson has no prototype', () => {
+    const g = net([2]);
+    expect(Object.getPrototypeOf(paramsToJson(initParams(g, an(g), 1)))).toBeNull();
+  });
+
   test('round trip', () => {
     const g = net([4, 1]);
     const a = an(g);

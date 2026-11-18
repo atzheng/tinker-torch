@@ -55,9 +55,11 @@ export function initParams(graph: Graph, analysis: Analysis, seed: number): Host
 }
 
 /**
- * Keep each node's arrays (same objects, bit-identical) when its shapes ([in, out] and [out]) are unchanged
- * between the old and new graph; re-init the rest.
- * Nodes no longer on the loss path are dropped. Does not mutate `old`.
+ * Keep each node's arrays (same objects, bit-identical) when their shapes are unchanged between the old and
+ * new graph. W is kept when [in, out] is unchanged, even if bias was toggled; b is kept when W and b exist in
+ * both, drawn fresh when bias is turned on, and dropped when it is turned off. Everything else is re-inited.
+ * Nodes no longer on the loss path are dropped. Does not mutate `old`. The returned arrays are shared with
+ * `old` and must never be written in place.
  */
 export function reconcileParams(
   old: HostParams,
@@ -72,9 +74,22 @@ export function reconcileParams(
   for (const [id, s] of linearShapes(graph, analysis)) {
     const prev = Object.hasOwn(old, id) ? old[id] : undefined;
     const os = oldShapes.get(id);
-    const same =
-      os !== undefined && os.W[0] === s.W[0] && os.W[1] === s.W[1] && os.b?.[0] === s.b?.[0];
-    host[id] = prev && same && matches(prev, s) ? prev : initNode(s, seed, id);
+    const sameW =
+      prev !== undefined &&
+      os !== undefined &&
+      os.W[0] === s.W[0] &&
+      os.W[1] === s.W[1] &&
+      prev.W.length === s.W[0] * s.W[1];
+    if (!prev || !sameW) {
+      host[id] = initNode(s, seed, id);
+    } else if (!s.b) {
+      host[id] = { W: prev.W };
+    } else if (prev.b && prev.b.length === s.b[0]) {
+      host[id] = { W: prev.W, b: prev.b };
+    } else {
+      const fresh = initNode(s, seed, id).b;
+      host[id] = fresh ? { W: prev.W, b: fresh } : { W: prev.W };
+    }
   }
   return host;
 }
@@ -89,7 +104,7 @@ export function countParams(host: HostParams): number {
 }
 
 export function paramsToJson(host: HostParams): JsonParams {
-  const out: JsonParams = {};
+  const out: JsonParams = Object.create(null) as JsonParams;
   for (const id of Object.keys(host)) {
     const p = host[id];
     if (!p) continue;
@@ -112,8 +127,11 @@ export function paramsFromJson(
   const dropped: NodeId[] = [];
   if (typeof json !== 'object' || json === null || Array.isArray(json)) return { params, dropped };
   const shapes = linearShapes(graph, analysis);
-  const isNums = (v: unknown): v is number[] =>
-    Array.isArray(v) && v.every((x) => typeof x === 'number');
+  const isNums = (v: unknown): v is number[] => {
+    if (!Array.isArray(v)) return false;
+    for (let i = 0; i < v.length; i++) if (!Number.isFinite(v[i])) return false; // also catches holes
+    return true;
+  };
   for (const id of Object.keys(json)) {
     const raw: unknown = (json as Record<string, unknown>)[id];
     const s = shapes.get(id);
