@@ -48,6 +48,34 @@ test('10,000 steps (with predict, evaluate, clone and diverged steps) leave the 
   expect(engine.liveArrays()).toBeLessThanOrEqual(2);
 }, 120_000);
 
+test('a graph with dropout (key splitting, diverged steps) leaves the live buffer count flat', async () => {
+  const engine = await createEngine();
+  const { fx, graph, data } = loadFixture('dropout_p0.5');
+  const model = engine.compile(graph, data);
+  const batch = toBatch(fx);
+  const bad = { ...batch, y: Float32Array.from(batch.y, () => NaN) };
+  let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 1);
+  const once = (i: number) => {
+    const r = engine.step(model, state, i % 50 === 0 ? bad : batch);
+    state = r.state;
+    if (i % 10 === 0) engine.evaluate(model, state.params, batch);
+    if (i % 25 === 0) engine.predict(model, state.params, batch.x, batch.n);
+  };
+  for (let i = 1; i <= 60; i++) once(i);
+  const baseline = engine.liveArrays();
+  expect(baseline).toBeGreaterThan(0);
+  const samples: number[] = [];
+  for (let i = 1; i <= 2000; i++) {
+    once(i);
+    if (i % 500 === 0) samples.push(engine.liveArrays());
+  }
+  expect(samples).toEqual(samples.map(() => baseline));
+  engine.dispose(state);
+  expect(engine.liveArrays()).toBeLessThan(baseline);
+  // library-global caches only (the jitted random functions keep a few constant buffers)
+  expect(engine.liveArrays()).toBeLessThanOrEqual(5);
+}, 120_000);
+
 test('failing calls (params of another model) leak no buffers', async () => {
   const engine = await createEngine();
   const a = loadFixture('mlp_tanh_sgd_5steps');

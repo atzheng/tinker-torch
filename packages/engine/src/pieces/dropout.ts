@@ -1,11 +1,20 @@
+import { random } from '@jax-js/jax';
 import type { NodeOf } from '@tinker/core';
-import { notYet } from './types.js';
 import type { EnginePiece } from './types.js';
 
-/** Placeholder: filled by a later engine bead (tinker-hj4.3). */
+/**
+ * Inverted dropout (nn.Dropout): while training, x * mask / (1 - p); otherwise the identity.
+ * The keep mask comes from `ctx.dropoutMask` (the test-only injection seam, CONTRACTS.md section
+ * 11) or from `random.bernoulli` with a fresh subkey from `ctx.nextKey()`. Consumes `inputs.in`.
+ */
 export const dropout: EnginePiece<NodeOf<'dropout'>> = {
-  implemented: false,
-  forward() {
-    return notYet('Dropout');
+  implemented: true,
+  forward(node, inputs, _layer, ctx) {
+    const x = inputs['in'];
+    if (!x) throw new Error('A Dropout piece is missing its input.');
+    if (!ctx.train || node.p <= 0) return x;
+    const injected = ctx.dropoutMask?.(node.id);
+    const mask = injected ?? random.bernoulli(ctx.nextKey(), 1 - node.p, x.shape);
+    return x.mul(mask).mul(1 / (1 - node.p));
   },
 };

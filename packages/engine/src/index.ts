@@ -123,8 +123,9 @@ function makeEngine(): Engine {
       // the outcome, so it stays valid if anything throws and a diverged step can return it.
       const pRef = tree.ref(oldTree);
       const oRef = tree.ref(oldOpt);
-      const [newTree, newOpt, lossArr, checkArr] = guarded([pRef, oRef, x, y], () =>
-        m.stepFn()(pRef, oRef, x, y),
+      const kRef = (state.key as JArray).ref;
+      const [newTree, newOpt, lossArr, checkArr, newKey] = guarded([pRef, oRef, x, y, kRef], () =>
+        m.stepFn()(pRef, oRef, x, y, kRef),
       );
       const loss = lossArr.item();
       const check = checkArr.item();
@@ -132,6 +133,7 @@ function makeEngine(): Engine {
       if (!Number.isFinite(loss) || !Number.isFinite(check)) {
         tree.dispose(newTree);
         tree.dispose(newOpt);
+        newKey.dispose();
         // Same arrays, same Params object, new TrainState object.
         return {
           state: { params: state.params, opt: state.opt, step: state.step, key: state.key },
@@ -141,8 +143,9 @@ function makeEngine(): Engine {
       }
       disposeParams(state.params);
       tree.dispose(oldOpt);
+      (state.key as JArray).dispose();
       return {
-        state: { params: wrapParams(newTree), opt: newOpt, step: state.step + 1, key: state.key },
+        state: { params: wrapParams(newTree), opt: newOpt, step: state.step + 1, key: newKey },
         loss,
         diverged: false,
       };
