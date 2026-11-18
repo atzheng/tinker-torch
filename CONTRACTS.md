@@ -412,7 +412,12 @@ Engine exceptions (decided in `tinker-e1h.2`, because the engine uses jax-js bui
 type SaveFile = { kind: 'tinker'; version: 1; graph: Graph; params?: Record<NodeId, { W: number[]; b?: number[] }> };
 type Preset = SaveFile & { title: string; prompt?: string; locked?: NodeId[] };
 function parseFile(json: unknown): { ok: true; file: SaveFile | Preset } | { ok: false; error: string };
+function parseFileText(text: string): ReturnType<typeof parseFile>;   // adds "This file is not valid JSON."
+function serializeFile(graph: Graph, params?: Record<NodeId, { W: number[]; b?: number[] }>): string; // stable, 2-space, trailing newline
+// TrainSlice: setRunSeed(seed): void; loadHost(host: HostParams): boolean  (false: engine ready but the model did not build)
 ```
+
+A file with `title`, `prompt` or `locked` is a Preset. Save writes `tinker-model.tinker.json`; "Weights" saves the live parameters (`host`), not the best snapshot. Load sets the run seed to the file's `train.seed`, then replaces the graph as one undo step (`graphSlice.apply`); undo returns the previous graph with its weights reconciled as for any edit. Loaded weights are installed with `loadHost` (new run: history and best cleared).
 
 Saved params whose shapes do not match the graph are dropped with a notice, not an error. Bundled presets live in `web/src/presets/*.json`; `?preset=<name>` loads a bundled preset on start, and a preset file can also be opened through Load.
 
