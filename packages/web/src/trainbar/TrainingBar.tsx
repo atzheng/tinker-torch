@@ -22,7 +22,7 @@ function LearningRate() {
   };
   return (
     <label className={styles.field}>
-      <span>Learning rate</span>
+      <span>lr</span>
       <input
         type="range"
         min={-4}
@@ -102,7 +102,6 @@ export function TrainingBar() {
       <div className={styles.group}>
         <LearningRate />
         <label className={styles.field}>
-          <span>Speed</span>
           <select
             value={s.speed}
             onChange={(e) => s.setSpeed(Number(e.target.value))}
@@ -117,8 +116,12 @@ export function TrainingBar() {
           </select>
         </label>
         <label className={styles.field}>
-          <span>Optimizer</span>
-          <select value="sgd" onChange={() => undefined} data-testid="optimizer">
+          <select
+            value="sgd"
+            onChange={() => undefined}
+            aria-label="Optimizer"
+            data-testid="optimizer"
+          >
             <option value="sgd">SGD</option>
             <option value="momentum" disabled>
               SGD with momentum
@@ -129,8 +132,12 @@ export function TrainingBar() {
           </select>
         </label>
         <label className={styles.field}>
-          <span>Batch</span>
-          <select value="full" onChange={() => undefined} data-testid="batch">
+          <select
+            value="full"
+            onChange={() => undefined}
+            aria-label="Batch size"
+            data-testid="batch"
+          >
             <option value="full">Full batch</option>
             <option value="mini" disabled>
               Mini-batch
@@ -152,8 +159,13 @@ export function TrainingBar() {
         )}
       </div>
       {s.diverged && (
-        <span className={styles.diverged} role="status" data-testid="status-diverged">
-          Diverged: the loss is no longer a number. Lower the learning rate or press Reset.
+        <span
+          className={styles.diverged}
+          role="status"
+          title="The loss is no longer a number. Lower the learning rate or press Reset."
+          data-testid="status-diverged"
+        >
+          Diverged
         </span>
       )}
       {message && !s.diverged && (

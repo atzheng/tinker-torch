@@ -1,7 +1,7 @@
 .bar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   height: 100%;
   padding: 0 10px;
   min-width: 0;
@@ -46,7 +46,7 @@
 }
 
 .field input[type='range'] {
-  width: 110px;
+  width: 90px;
 }
 
 .value {
@@ -63,6 +63,11 @@
 .stat b {
   color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+
+.bar select {
+  max-width: 110px;
+  padding: 0 4px;
 }
 
 .diverged,
@@ -84,4 +89,8 @@
 
 .issue {
   color: var(--text-muted);
+}
+
+.diverged {
+  flex: none;
 }
