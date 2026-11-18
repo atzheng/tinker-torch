@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand';
 import {
   makeRng,
   sample,
+  setColumns,
   type DataConfig,
   type DataInfo,
   type Dataset,
@@ -61,12 +62,17 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
       if (data.set !== graph.data.set) {
         const info = sample({ ...data, n: 10 }).info;
         if (info.columns.join() !== dataInfo.columns.join()) {
-          next = {
-            ...next,
-            nodes: next.nodes.map((n) =>
-              n.type === 'input' ? { ...n, columns: [...info.columns] } : n,
-            ),
-          };
+          // Sequential core edits, applied once below, so the data change and the resets are one undo step.
+          // No store-level locked list exists yet (presets bead); pass `{ locked }` here when it does.
+          for (const n of graph.nodes) {
+            if (n.type !== 'input') continue;
+            const r = setColumns(next, n.id, info.columns);
+            if (!r.ok) {
+              get().apply(r);
+              return;
+            }
+            next = r.graph;
+          }
         }
       }
       if (JSON.stringify(next) === JSON.stringify(graph)) return;
@@ -84,15 +90,8 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
       const { graph, dataInfo } = get();
       const keep = dataInfo.columns.filter((c) => columns.includes(c));
       if (keep.length === 0) return;
-      get().apply({
-        ok: true,
-        graph: {
-          ...graph,
-          nodes: graph.nodes.map((n) =>
-            n.type === 'input' && n.id === id ? { ...n, columns: keep } : n,
-          ),
-        },
-      });
+      // Locked pieces: pass `{ locked }` as the 4th argument once the store has a locked list.
+      get().apply(setColumns(graph, id, keep));
     },
   };
 };

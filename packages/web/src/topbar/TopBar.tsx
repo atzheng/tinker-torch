@@ -1,4 +1,6 @@
 import { DataControls } from './DataControls.js';
+import { FileMenu } from './FileMenu.js';
+import { UndoRedo } from './UndoRedo.js';
 
 /** Top bar: the dataset controls; the file and preset menus join them in later beads. */
 export function TopBar() {
@@ -14,6 +16,8 @@ export function TopBar() {
       }}
     >
       <DataControls />
+      <FileMenu />
+      <UndoRedo />
     </div>
   );
 }

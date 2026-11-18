@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import type { Analysis, Graph, Node, PieceType } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
+import { deleteSelection } from './actions.js';
 import { edgeIndexOf } from './pure.js';
 import { useStore } from '../state/store.js';
 import type { Selection } from '../state/viewSlice.js';
@@ -110,6 +111,14 @@ export function Inspector({
         onClick={() => select(null)}
       >
         {'×'}
+      </button>
+      <button
+        type="button"
+        className="tk-inspector-delete"
+        data-testid="inspector-delete"
+        onClick={deleteSelection}
+      >
+        Delete
       </button>
       {selection.kind === 'node' && node && <NodeInspector node={node} analysis={analysis} />}
       {selection.kind === 'wire' && (

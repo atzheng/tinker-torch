@@ -249,3 +249,82 @@ path.tk-hit {
     height: 22px;
   }
 }
+
+/* Building gestures: drop targets, port handles, preview line, toast */
+.tk-wire[data-drop='true'] .tk-wire-line {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.tk-wire[data-drop='true'] .tk-wire-halo {
+  stroke: var(--accent);
+  opacity: 0.25;
+}
+.tk-node[data-drop='true'] .tk-ring {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+.tk-port {
+  cursor: crosshair;
+}
+.tk-port-dot {
+  fill: var(--surface);
+  stroke: var(--wire);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+.tk-port:hover .tk-port-dot {
+  stroke: var(--accent);
+  fill: var(--accent);
+}
+.tk-port-in {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+.tk-port-in[data-drop='true'] {
+  fill: var(--accent);
+}
+.tk-wire-preview {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+.tk-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 4;
+  max-width: calc(100% - 24px);
+  padding: 8px 14px;
+  background: var(--error-bg);
+  color: var(--text);
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  font-size: 13px;
+  pointer-events: none; /* never swallows a canvas tap; it fades by itself */
+}
+.tk-inspector-delete {
+  position: absolute;
+  top: 6px;
+  right: 36px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--error);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+@media (pointer: coarse) {
+  .tk-inspector-delete {
+    height: 32px;
+    right: 44px;
+  }
+}

@@ -1,0 +1,228 @@
+/**
+ * Drag-and-drop on the canvas, built on Pointer Events (`gestures/drag.ts`), never the HTML5 API.
+ * Two gestures: a palette piece dragged onto a wire (insert), a piece (swap) or the loss
+ * (weight penalty); and a wire dragged from a piece's output port to an input port (connect).
+ *
+ * The pure half (`resolveDrop`, `editForDrop`) is unit tested in Node. The small store half holds
+ * the gesture in progress so the palette (ghost), the canvas (highlights, preview line) and the
+ * port handles can all see it; the canvas registers a handler that knows its layout and transform.
+ */
+import {
+  CORE_PIECES,
+  connect,
+  inputPortsOf,
+  insertOnWire,
+  setPenalty,
+  swapPiece,
+  type EditResult,
+  type Graph,
+  type LayerLayout,
+  type NodeId,
+  type PaletteEntry,
+  type PortRef,
+} from '@tinker/core';
+import { hitAt, layerHitShapes, HIT_MIN_PX, type HitShape } from './pure.js';
+
+export type DragPayload = { kind: 'palette'; entry: PaletteEntry } | { kind: 'wire'; from: NodeId };
+
+export type DropTarget =
+  | { kind: 'wire'; edge: number }
+  | { kind: 'node'; id: NodeId }
+  | { kind: 'port'; node: NodeId; port: PortRef };
+
+/** Whether a node of this type has an output port (everything but a loss). */
+export const hasOutputPort = (type: string): boolean => type !== 'loss';
+
+/** Position of an output port (right edge, middle) in abstract units. */
+export function outputPortAt(layout: LayerLayout, id: NodeId): [number, number] | undefined {
+  const b = layout.nodes[id];
+  return b ? [b.x + b.w, b.y + b.h / 2] : undefined;
+}
+
+/** Position of input port `k` of `n` (left edge, spread evenly: the layout's rule). */
+export function inputPortAt(
+  layout: LayerLayout,
+  id: NodeId,
+  k: number,
+  n: number,
+): [number, number] | undefined {
+  const b = layout.nodes[id];
+  return b ? [b.x, b.y + (b.h * (k + 1)) / (n + 1)] : undefined;
+}
+
+/** The reference to write in an edge for input port `port` of `id`: bare for a single-port piece. */
+export function portRefOf(id: NodeId, ports: readonly string[], port: string): PortRef {
+  return ports.length === 1 ? id : `${id}.${port}`;
+}
+
+function distToSegment(px: number, py: number, a: readonly number[], b: readonly number[]): number {
+  const [ax = 0, ay = 0] = a;
+  const [bx = 0, by = 0] = b;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/** Whether a palette entry can go onto a wire (needs an input and an output). */
+function insertable(entry: PaletteEntry): boolean {
+  if (entry.family === 'penalties') return false;
+  const body = entry.make();
+  return 'type' in body && body.type !== 'input' && body.type !== 'target' && body.type !== 'loss';
+}
+
+/**
+ * The drop target under a point (abstract units), or null when dropping here would do nothing.
+ * Uses the same hit shapes as presses (`layerHitShapes`): a wire's label is its primary target;
+ * the wire line itself (within `hitPx` screen px) is the fallback. Pieces are tested before wire
+ * lines, as they are painted above them.
+ */
+export function resolveDrop(
+  payload: DragPayload,
+  graph: Graph,
+  layout: LayerLayout,
+  widths: readonly (number | null | undefined)[],
+  scale: number,
+  at: { x: number; y: number },
+  hitPx: number = HIT_MIN_PX,
+): DropTarget | null {
+  const outputs = new Set(graph.nodes.filter((n) => hasOutputPort(n.type)).map((n) => n.id));
+  const shapes = layerHitShapes(layout, scale, widths, outputs);
+  const nodeOf = (s: HitShape | undefined): NodeId | undefined =>
+    s?.kind === 'node' ? s.id : s?.kind === 'port' ? s.node : undefined;
+
+  if (payload.kind === 'wire') {
+    const id = nodeOf(
+      hitAt(
+        shapes.filter((s) => s.kind !== 'wire'),
+        at.x,
+        at.y,
+      ),
+    );
+    const node = graph.nodes.find((n) => n.id === id);
+    if (!node || node.id === payload.from) return null;
+    const ports = inputPortsOf(node.type);
+    if (ports.length === 0) return null;
+    let best = 0;
+    let bestD = Infinity;
+    ports.forEach((_, k) => {
+      const p = inputPortAt(layout, node.id, k, ports.length);
+      const d = p ? Math.abs(p[1] - at.y) : Infinity;
+      if (d < bestD) {
+        bestD = d;
+        best = k;
+      }
+    });
+    const port = ports[best];
+    return port === undefined
+      ? null
+      : { kind: 'port', node: node.id, port: portRefOf(node.id, ports, port) };
+  }
+
+  const entry = payload.entry;
+  const hit = hitAt(shapes, at.x, at.y);
+  if (hit?.kind === 'wire') return insertable(entry) ? { kind: 'wire', edge: hit.edge } : null;
+  const id = nodeOf(hit);
+  if (id !== undefined) {
+    const node = graph.nodes.find((n) => n.id === id);
+    if (!node) return null;
+    if (entry.family === 'penalties') return node.type === 'loss' ? { kind: 'node', id } : null;
+    return CORE_PIECES[node.type].family === entry.family ? { kind: 'node', id } : null;
+  }
+  if (!insertable(entry)) return null;
+  let best: DropTarget | null = null;
+  let bestD = hitPx / 2 / scale;
+  for (const w of layout.wires) {
+    for (let i = 0; i + 1 < w.points.length; i++) {
+      const a = w.points[i];
+      const b = w.points[i + 1];
+      if (!a || !b) continue;
+      const d = distToSegment(at.x, at.y, a, b);
+      if (d <= bestD) {
+        bestD = d;
+        best = { kind: 'wire', edge: w.edge };
+      }
+    }
+  }
+  return best;
+}
+
+/** The pure edit a drop stands for, or null when the pair makes no edit. */
+export function editForDrop(
+  graph: Graph,
+  payload: DragPayload,
+  target: DropTarget,
+  opts?: { locked?: readonly NodeId[] },
+): EditResult | null {
+  if (payload.kind === 'wire') {
+    return target.kind === 'port' ? connect(graph, payload.from, target.port, opts) : null;
+  }
+  const made = payload.entry.make();
+  if (!('type' in made)) {
+    return target.kind === 'node' ? setPenalty(graph, target.id, made, opts) : null;
+  }
+  if (target.kind === 'wire') return insertOnWire(graph, target.edge, made, opts);
+  if (target.kind === 'node') return swapPiece(graph, target.id, made, opts);
+  return null;
+}
+
+// ---- the gesture in progress ------------------------------------------------------------------
+
+export type DndState = {
+  payload: DragPayload;
+  /** Pointer position, client coordinates. */
+  x: number;
+  y: number;
+  target: DropTarget | null;
+};
+
+export type DndHandler = {
+  /** The drop target under a client point. */
+  resolve: (payload: DragPayload, x: number, y: number) => DropTarget | null;
+  /** Apply the drop (store edit, selection, toast). */
+  commit: (payload: DragPayload, target: DropTarget) => void;
+};
+
+let state: DndState | null = null;
+let handler: DndHandler | null = null;
+const listeners = new Set<() => void>();
+const emit = () => listeners.forEach((l) => l());
+
+export const dnd = {
+  get: (): DndState | null => state,
+  subscribe(l: () => void): () => void {
+    listeners.add(l);
+    return () => listeners.delete(l);
+  },
+  /** The canvas registers while mounted; returns the unregister function. */
+  setHandler(h: DndHandler): () => void {
+    handler = h;
+    return () => {
+      if (handler === h) handler = null;
+    };
+  },
+  begin(payload: DragPayload, x: number, y: number) {
+    state = { payload, x, y, target: handler?.resolve(payload, x, y) ?? null };
+    emit();
+  },
+  move(x: number, y: number) {
+    if (!state) return;
+    state = { ...state, x, y, target: handler?.resolve(state.payload, x, y) ?? null };
+    emit();
+  },
+  /** Pointer released: apply the drop when there is a target, otherwise cancel quietly. */
+  end(x: number, y: number) {
+    const s = state;
+    state = null;
+    emit();
+    if (!s || !handler) return;
+    const target = handler.resolve(s.payload, x, y);
+    if (target) handler.commit(s.payload, target);
+  },
+  cancel() {
+    if (!state) return;
+    state = null;
+    emit();
+  },
+};
