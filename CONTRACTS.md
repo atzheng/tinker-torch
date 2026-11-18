@@ -136,6 +136,8 @@ const WEB_PIECES: { [T in PieceType]: WebPiece<Extract<Node, { type: T }>> }; //
 
 Width rules: input = number of selected columns; feature = d·degree + (sin ? d : 0) + (cos ? d : 0) + (products ? d(d−1)/2 : 0), where power 1 is x itself; linear = `out`; activation, dropout, output = input width; add = shared input width (error if unequal); target = 1 for regression and binary sets, and the loss checks against classes; loss has no output.
 
+Feature output layout (the order of columns; the engine and the torch fixtures use it): `x^p` for p = 1..degree (power-major, then column, so power 1 is x itself), then `sin(x)` if `sin`, then `cos(x)` if `cos`, then `x_i * x_j` for i < j in row-major pair order if `products`. sin and cos apply to the raw column values (no frequency scaling).
+
 Parameter count of a Linear: in·out + (bias ? out : 0). Every other piece has 0.
 
 ## 4. Analysis (`core/analyse.ts`)
@@ -316,9 +318,13 @@ type Fixture = {
     grads: Record<NodeId, { W: number[]; b?: number[] }>;  // d loss / d params
     after?: { steps: number; params: Record<NodeId, { W: number[]; b?: number[] }>; losses: number[] }; // optimizer cases
     dropoutMask?: number[][];         // dropout cases: the engine test injects this mask instead of sampling
+    predEval?: number[];              // dropout cases: dropout-off forward (what predict() returns)
+    lossEval?: number;                // dropout cases: dropout-off objective (what evaluate() returns)
   };
 };
 ```
+
+Details: in dropout cases `pred`, `loss` and `grads` are the dropout-ON training forward and backward with the given mask (how the engine test injects the mask is the engine's choice); `predEval` and `lossEval` are the dropout-off values that `predict` and `evaluate` must return. At-zero conventions are pinned by fixtures: the L1 penalty has subgradient sign(0) = 0 (`penalty_l1_zero_weight`) and relu'(0) = 0 (`act_relu_zero_preact`). `dropoutMask` is a 0/1 keep mask shaped [n][width of the dropout node]; the engine multiplies by mask/(1−p). Classification targets in `batch.y` are class indices stored as floats (0 or 1). `after.losses[k]` is the objective before update k+1 (so `losses[0] == loss`). GELU is the exact erf form (`nn.GELU()`); jax-js `gelu` defaults to the tanh approximation, so the engine must pass `approximate: false`.
 
 Tolerance: 1e-5 absolute and relative on pred, loss and grads; 1e-4 on `after.params` after 5 steps. The case list is in the fixtures bead (`tinker-7x7.3`).
 
