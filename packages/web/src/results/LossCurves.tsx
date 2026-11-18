@@ -23,7 +23,8 @@ export function LossCurves() {
     const yTicks = log ? logTicks(r.lo, r.hi) : niceTicks(r.lo, r.hi, 4);
     drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(0, r.stepMax, 4), yTicks, 'step', 'loss');
     drawLegend(ctx, c, m, [
-      { label: miniBatch ? 'train (batch)' : 'train', color: c.train, kind: 'line' },
+      { label: 'train', color: c.train, kind: 'line' },
+      ...(miniBatch ? [{ label: 'batch', color: c.train, kind: 'line' as const }] : []),
       { label: 'val', color: c.val, kind: 'line' },
       ...(best ? [{ label: 'best', color: c.val, kind: 'ring' as const }] : []),
     ]);
@@ -53,9 +54,10 @@ export function LossCurves() {
       );
       ctx.stroke();
     };
-    ctx.globalAlpha = 0.75;
+    ctx.globalAlpha = miniBatch ? 0.3 : 0.75;
     series((i) => history[i]?.train ?? Number.NaN, c.train);
     ctx.globalAlpha = 1;
+    if (miniBatch) series((i) => history[i]?.trainFull ?? Number.NaN, c.train);
     series((i) => history[i]?.val ?? Number.NaN, c.val);
 
     if (best && (!log || best.val > 0)) {

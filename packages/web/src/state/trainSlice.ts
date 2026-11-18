@@ -40,6 +40,8 @@ export type HistoryPoint = {
   train: number;
   /** Validation loss after the update; null on steps where it was not evaluated (see VAL_EVERY). */
   val: number | null;
+  /** Loss on the whole training set, evaluated on the validation cadence; only when mini-batching. */
+  trainFull?: number | null;
 };
 export type Best = { step: number; val: number; params: HostParams };
 
@@ -126,6 +128,8 @@ type Runtime = {
   trainLoss: number | null;
   valLoss: number | null;
   valBatch: Batch | null;
+  /** The whole training set as one batch (fixed nTrain, so one trace). */
+  trainBatch: Batch | null;
 };
 
 const rt: Runtime = {
@@ -146,6 +150,7 @@ const rt: Runtime = {
   trainLoss: null,
   valLoss: null,
   valBatch: null,
+  trainBatch: null,
 };
 
 function structuralKey(g: Graph): string {
@@ -256,6 +261,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     }
     rt.batches = batchSchedule(dataset.nTrain, graph.train.batch, rt.seed);
     rt.valBatch = { x: dataset.xVal, y: dataset.yVal, n: dataset.nVal };
+    rt.trainBatch = { x: dataset.xTrain, y: dataset.yTrain, n: dataset.nTrain };
 
     // 4. Compile and start. Not-yet-implemented pieces surface here as an ordinary sentence.
     let issue: string | null = null;
@@ -294,18 +300,23 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     rt.step += 1;
     rt.trainLoss = r.loss;
     let val: number | null = null;
+    let trainFull: number | null = null;
     const vb = rt.valBatch;
     if (vb && vb.n > 0 && rt.step % valEvery(vb.n) === 0) {
       const v = engine.evaluate(model, r.state.params, vb);
       if (Number.isFinite(v)) {
         val = v;
         rt.valLoss = v;
+        if (rt.trainBatch && get().graph.train.batch !== 'full') {
+          const t = engine.evaluate(model, r.state.params, rt.trainBatch);
+          if (Number.isFinite(t)) trainFull = t;
+        }
         if (!rt.best || v < rt.best.val) {
           rt.best = { step: rt.step, val: v, params: engine.toHost(r.state.params) };
         }
       }
     }
-    rt.history.push({ step: rt.step, train: r.loss, val });
+    rt.history.push({ step: rt.step, train: r.loss, val, trainFull });
     if (rt.history.length > MAX_HISTORY) {
       const last = rt.history.length - 1;
       rt.history = rt.history.filter((_, i) => i % 2 === 0 || i === last);
