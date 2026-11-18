@@ -112,26 +112,10 @@ describe('compile', () => {
     expect(() => engine.compile(noLoss, data)).toThrow(Error);
   });
 
-  test('unimplemented pieces, losses and optimizers are rejected at compile with one sentence', () => {
+  test('unimplemented optimizers are rejected at compile with one sentence', () => {
     const { graph, data } = mlp();
     const adam: Graph = { ...graph, train: { ...graph.train, optimizer: 'adam' } };
     expect(() => engine.compile(adam, data)).toThrow('The adam optimizer is not implemented yet.');
-    const huber: Graph = {
-      ...graph,
-      nodes: graph.nodes.map((n) =>
-        n.type === 'loss' ? { ...n, fn: 'huber' as const, delta: 1 } : n,
-      ),
-    };
-    expect(() => engine.compile(huber, data)).toThrow('The huber loss is not implemented yet.');
-    const withPenalty: Graph = {
-      ...graph,
-      nodes: graph.nodes.map((n) =>
-        n.type === 'loss' ? { ...n, penalty: { kind: 'l2' as const, lambda: 0.1 } } : n,
-      ),
-    };
-    expect(() => engine.compile(withPenalty, data)).toThrow(
-      'The weight penalty is not implemented yet.',
-    );
   });
 
   test('an Input that selects some of the dataset columns', () => {

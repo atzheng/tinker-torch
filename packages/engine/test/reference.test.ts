@@ -23,19 +23,19 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   loss_squared_error: {},
   loss_squared_error_sigmoid: {},
   two_param: {},
+  link_softmax: {},
+  loss_absolute_error: {},
+  loss_huber_delta1: {},
+  'loss_huber_delta0.5': {},
+  loss_log_loss: {},
+  loss_cross_entropy: {},
+  penalty_l2: {},
+  penalty_l1: {},
   mlp_tanh_sgd_5steps: {},
 };
 
 /** Skipped until the named bead lands. */
 const PENDING: Record<string, string> = {
-  link_softmax: 'tinker-hj4.2 (needs cross_entropy)',
-  loss_absolute_error: 'tinker-hj4.2',
-  loss_huber_delta1: 'tinker-hj4.2',
-  'loss_huber_delta0.5': 'tinker-hj4.2',
-  loss_log_loss: 'tinker-hj4.2',
-  loss_cross_entropy: 'tinker-hj4.2',
-  penalty_l2: 'tinker-hj4.2',
-  penalty_l1: 'tinker-hj4.2',
   feature_deg3_sin_cos_products: 'tinker-hj4.3',
   add_skip: 'tinker-hj4.3',
   'dropout_p0.5': 'tinker-hj4.3',
