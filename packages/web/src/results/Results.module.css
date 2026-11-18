@@ -54,3 +54,31 @@
   height: 100%;
   display: block;
 }
+
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.bar {
+  display: inline-block;
+  width: 56px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* Header that wraps onto a second row instead of clipping (2-D fit plot key and toggle). */
+.headWrap {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  overflow: visible;
+}
