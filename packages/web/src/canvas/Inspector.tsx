@@ -57,15 +57,16 @@ function WireInspector({
   analysis,
   from,
   to,
+  messages,
 }: {
   graph: Graph;
   analysis: Analysis;
   from: string;
   to: string;
+  messages: string[];
 }) {
   const i = edgeIndexOf(graph, from, to);
   const width = i >= 0 ? analysis.edgeWidth[i] : null;
-  const messages = analysis.issues.filter((x) => x.at.edge === i).map((x) => x.message);
   return (
     <>
       <h2 className="tk-inspector-title">Wire</h2>
@@ -85,7 +86,16 @@ function WireInspector({
  * Every change goes through core edits and `graphSlice.apply` (the Fields do that), so undo
  * restores it. Hover information (wire width) is also here, for touch (CONTRACTS.md section 10).
  */
-export function Inspector({ selection, analysis }: { selection: Selection; analysis: Analysis }) {
+export function Inspector({
+  selection,
+  analysis,
+  wireMessages,
+}: {
+  selection: Selection;
+  analysis: Analysis;
+  /** The sentences the canvas shows on the selected wire (`placeIssues().byEdge`), so both agree. */
+  wireMessages: string[];
+}) {
   const graph = useStore((s) => s.graph);
   const select = useStore((s) => s.select);
   const node =
@@ -103,7 +113,13 @@ export function Inspector({ selection, analysis }: { selection: Selection; analy
       </button>
       {selection.kind === 'node' && node && <NodeInspector node={node} analysis={analysis} />}
       {selection.kind === 'wire' && (
-        <WireInspector graph={graph} analysis={analysis} from={selection.from} to={selection.to} />
+        <WireInspector
+          graph={graph}
+          analysis={analysis}
+          from={selection.from}
+          to={selection.to}
+          messages={wireMessages}
+        />
       )}
     </aside>
   );

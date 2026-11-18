@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { layoutLayers } from '@tinker/core';
 import './canvas.css';
 import { Inspector } from './Inspector.js';
@@ -37,10 +37,23 @@ function useElementSize(ref: React.RefObject<HTMLElement | null>) {
   return size;
 }
 
-const isCoarse = () =>
-  typeof window !== 'undefined' &&
-  typeof window.matchMedia === 'function' &&
-  window.matchMedia('(pointer: coarse)').matches;
+const COARSE = '(pointer: coarse)';
+const hasMatchMedia = () =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function';
+
+/** Whether the primary pointer is coarse (touch); follows changes of the media query. */
+function useCoarse(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      if (!hasMatchMedia()) return () => {};
+      const mq = window.matchMedia(COARSE);
+      mq.addEventListener('change', notify);
+      return () => mq.removeEventListener('change', notify);
+    },
+    () => hasMatchMedia() && window.matchMedia(COARSE).matches,
+    () => false,
+  );
+}
 
 function Callout(props: { x: number; y: number; viewW: number; text: string[]; testid: string }) {
   const half = 100;
@@ -67,7 +80,7 @@ export function Canvas() {
   const analysis = useAnalysis();
   const weights = useWeights(analysis);
   const selection = useSelection();
-  const coarse = isCoarse();
+  const coarse = useCoarse();
 
   const layout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
   const t: Transform = useMemo(() => fitTransform(layout.size, view), [layout.size, view]);
@@ -77,7 +90,7 @@ export function Canvas() {
         analysis.issues,
         new Set(layout.wires.map((w) => w.edge)),
         new Set(graph.nodes.map((n) => n.id)),
-        (id) => wireOfNode(graph, id),
+        (id) => wireOfNode(graph, analysis, id),
       ),
     [analysis, layout, graph],
   );
@@ -179,7 +192,15 @@ export function Canvas() {
       })}
       {selection && anchor && (
         <div className="tk-inspector-pos" style={{ ...anchor, width: INSPECTOR_W }}>
-          <Inspector selection={selection} analysis={analysis} />
+          <Inspector
+            selection={selection}
+            analysis={analysis}
+            wireMessages={
+              selection.kind === 'wire'
+                ? (placed.byEdge.get(edgeIndexOf(graph, selection.from, selection.to)) ?? [])
+                : []
+            }
+          />
         </div>
       )}
     </div>

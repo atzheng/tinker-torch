@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { analyse, sample } from '@tinker/core';
+import { analyse, layoutLayers, parseGraph, sample, type Graph } from '@tinker/core';
 import { initialGraph } from '../src/state/graphSlice.js';
 import {
   edgeIndexOf,
@@ -11,6 +11,8 @@ import {
   placeIssues,
   resolvedEdges,
   wireOfNode,
+  hitAt,
+  layerHitShapes,
 } from '../src/canvas/pure.js';
 
 test('fitTransform centres and never exceeds maxScale', () => {
@@ -56,12 +58,135 @@ test('placeIssues puts a node issue on its wire when wireOfNode names one', () =
   expect(placed.byNode.size).toBe(0);
 });
 
+const info = () => sample(initialGraph().data).info;
+
+/** Where `placeIssues` puts the issues of `g`, the way the canvas calls it. */
+function placed(g: Graph) {
+  const a = analyse(g, info());
+  const p = placeIssues(a.issues, resolvedEdges(g), new Set(g.nodes.map((n) => n.id)), (id) =>
+    wireOfNode(g, a, id),
+  );
+  return { a, p };
+}
+const edit = (g: Graph, f: (g: Graph) => Partial<Graph>): Graph => ({ ...g, ...f(g) });
+
 test('wireOfNode: an Output points at its wire into the loss, other pieces at none', () => {
   const g = initialGraph();
-  expect(wireOfNode(g, 'yhat')).toBe(4);
-  expect(wireOfNode(g, 'lin1')).toBeUndefined();
-  expect(wireOfNode(g, 'ghost')).toBeUndefined();
+  const a = analyse(g, info());
+  expect(wireOfNode(g, a, 'yhat')).toBe(4);
+  expect(wireOfNode(g, a, 'lin1')).toBeUndefined();
+  expect(wireOfNode(g, a, 'ghost')).toBeUndefined();
 });
+
+test('output width not fitting the loss: sentence on the wire into the loss', () => {
+  const g = edit(initialGraph(), (g) => ({
+    nodes: g.nodes.map((n) => (n.id === 'lin2' && n.type === 'linear' ? { ...n, out: 2 } : n)),
+  }));
+  const { p } = placed(g);
+  expect([...p.byEdge.keys()]).toEqual([4]);
+  expect(p.byEdge.get(4)?.[0]).toContain('width 1');
+  expect(p.byNode.size).toBe(0);
+});
+
+test('link not fitting the loss (log loss with a raw output): on the wire; dataset sentence stays at the loss', () => {
+  const g = edit(initialGraph(), (g) => ({
+    nodes: g.nodes.map((n) => (n.type === 'loss' ? { ...n, fn: 'log_loss' as const } : n)),
+  }));
+  const { p } = placed(g);
+  expect(p.byEdge.get(4)).toEqual(['Log loss needs a sigmoid output.']);
+  expect(p.byNode.get('loss')?.[0]).toContain('two classes');
+});
+
+test('"needs an input" stays at the Output, not on its wire', () => {
+  const g = edit(initialGraph(), (g) => ({ edges: g.edges.filter((e) => e[1] !== 'yhat') }));
+  const { a, p } = placed(g);
+  const msg = a.issues.find((i) => i.at.node === 'yhat')?.message;
+  expect(msg).toBe('The output needs an input.');
+  expect(p.byNode.get('yhat')).toContain(msg);
+  expect(p.byEdge.size).toBe(0);
+});
+
+test('a cycle stays at its node', () => {
+  const g = edit(initialGraph(), (g) => ({
+    edges: [...g.edges.filter((e) => e[0] !== 'x'), ['act1', 'lin1']],
+  }));
+  const { a, p } = placed(g);
+  const cyc = a.issues.find((i) => i.at.node !== undefined && i.at.edge === undefined);
+  expect(cyc).toBeDefined();
+  const at = cyc?.at.node ?? '';
+  expect(p.byNode.get(at)).toContain(cyc?.message);
+});
+
+test('a duplicate id stays at the node', () => {
+  const g0 = initialGraph();
+  const yhat = g0.nodes.find((n) => n.id === 'yhat');
+  if (!yhat) throw new Error('no yhat');
+  const g = edit(g0, (g) => ({ nodes: [...g.nodes, yhat] }));
+  const { a, p } = placed(g);
+  const dup = a.issues.find((i) => i.message.startsWith('Two nodes'));
+  expect(dup).toBeDefined();
+  expect(p.byNode.get('yhat')).toContain(dup?.message);
+  expect(p.byEdge.size).toBe(0);
+});
+
+test('every wire label and every piece owns a 32x32 px region at the 1024x768 scale (0.475)', () => {
+  const scale = 0.475;
+  const graphs = [initialGraph(), skipGraph()];
+  for (const g of graphs) {
+    const a = analyse(g, info());
+    const layout = layoutLayers(g, a);
+    const shapes = layerHitShapes(layout, scale, a.edgeWidth);
+    expect(shapes.filter((s) => s.kind === 'wire')).toHaveLength(layout.wires.length);
+    for (const s of shapes) {
+      // Is there a 32x32 px square, inside the shape, in which every sampled point resolves to it?
+      const u = 32 / scale;
+      let found = false;
+      for (let x = s.x; x + u <= s.x + s.w + 1e-9 && !found; x += 2 / scale) {
+        for (let y = s.y; y + u <= s.y + s.h + 1e-9 && !found; y += 2 / scale) {
+          let all = true;
+          for (let i = 0; i <= 8 && all; i++) {
+            for (let j = 0; j <= 8 && all; j++) {
+              const top = hitAt(
+                shapes,
+                x + 0.01 + ((u - 0.02) * i) / 8,
+                y + 0.01 + ((u - 0.02) * j) / 8,
+              );
+              all = top === s;
+            }
+          }
+          found = all;
+        }
+      }
+      expect(found, JSON.stringify(s)).toBe(true);
+    }
+  }
+});
+
+function skipGraph(): Graph {
+  const g = initialGraph();
+  const parsed = parseGraph({
+    ...g,
+    nodes: [
+      ...g.nodes.filter((n) => n.id !== 'lin2'),
+      { id: 'add1', type: 'add' },
+      { id: 'lin2', type: 'linear', out: 4, bias: true },
+      { id: 'lin3', type: 'linear', out: 1, bias: true },
+    ],
+    edges: [
+      ['x', 'lin1'],
+      ['lin1', 'act1'],
+      ['act1', 'lin2'],
+      ['lin2', 'add1.a'],
+      ['lin1', 'add1.b'],
+      ['add1', 'lin3'],
+      ['lin3', 'yhat'],
+      ['yhat', 'loss.pred'],
+      ['y', 'loss.target'],
+    ],
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.graph;
+}
 
 test('placeInspector goes below when there is room, above otherwise, and stays in view', () => {
   const view = { w: 700, h: 600 };

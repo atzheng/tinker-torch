@@ -2,9 +2,9 @@ import type { ComponentType } from 'react';
 import type { Analysis, Graph, HostParams, LayerLayout, Node } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
-import { edgeIndexOf, hitPad } from './pure.js';
+import { edgeIndexOf, layerHitShapes } from './pure.js';
 import { pointerDownWith } from './tap.js';
-import { Wire } from './Wire.js';
+import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
 
 export type LayerViewProps = {
@@ -53,6 +53,7 @@ function layerProps(
 export function LayerView(p: LayerViewProps) {
   const { graph, analysis, layout, scale } = p;
   const hitPx = p.coarse ? 32 : 20;
+  const shapes = layerHitShapes(layout, scale, analysis.edgeWidth);
   const sel = p.selection;
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
   return (
@@ -94,8 +95,8 @@ export function LayerView(p: LayerViewProps) {
         const box = layout.nodes[node.id];
         if (!box) return null;
         const selected = p.selection?.kind === 'node' && p.selection.id === node.id;
-        const padX = hitPad(box.w, scale);
-        const padY = hitPad(box.h, scale);
+        const found = shapes.find((s) => s.kind === 'node' && s.id === node.id);
+        const hit = found ?? { x: box.x, y: box.y, w: box.w, h: box.h };
         const Layer = WEB_PIECES[node.type].Layer as ComponentType<LayerProps<typeof node.type>>;
         return (
           <g
@@ -122,14 +123,34 @@ export function LayerView(p: LayerViewProps) {
           >
             <rect
               className="tk-hit"
-              x={-padX}
-              y={-padY}
-              width={box.w + 2 * padX}
-              height={box.h + 2 * padY}
+              x={hit.x - box.x}
+              y={hit.y - box.y}
+              width={hit.w}
+              height={hit.h}
             />
             <rect className="tk-ring" x={-4} y={-4} width={box.w + 8} height={box.h + 8} rx={12} />
             <Layer {...layerProps(node, box, analysis, p.weights)} />
           </g>
+        );
+      })}
+      {layout.wires.map((w) => {
+        const edge = graph.edges[w.edge];
+        const hit = shapes.find((s) => s.kind === 'wire' && s.edge === w.edge);
+        if (!edge || !hit) return null;
+        return (
+          <WireLabel
+            key={w.edge}
+            edge={w.edge}
+            points={w.points}
+            labelAt={w.labelAt}
+            width={analysis.edgeWidth[w.edge] ?? null}
+            error={p.errorEdges.has(w.edge)}
+            selected={selectedEdge === w.edge}
+            scale={scale}
+            hitPx={hitPx}
+            hit={hit}
+            onSelect={() => p.select({ kind: 'wire', from: edge[0], to: edge[1] })}
+          />
         );
       })}
     </g>

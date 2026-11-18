@@ -1,5 +1,13 @@
 /** Pure helpers for the layer view: no React, no store. Unit tested in test/canvasPure.test.ts. */
-import { resolveEdge, type Graph, type Issue, type NodeId, type PortRef } from '@tinker/core';
+import {
+  resolveEdge,
+  type Analysis,
+  type Graph,
+  type LayerLayout,
+  type Issue,
+  type NodeId,
+  type PortRef,
+} from '@tinker/core';
 
 export type Transform = { scale: number; tx: number; ty: number };
 
@@ -75,18 +83,22 @@ export function placeIssues(
 }
 
 /**
- * The wire a node-level issue is really about: for an Output piece (its width, link or loss
- * does not fit) it is the wire into the loss, where the student sees the width that is wrong.
- * Other pieces have none, so their sentence sits at the piece.
+ * The wire a node-level issue is really about. Only the Output-versus-loss compatibility issues
+ * (link does not suit the loss, output width) belong on the wire into `loss.pred`. They are the
+ * only node issues an Output gets while it is the prediction (`analysis.predNode`), its width is
+ * known and its id is unique; "needs an input" (width unknown), a cycle (width unknown) and a
+ * duplicate id stay at the piece, as does every other piece's issue.
  */
-export function wireOfNode(graph: Graph, node: NodeId): number | undefined {
+export function wireOfNode(graph: Graph, analysis: Analysis, node: NodeId): number | undefined {
   const n = graph.nodes.find((x) => x.id === node);
-  if (n?.type !== 'output') return undefined;
+  if (n?.type !== 'output' || analysis.predNode !== node) return undefined;
+  if (analysis.outWidth[node] === undefined) return undefined;
+  if (graph.nodes.filter((x) => x.id === node).length !== 1) return undefined;
   const i = graph.edges.findIndex((e) => {
     const r = resolveEdge(graph.nodes, e);
-    if ('error' in r) return false;
+    if (!r.ok) return false;
     const to = graph.nodes.find((x) => x.id === r.to.node);
-    return r.from.node === node && to?.type === 'loss';
+    return r.from.node === node && to?.type === 'loss' && r.to.port === 'pred';
   });
   return i >= 0 ? i : undefined;
 }
@@ -165,4 +177,87 @@ export function placeInspector(
     return { left, top: Math.min(target.bottom + gap, Math.max(4, view.h - 120)) };
   }
   return { left, bottom: view.h - (target.top - gap) };
+}
+
+/** Size in abstract units of the pill drawn behind a wire's width text, at `scale` px per unit. */
+export function labelSize(text: string, scale: number): { fs: number; lw: number; lh: number } {
+  const fs = 12 / scale;
+  return { fs, lw: text.length * 0.62 * fs + 0.8 * fs, lh: 1.4 * fs };
+}
+
+export type HitRect = { x: number; y: number; w: number; h: number };
+export type HitShape =
+  ({ kind: 'node'; id: NodeId } & HitRect) | ({ kind: 'wire'; edge: number } & HitRect);
+
+/**
+ * Hit shapes of the layer view in paint order (the last one wins a press): every piece, then every
+ * wire label on top, so a label is always tappable. A label's rectangle is at least 32 screen px
+ * each way. A piece's is its box, grown to 32 px tall when short, and horizontally only when the box
+ * is narrower than 32 px, by at most 6 units, so it never reaches into the gap where labels sit.
+ * `widths[i]` is the label text of wire edge i (null: no label, so no label shape).
+ */
+export function layerHitShapes(
+  layout: LayerLayout,
+  scale: number,
+  widths: readonly (number | null | undefined)[],
+): HitShape[] {
+  const shapes: HitShape[] = [];
+  for (const [id, b] of Object.entries(layout.nodes)) {
+    const px = b.w * scale >= HIT_MIN_PX ? 0 : Math.min(hitPad(b.w, scale), 6);
+    const py = hitPad(b.h, scale);
+    shapes.push({ kind: 'node', id, x: b.x - px, y: b.y - py, w: b.w + 2 * px, h: b.h + 2 * py });
+  }
+  const labels: { shape: HitShape & { kind: 'wire' }; cy: number; half: number }[] = [];
+  for (const w of layout.wires) {
+    const width = widths[w.edge];
+    if (width === null || width === undefined) continue;
+    const { lw, lh } = labelSize(String(width), scale);
+    const hw = Math.max(lw, HIT_MIN_PX / scale);
+    const hh = Math.max(lh, HIT_MIN_PX / scale);
+    labels.push({
+      shape: {
+        kind: 'wire',
+        edge: w.edge,
+        x: w.labelAt[0] - hw / 2,
+        y: w.labelAt[1] - hh / 2,
+        w: hw,
+        h: hh,
+      },
+      cy: w.labelAt[1],
+      half: lh / 2,
+    });
+  }
+  // Two labels whose rectangles overlap (a skip wire's label sits just above a row of labels):
+  // the higher one moves up until its rectangle ends where the other begins (its centre stays inside), so each
+  // label owns a full region.
+  for (let pass = 0; pass < labels.length; pass++) {
+    let moved = false;
+    for (const a of labels) {
+      for (const b of labels) {
+        if (a === b || a.cy > b.cy) continue;
+        const sa = a.shape;
+        const sb = b.shape;
+        const overlap =
+          sa.x < sb.x + sb.w && sb.x < sa.x + sa.w && sa.y < sb.y + sb.h && sb.y < sa.y + sa.h;
+        if (!overlap || (a.cy === b.cy && a.shape.edge > b.shape.edge)) continue;
+        const y = Math.min(sa.y, sb.y - sa.h);
+        if (y + sa.h >= a.cy && y !== sa.y) {
+          sa.y = y;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+  for (const l of labels) shapes.push(l.shape);
+  return shapes;
+}
+
+/** Topmost shape containing the point (abstract units), if any. Mirrors how the browser resolves a press. */
+export function hitAt(shapes: readonly HitShape[], x: number, y: number): HitShape | undefined {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i];
+    if (s && x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return s;
+  }
+  return undefined;
 }

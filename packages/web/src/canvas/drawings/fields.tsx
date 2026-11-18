@@ -1,5 +1,5 @@
 /** Small inspector form controls shared by the piece `Fields`. Every change is one core edit. */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   setLinearOut,
   setPenalty,
@@ -77,9 +77,11 @@ export function CheckField(props: {
 }
 
 /**
- * A number box that keeps what the student types in a draft: a value that parses is committed
- * at once (so the graph follows), a half-typed one waits, and the box snaps back on blur.
- * Refused values (out of range) show the store's error toast and the box snaps back too.
+ * A number box that keeps what is typed in a draft and commits on blur or Enter (one undo step per
+ * committed edit, like the data controls). Escape reverts the draft; an empty or unparsable draft
+ * reverts; a value equal to the current one makes no edit. The draft resyncs whenever the store
+ * value changes (undo, redo, another edit), even while the box has focus. Refused values (out of
+ * range) show the store's error toast and the box shows the stored value again.
  */
 export function NumberField(props: {
   label: string;
@@ -91,6 +93,13 @@ export function NumberField(props: {
   onCommit: (v: number) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  useEffect(() => setDraft(null), [props.value]);
+  const commit = () => {
+    if (draft === null) return;
+    setDraft(null);
+    const v = Number(draft);
+    if (draft.trim() !== '' && Number.isFinite(v) && v !== props.value) props.onCommit(v);
+  };
   return (
     <Field label={props.label}>
       <input
@@ -100,13 +109,17 @@ export function NumberField(props: {
         min={props.min}
         max={props.max}
         step={props.step}
-        onChange={(e) => {
-          const text = e.target.value;
-          setDraft(text);
-          const v = Number(text);
-          if (text.trim() !== '' && Number.isFinite(v) && v !== props.value) props.onCommit(v);
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            e.stopPropagation();
+            setDraft(null);
+          }
         }}
-        onBlur={() => setDraft(null)}
       />
     </Field>
   );

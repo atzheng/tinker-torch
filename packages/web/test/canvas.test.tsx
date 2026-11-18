@@ -46,6 +46,15 @@ function tap(el: Element) {
   });
 }
 
+/** Type into a number box and leave it (blur commits). */
+function typeAndBlur(el: Element, value: string) {
+  setValue(el, value, HTMLInputElement.prototype, 'input');
+  act(() => void el.dispatchEvent(new Event('focusout', { bubbles: true })));
+}
+function key(el: Element, k: string) {
+  act(() => void el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true })));
+}
+
 function setValue(el: Element, value: string, proto: object, event: string) {
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (!setter) throw new Error('no value setter');
@@ -95,7 +104,7 @@ test('tapping a piece selects it and opens the inspector with its settings', () 
 
 test('the inspector edits width and activation; undo restores both', () => {
   tap(must('node-lin1'));
-  setValue(must('field-out'), '6', HTMLInputElement.prototype, 'input');
+  typeAndBlur(must('field-out'), '6');
   const lin1 = () => s().graph.nodes.find((n) => n.id === 'lin1');
   expect(lin1()).toMatchObject({ out: 6 });
   expect(must('wire-label-1').textContent).toBe('6');
@@ -115,7 +124,7 @@ test('the inspector edits width and activation; undo restores both', () => {
 
 test('an out-of-range width is refused and the graph is unchanged', () => {
   tap(must('node-lin1'));
-  setValue(must('field-out'), '99', HTMLInputElement.prototype, 'input');
+  typeAndBlur(must('field-out'), '99');
   expect(s().graph.nodes.find((n) => n.id === 'lin1')).toMatchObject({ out: 4 });
   expect(s().error).not.toBeNull();
 });
@@ -182,4 +191,67 @@ test('a stale weight array of the wrong size is ignored, not drawn', () => {
   act(() => useStore.setState({ host: { lin1: { W: new Float32Array(3) } } } as never));
   expect(q('heat-lin1')).toBeNull();
   act(() => useStore.setState({ host: undefined } as never));
+});
+
+const lin1Out = () => {
+  const n = s().graph.nodes.find((x) => x.id === 'lin1');
+  return n?.type === 'linear' ? n.out : -1;
+};
+const input = (id: string) => must(id) as HTMLInputElement;
+
+test('number box: typing alone does not edit; Enter commits one undo step', () => {
+  tap(must('node-lin1'));
+  const before = s().past.length;
+  setValue(must('field-out'), '6', HTMLInputElement.prototype, 'input');
+  setValue(must('field-out'), '65', HTMLInputElement.prototype, 'input');
+  setValue(must('field-out'), '7', HTMLInputElement.prototype, 'input');
+  expect(s().past.length).toBe(before);
+  expect(lin1Out()).toBe(4);
+  key(must('field-out'), 'Enter');
+  expect(lin1Out()).toBe(7);
+  expect(s().past.length).toBe(before + 1);
+  act(() => s().undo());
+  expect(lin1Out()).toBe(4);
+});
+
+test('number box: Escape reverts the draft, blur then makes no edit', () => {
+  tap(must('node-lin1'));
+  const before = s().past.length;
+  setValue(must('field-out'), '9', HTMLInputElement.prototype, 'input');
+  key(must('field-out'), 'Escape');
+  expect(input('field-out').value).toBe('4');
+  act(() => void must('field-out').dispatchEvent(new Event('focusout', { bubbles: true })));
+  expect(s().past.length).toBe(before);
+});
+
+test('number box: committing the original value, or an empty box, makes no step', () => {
+  tap(must('node-lin1'));
+  const before = s().past.length;
+  typeAndBlur(must('field-out'), '4');
+  typeAndBlur(must('field-out'), '');
+  expect(s().past.length).toBe(before);
+  expect(input('field-out').value).toBe('4');
+});
+
+test('number box: undo while the box has a draft resyncs it to the store value', () => {
+  tap(must('node-lin1'));
+  typeAndBlur(must('field-out'), '6');
+  setValue(must('field-out'), '12', HTMLInputElement.prototype, 'input'); // draft, not committed
+  act(() => s().undo());
+  expect(input('field-out').value).toBe('4');
+  act(() => s().redo());
+  expect(input('field-out').value).toBe('6');
+});
+
+test('wire inspector shows the same sentences as the callout on that wire', () => {
+  act(() => void s().apply(setLinearOut(s().graph, 'lin2', 2)));
+  const edge = s().graph.edges.findIndex((e) => e[0] === 'yhat');
+  tap(must(`wire-label-${edge}`));
+  expect(must('inspector-issues').textContent).toBe(must(`issue-wire-${edge}`).textContent);
+});
+
+test('wire labels are siblings of their wire, not nested in it', () => {
+  const label = must('wire-label-1');
+  expect(label.closest('[data-testid="wire-1"]')).toBeNull();
+  expect(label.closest('[data-testid]')).toBe(label);
 });
