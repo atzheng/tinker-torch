@@ -22,7 +22,7 @@ import { treeToHost } from './convert.js';
 import type { LayerShape, ParamTree } from './convert.js';
 import { LOSSES } from './losses.js';
 import { OPTIMIZERS } from './optim.js';
-import { PENALTY_IMPLEMENTED } from './penalty.js';
+import { PENALTY_IMPLEMENTED, penaltyTerm } from './penalty.js';
 import { ENGINE_PIECES } from './pieces/index.js';
 import type { PieceCtx } from './pieces/index.js';
 import type { Model } from './types.js';
@@ -204,9 +204,9 @@ export function compile(graph: Graph, data: DataInfo): Model {
 type WalkOpts = { train: boolean; key: JArray | null; masks?: Record<NodeId, number[][]> };
 
 /**
- * Forward pass in topological order. Consumes `params`, `x`, `y` and `opts.key` (y may be null in predict
- * mode). 'predict' returns the post-link prediction [n, width]; 'loss' returns the mean loss (no
- * penalty yet: tinker-hj4.2 adds it here, taking `tree.ref(params)` before the walk).
+ * Forward pass in topological order. Consumes `params`, `x`, `y` and `opts.key` (y may be null in
+ * predict mode). 'predict' returns the post-link prediction [n, width]; 'loss' returns the mean loss
+ * plus the weight penalty (taken from `tree.ref(params)` before the walk).
  * A value feeding several consumers is `.ref`ed for all but the last.
  */
 function walk(
@@ -218,6 +218,9 @@ function walk(
   opts: WalkOpts,
 ): JArray {
   let key = opts.key;
+  const lossStep = mode === 'loss' ? m.steps.find((s) => s.node.type === 'loss') : undefined;
+  const pen = lossStep?.node.type === 'loss' ? lossStep.node.penalty : undefined;
+  const penalty = pen && pen.lambda > 0 ? penaltyTerm(pen, tree.ref(params)) : null;
   const values = new Map<NodeId, JArray>();
   const remaining = new Map(m.uses[mode]);
   let xLeft = m.steps.filter((s) => s.node.type === 'input').length;
@@ -292,13 +295,13 @@ function walk(
   if (xLeft > 0) x.dispose();
   if (y && yLeft > 0) y.dispose();
   if (key) key.dispose();
-  return result;
+  return penalty ? result.add(penalty) : result;
 }
 
 /**
  * Test-only (CONTRACTS.md section 11, "Dropout fixtures"; not part of `Engine`): the training
  * forward and backward with dropout ON and the given keep masks instead of sampling. Borrows
- * `params`. Returns the post-link prediction, the mean loss (no penalty) and the gradients.
+ * `params`. Returns the post-link prediction, the objective (mean loss plus penalty) and the gradients.
  */
 export function debugTrainPass(
   model: Model,

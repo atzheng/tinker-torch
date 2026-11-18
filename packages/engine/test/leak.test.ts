@@ -72,8 +72,25 @@ test('a graph with dropout (key splitting, diverged steps) leaves the live buffe
   expect(samples).toEqual(samples.map(() => baseline));
   engine.dispose(state);
   expect(engine.liveArrays()).toBeLessThan(baseline);
-  // library-global caches only (the jitted random functions keep a few constant buffers)
-  expect(engine.liveArrays()).toBeLessThanOrEqual(5);
+  expect(engine.liveArrays()).toBeLessThanOrEqual(2);
+}, 120_000);
+
+test('compiling many dropout and feature models leaves no constants behind', async () => {
+  const engine = await createEngine();
+  for (const name of ['dropout_p0.5', 'feature_deg3_sin_cos_products']) {
+    const { fx, graph, data } = loadFixture(name);
+    const batch = toBatch(fx);
+    const cycle = () => {
+      const model = engine.compile(graph, data);
+      let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 1);
+      for (let i = 0; i < 2; i++) state = engine.step(model, state, batch).state;
+      engine.dispose(state);
+    };
+    for (let i = 0; i < 5; i++) cycle();
+    const baseline = engine.liveArrays();
+    for (let i = 0; i < 200; i++) cycle();
+    expect(engine.liveArrays(), name).toBe(baseline);
+  }
 }, 120_000);
 
 test('failing calls (params of another model) leak no buffers', async () => {
@@ -97,3 +114,26 @@ test('failing calls (params of another model) leak no buffers', async () => {
   engine.dispose(state);
   engine.dispose(foreign);
 });
+
+test('steps with a weight penalty leave the live buffer count flat', async () => {
+  const engine = await createEngine();
+  const { fx, graph, data } = loadFixture('penalty_l2');
+  const model = engine.compile(graph, data);
+  const batch = toBatch(fx);
+  let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 1);
+  const once = (i: number) => {
+    const r = engine.step(model, state, batch);
+    state = r.state;
+    expect(r.diverged).toBe(false);
+    if (i % 10 === 0) engine.evaluate(model, state.params, batch);
+  };
+  for (let i = 1; i <= 60; i++) once(i);
+  const baseline = engine.liveArrays();
+  const samples: number[] = [];
+  for (let i = 1; i <= 3000; i++) {
+    once(i);
+    if (i % 500 === 0) samples.push(engine.liveArrays());
+  }
+  expect(samples).toEqual(samples.map(() => baseline));
+  engine.dispose(state);
+}, 60_000);

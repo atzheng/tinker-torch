@@ -1,4 +1,4 @@
-import { random } from '@jax-js/jax';
+import { numpy as np, random } from '@jax-js/jax';
 import type { NodeOf } from '@tinker/core';
 import type { EnginePiece } from './types.js';
 
@@ -14,7 +14,8 @@ export const dropout: EnginePiece<NodeOf<'dropout'>> = {
     if (!x) throw new Error('A Dropout piece is missing its input.');
     if (!ctx.train || node.p <= 0) return x;
     const injected = ctx.dropoutMask?.(node.id);
-    const mask = injected ?? random.bernoulli(ctx.nextKey(), 1 - node.p, x.shape);
+    const mask =
+      injected ?? random.uniform(ctx.nextKey(), x.shape).greaterEqual(node.p).astype(np.float32);
     return x.mul(mask).mul(1 / (1 - node.p));
   },
 };
