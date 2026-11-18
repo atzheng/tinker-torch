@@ -50,8 +50,8 @@ function overwrite(t: ParamTree, ax: ParamAxis, oh: JArray, val: JArray): ParamT
   if (!layer) throw new Error(`"${ax.node}" has no parameters to vary.`);
   const old = ax.tensor === 'W' ? layer.W : layer.b;
   if (!old) throw new Error(`"${ax.node}" has no bias.`);
-  // old + oh * (val - old): equals val at the one-hot entry, old elsewhere
-  const next = old.ref.add(oh.mul(val.sub(old)));
+  // a select, not arithmetic: exact for any old value (1e8, NaN, Inf)
+  const next = np.where(oh.greater(0.5), val, old);
   return { ...t, [ax.node]: ax.tensor === 'W' ? { ...layer, W: next } : { ...layer, b: next } };
 }
 

@@ -40,6 +40,29 @@ test('two_param: lossGrid equals evaluate with the values written', async () => 
   engine.dispose(params);
 });
 
+test('two_param: an exact overwrite for a huge or non-finite old value', async () => {
+  const engine = await createEngine();
+  const { fx, graph, data } = loadFixture('two_param');
+  const model = engine.compile(graph, data);
+  const batch = toBatch(fx);
+  const a = Float32Array.from([-0.5, 3]);
+  const b = Float32Array.from([0.3]);
+  for (const bad of [1e8, NaN, Infinity]) {
+    const params = engine.fromHost(model, {
+      lin1: { W: Float32Array.of(bad), b: Float32Array.of(0) },
+    });
+    const grid = engine.lossGrid(model, params, batch, [W, B], a, b);
+    for (let i = 0; i < a.length; i++) {
+      const p = engine.fromHost(model, {
+        lin1: { W: Float32Array.of(a[i] ?? 0), b: Float32Array.of(0.3) },
+      });
+      expect(grid[i]).toBeCloseTo(engine.evaluate(model, p, batch), 4);
+      engine.dispose(p);
+    }
+    engine.dispose(params);
+  }
+});
+
 test('an MLP: two entries of different layers match evaluate; errors', async () => {
   const engine = await createEngine();
   const { fx, graph, data } = loadFixture('mlp_tanh_sgd_5steps');
@@ -91,6 +114,36 @@ test('50x50 grid timing', async () => {
   const ms = (performance.now() - t0) / reps;
   console.log(`lossGrid 50x50 (two_param): ${ms.toFixed(1)} ms`);
   expect(ms).toBeLessThan(50);
+  engine.dispose(params);
+});
+
+test('50x50 grid with 500 rows stays fast', async () => {
+  const engine = await createEngine();
+  const { fx, graph, data } = loadFixture('mlp_tanh_sgd_5steps');
+  const model = engine.compile(graph, data);
+  const b0 = toBatch(fx);
+  const n = 500;
+  const batch = {
+    n,
+    x: Float32Array.from(
+      { length: n * (b0.x.length / b0.n) },
+      (_, i) => b0.x[i % b0.x.length] ?? 0,
+    ),
+    y: Float32Array.from({ length: n }, (_, i) => b0.y[i % b0.y.length] ?? 0),
+  };
+  const params = engine.fromHost(model, toHostParams(fx.params));
+  const ids = Object.keys(fx.params);
+  const axes: [ParamAxis, ParamAxis] = [
+    { node: ids[0] ?? '', tensor: 'W', index: 0 },
+    { node: ids[ids.length - 1] ?? '', tensor: 'b', index: 0 },
+  ];
+  const g = Float32Array.from({ length: 50 }, (_, i) => -2 + (4 * i) / 49);
+  engine.lossGrid(model, params, batch, axes, g, g);
+  const t0 = performance.now();
+  engine.lossGrid(model, params, batch, axes, g, g);
+  const ms = performance.now() - t0;
+  console.log(`lossGrid 50x50 (mlp, n=500): ${ms.toFixed(1)} ms`);
+  expect(ms).toBeLessThan(250);
   engine.dispose(params);
 });
 
