@@ -3,6 +3,9 @@ import { expect, test } from 'vitest';
 import { loadFixture, toBatch, toHostParams } from './util.js';
 import type { ParamAxis } from '../src/types.js';
 
+// Timing checks are opt-in (TINKER_BENCH=1): they fail under load, e.g. parallel test runs.
+const bench = process.env['TINKER_BENCH'] ? test : test.skip;
+
 installProbe();
 const { createEngine } = await import('../src/index.js');
 
@@ -98,7 +101,7 @@ test('an MLP: two entries of different layers match evaluate; errors', async () 
   engine.dispose(params);
 });
 
-test('50x50 grid timing', async () => {
+bench('50x50 grid timing', async () => {
   const engine = await createEngine();
   const { fx, graph, data } = loadFixture('two_param');
   const model = engine.compile(graph, data);
@@ -117,7 +120,7 @@ test('50x50 grid timing', async () => {
   engine.dispose(params);
 });
 
-test('50x50 grid with 500 rows stays fast', async () => {
+bench('50x50 grid with 500 rows stays fast', async () => {
   const engine = await createEngine();
   const { fx, graph, data } = loadFixture('mlp_tanh_sgd_5steps');
   const model = engine.compile(graph, data);
