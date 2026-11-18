@@ -1,0 +1,13 @@
+pnpm-lock.yaml
+.beads/
+.claude/
+**/dist/
+**/coverage/
+**/.wrangler/
+packages/engine/test/fixtures/
+
+# Hand-written project docs; not reformatted by tooling
+/AGENTS.md
+/CLAUDE.md
+/CONTRACTS.md
+/SPEC.md
