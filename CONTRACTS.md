@@ -95,6 +95,7 @@ type TrainConfig = {
 type Graph = { version: 1; nodes: Node[]; edges: Edge[]; data: DataConfig; train: TrainConfig };
 ```
 
+- Also exported from `graph.ts`: `DatasetName` and the `*_NAMES`/`*_FNS` const lists, `NodeBody`, `parsePort(ref) -> {node, port | null}`, `resolveEdge(nodes, edge)` (fills default ports, one sentence on a bad edge) and `inputPortsOf(type)`. Types are inferred from the zod schema.
 - `parseGraph(json: unknown): { ok: true; graph: Graph } | { ok: false; error: string }`. Fills defaults (`standardize: false`, huber `delta: 1`). Unknown fields are rejected. The error is one plain sentence.
 - `serializeGraph(graph)`: stable key order, two-space JSON.
 - The weight penalty is the `penalty` field on the loss node. In the palette it is a piece ("Weight penalty"); dropping it on the loss sets this field. It has no node of its own.
@@ -114,14 +115,16 @@ type CorePiece<N extends Node> = {
   defaults: () => Omit<N, 'id'>;
   outWidth(node: N, inWidths: Record<string, number>, ctx: WidthCtx): number | WidthError;
   paramShapes(node: N, inWidth: number): { W?: [rows: number, cols: number]; b?: [number] }; // W is [in, out]
-  torch(node: N): string;                 // e.g. "nn.Linear(4, 8, bias=True)"; used by the later code view
+  torch(node: N, inWidth?: number): string; // e.g. "nn.Linear(4, 8, bias=True)" (needs inWidth); used by the later code view
 };
 type WidthCtx = { dataColumns: number; numClasses: number };
 type WidthError = { error: string };      // one plain sentence, e.g. "Add needs both inputs to have the same width: 4 and 8."
 const CORE_PIECES: { [T in PieceType]: CorePiece<Extract<Node, { type: T }>> };
 
 // a palette entry (one per row of the SPEC pieces table, 14 entries)
-type PaletteEntry = { key: string; label: string; family: Family | 'penalties'; make: () => Omit<Node,'id'> | Penalty };
+type PaletteEntry = { key: string; label: string; family: Family | 'penalties'; make: () => NodeBody | Penalty };
+// NodeBody = Omit<Node, 'id'> distributed over the union. Target is in family 'outputs'.
+// The weight penalty's make() gives { kind: 'l2', lambda: 0.01 }.
 const PALETTE: PaletteEntry[];
 
 // engine/src/pieces/index.ts
@@ -133,11 +136,14 @@ const WEB_PIECES: { [T in PieceType]: WebPiece<Extract<Node, { type: T }>> }; //
 
 Width rules: input = number of selected columns; feature = d·degree + (sin ? d : 0) + (cos ? d : 0) + (products ? d(d−1)/2 : 0), where power 1 is x itself; linear = `out`; activation, dropout, output = input width; add = shared input width (error if unequal); target = 1 for regression and binary sets, and the loss checks against classes; loss has no output.
 
+Feature output layout (the order of columns; the engine and the torch fixtures use it): `x^p` for p = 1..degree (power-major, then column, so power 1 is x itself), then `sin(x)` if `sin`, then `cos(x)` if `cos`, then `x_i * x_j` for i < j in row-major pair order if `products`. sin and cos apply to the raw column values (no frequency scaling).
+
 Parameter count of a Linear: in·out + (bias ? out : 0). Every other piece has 0.
 
 ## 4. Analysis (`core/analyse.ts`)
 
 ```ts
+// DataInfo is defined in core/graph.ts (not analyse.ts) so that data and analysis both import it.
 type DataInfo = { columns: string[]; kind: 'regression' | 'binary'; numClasses: number }; // from the dataset
 type Issue = { at: { node?: NodeId; edge?: number }; message: string };  // edge = index into graph.edges
 type Analysis = {
@@ -154,6 +160,20 @@ function analyse(graph: Graph, data: DataInfo): Analysis;
 ```
 
 Trainable means: no cycles; exactly one loss; every input port connected; a path input -> ... -> output -> loss.pred and target -> loss.target; widths resolve; the output/loss/target combination is in the table below; total parameters <= 10,000. Each failure gives one Issue with one plain sentence.
+
+`analyse` does not assume `parseGraph` rejected anything beyond unknown nodes/ports: cycles, self-edges, doubly-fed ports, duplicate or unknown Input columns and bad edges all become issues. Behaviour fixed here for later beads:
+
+- `order`: with exactly one loss that is not on a cycle, the ancestors of the loss (the loss last) in topological order, so dangling nodes are left out. With no loss, several losses, or a loss on a cycle, every node not blocked by a cycle, in topological order. Nodes on or downstream of a cycle are never in `order`.
+- `inWidth` and `outWidth` have no key where the width is unknown (never NaN or null). `inWidth` is absent for Input and Target; for Add it is the shared width and absent when the two inputs differ or one is missing; for the loss it is the width of `pred`. `outWidth` of a loss is absent.
+- `params` has a key for every node whose input width is known, including nodes off the loss path; `totalParams` sums only nodes in `order`. Consumers (init/reconcile, engine) iterate `order`, not the keys of `params`. The records are prototype-free, so lookups by node id are safe for any id.
+- Issues are reported at the root cause only: a node whose upstream width is unknown gets no issue of its own.
+- An Add width mismatch is one issue with both `node` (the Add) and `edge` (the wire into `b`). Other issues about one wire carry `edge`, and `node` too when a node is the cause.
+- A doubly-fed input port: the first wire (lowest edge index) is used for widths and order; each later wire gets an issue with its `edge` and the receiving `node`, and `edgeWidth` for it is null.
+- A self-edge or any cycle: one issue at the first node on the cycle; those nodes have unknown widths.
+- Wiring rules: Output may only feed `loss.pred` and Target only `loss.target` (issue on the edge otherwise); `loss.pred` must come from an Output and `loss.target` from a Target; an Input listing a column twice or a column the dataset lacks is an issue at the Input node.
+- `lossNode` and `predNode` can be non-null while the loss is not in `order` (a loss downstream of a cycle). Consumers may rely on `order` ending in `lossNode` only when `trainable` is true.
+- Duplicate node ids (only possible for an unparsed graph) give an issue at each later duplicate; the first node with the id is analysed.
+- `predNode` is the Output feeding `loss.pred` and `lossNode` the loss; both are null unless there is exactly one loss (`predNode` also null if `pred` is unconnected or not from an Output).
 
 | Loss | Output link | Prediction width | Target |
 | --- | --- | --- | --- |
@@ -212,8 +232,11 @@ function truth(set: DatasetName, xRaw: Float32Array): Float32Array; // regressio
 - Regression noise: y = f*(x) + noise · s · ε, ε ~ N(0, 1), where s is the standard deviation of f* over a uniform sample of the domain (a constant per set, computed once).
 - Classification noise: Gaussian jitter of point positions with std noise · 0.5 (blobs: noise scales its std, 0.6 · (0.5 + noise)). Classes are balanced.
 - n is the total; the last round(n · val) points are validation. Columns are named `x1`, `x2`.
-- `data/grid.ts`: `grid1d(domain, 200)` and `grid2d(domain, 64)` return raw x plus standardised x.
-- `data/batches.ts`: `batchSchedule(nTrain, batch, seed)` yields index arrays; each epoch shuffles with `makeRng(seed).fork('epoch' + e)`; `batch: 'full'` yields all rows in order every step.
+- Standardisation: when `config.standardize` is on, `xTrain` and `xVal` are stored already standardised, (x - mean) / std per column, with mean and population std (divide by n) of the raw training rows; a constant column gets std 1. `standardization` holds those numbers (null when off) and `domain` stays in raw units. `standardizeRows(x, d, st)` and `unstandardizeRows(x, d, st)` convert row-major arrays.
+- `truth` takes raw (unstandardised) x. Regression returns f*(x). Classification returns P(y=1|x) of the clean generator: blobs the exact logistic of the two Gaussians, circle (cut at r = 1.15, mid-gap), xor and moons (class 1 = inner moon, the nearer half circle) 0 or 1. All v1 classification sets are binary, so `info.kind` is `'binary'` with `numClasses` 2; regression has `numClasses` 1. `DataInfo` is defined in `core/graph.ts`.
+- Classification labels alternate 0, 1, 0, 1, ... so the train and validation parts are each balanced.
+- `data/grid.ts`: `grid1d(domain, m = 200, standardization = null)` and `grid2d(domain, m = 64, standardization = null)` return `{ n, d, xRaw, xStd }` (row-major Float32Arrays; xStd equals xRaw when standardization is null). Both span the domain inclusive of the ends. grid2d row index is `iy * m + ix`, x1 varying fastest.
+- `data/batches.ts`: `batchSchedule(nTrain, batch, seed)` is an infinite generator of fresh `Int32Array` index arrays, one per step; each epoch shuffles with `makeRng(seed).fork('epoch' + e)` and cuts the order into batches, keeping a smaller last batch so every row appears once per epoch. `batch: 'full'` yields all rows in order every step. `stepsPerEpoch(nTrain, batch)` gives steps per epoch. `gatherBatch(xTrain, yTrain, d, idx)` copies those rows into a `Batch` (section 7).
 
 ## 7. Engine (`engine/src/index.ts`)
 
@@ -313,9 +336,13 @@ type Fixture = {
     grads: Record<NodeId, { W: number[]; b?: number[] }>;  // d loss / d params
     after?: { steps: number; params: Record<NodeId, { W: number[]; b?: number[] }>; losses: number[] }; // optimizer cases
     dropoutMask?: number[][];         // dropout cases: the engine test injects this mask instead of sampling
+    predEval?: number[];              // dropout cases: dropout-off forward (what predict() returns)
+    lossEval?: number;                // dropout cases: dropout-off objective (what evaluate() returns)
   };
 };
 ```
+
+Details: in dropout cases `pred`, `loss` and `grads` are the dropout-ON training forward and backward with the given mask (how the engine test injects the mask is the engine's choice); `predEval` and `lossEval` are the dropout-off values that `predict` and `evaluate` must return. At-zero conventions are pinned by fixtures: the L1 penalty has subgradient sign(0) = 0 (`penalty_l1_zero_weight`) and relu'(0) = 0 (`act_relu_zero_preact`). `dropoutMask` is a 0/1 keep mask shaped [n][width of the dropout node]; the engine multiplies by mask/(1−p). Classification targets in `batch.y` are class indices stored as floats (0 or 1). `after.losses[k]` is the objective before update k+1 (so `losses[0] == loss`). GELU is the exact erf form (`nn.GELU()`); jax-js `gelu` defaults to the tanh approximation, so the engine must pass `approximate: false`.
 
 Tolerance: 1e-5 absolute and relative on pred, loss and grads; 1e-4 on `after.params` after 5 steps. The case list is in the fixtures bead (`tinker-7x7.3`).
 
