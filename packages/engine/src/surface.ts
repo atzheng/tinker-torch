@@ -77,6 +77,7 @@ function gridFn(m: Internals, axes: [ParamAxis, ParamAxis]): GridFn {
   };
   const fn = jit(vmap(one, [null, null, null, null, null, 0, 0])) as unknown as GridFn;
   byKey.set(key, fn);
+  m.disposables.add(fn as unknown as { dispose(): void });
   return fn;
 }
 

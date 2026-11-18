@@ -5,7 +5,15 @@ import type { Array as JArray } from '@jax-js/jax';
 import type * as optax from '@jax-js/optax';
 import { CORE_NAME, initParams } from '@tinker/core';
 import type { Batch, DataInfo, Graph, HostParams, NodeId } from '@tinker/core';
-import { batchArrays, checkBatch, checkTree, compile, guarded, internals } from './compile.js';
+import {
+  batchArrays,
+  checkBatch,
+  checkTree,
+  compile,
+  disposeCompiled,
+  guarded,
+  internals,
+} from './compile.js';
 import type { ParamTree } from './convert.js';
 import {
   cloneTree,
@@ -210,6 +218,16 @@ function makeEngine(): Engine {
 
     trainMany(model, seeds, data, steps) {
       return trainMany(model, seeds, data, steps);
+    },
+
+    /**
+     * Frees the model's jitted functions (predict, evaluate, step, lossGrid, trainMany). Safe to call
+     * twice. Afterwards every method that takes the model throws "This model was disposed.". Params
+     * and TrainStates made for it stay valid arrays: `toHost`, `write`, `clone` and `dispose` still work,
+     * but nothing can run them (no `step`/`predict`) without a new model.
+     */
+    disposeModel(model) {
+      disposeCompiled(model);
     },
 
     /** Borrows `params`; the clone shares the immutable arrays by reference count and is independent to dispose. */

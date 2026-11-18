@@ -57,6 +57,9 @@ export type Internals = {
   evalFn(): LossFn;
   stepFn(): StepFn;
   optimizer(): optax.GradientTransformation;
+  /** Jitted functions built for this model (here and in many.ts / surface.ts); freed by `disposeModel`. */
+  disposables: Set<{ dispose(): void }>;
+  disposed: boolean;
 };
 
 const internalsOf = new WeakMap<object, Internals>();
@@ -64,7 +67,27 @@ const internalsOf = new WeakMap<object, Internals>();
 export function internals(model: Model): Internals {
   const m = internalsOf.get(model);
   if (!m) throw new Error('Not a Model made by this engine.');
+  if (m.disposed) throw new Error('This model was disposed.');
   return m;
+}
+
+/**
+ * Frees every jitted function (and the constants they captured) built for `model`. Safe to call
+ * twice; afterwards `internals(model)` throws.
+ */
+export function disposeCompiled(model: Model): void {
+  const m = internalsOf.get(model);
+  if (!m) throw new Error('Not a Model made by this engine.');
+  if (m.disposed) return;
+  m.disposed = true;
+  for (const d of m.disposables) {
+    try {
+      d.dispose();
+    } catch {
+      // already freed
+    }
+  }
+  m.disposables.clear();
 }
 
 /** Throws one plain sentence when a piece, loss, penalty or optimizer is still a placeholder. */
@@ -152,18 +175,22 @@ export function compile(graph: Graph, data: DataInfo): Model {
     lossNode: analysis.lossNode,
     link,
     steps,
+    disposables: new Set(),
+    disposed: false,
     uses: { predict: usesFor('predict'), loss: usesFor('loss') },
     predictFn() {
       // jit consumes params and x
       predictFn ??= jit((params: ParamTree, x: JArray) =>
         walk(self, params, x, null, 'predict', { train: false, masks: null }),
       ) as unknown as PredictFn;
+      self.disposables.add(predictFn as unknown as { dispose(): void });
       return predictFn;
     },
     evalFn() {
       evalFn ??= jit((params: ParamTree, x: JArray, y: JArray) =>
         walk(self, params, x, y, 'loss', { train: false, masks: null }),
       ) as unknown as LossFn;
+      self.disposables.add(evalFn as unknown as { dispose(): void });
       return evalFn;
     },
     optimizer() {
@@ -193,6 +220,7 @@ export function compile(graph: Graph, data: DataInfo): Model {
           return [newParams, newOpt, loss, check, newKey];
         },
       ) as unknown as StepFn;
+      self.disposables.add(stepFn as unknown as { dispose(): void });
       return stepFn;
     },
   };
