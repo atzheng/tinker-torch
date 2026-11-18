@@ -5,7 +5,7 @@ import type { Array as JArray } from '@jax-js/jax';
 import type * as optax from '@jax-js/optax';
 import { CORE_NAME, initParams } from '@tinker/core';
 import type { Batch, DataInfo, Graph, HostParams, NodeId } from '@tinker/core';
-import { batchArrays, checkBatch, compile, internals } from './compile.js';
+import { batchArrays, checkBatch, checkTree, compile, guarded, internals } from './compile.js';
 import type { ParamTree } from './convert.js';
 import {
   cloneTree,
@@ -99,6 +99,7 @@ function makeEngine(): Engine {
     startTraining(model, params, seed) {
       const m = internals(model);
       const t = peekParams(params);
+      checkTree(m, t);
       const opt = m.optimizer().init(tree.ref(t));
       takeParams(params);
       return { params: wrapParams(t), opt, step: 0, key: random.key(seed) };
@@ -116,14 +117,14 @@ function makeEngine(): Engine {
       const oldTree = peekParams(state.params);
       const oldOpt = state.opt as optax.OptState;
       checkBatch(m, batch.x, batch.y, batch.n);
+      checkTree(m, oldTree);
       const { x, y } = batchArrays(m, batch);
       // The jitted step consumes what it is given; `state` keeps its own references until we know
       // the outcome, so it stays valid if anything throws and a diverged step can return it.
-      const [newTree, newOpt, lossArr, checkArr] = m.stepFn()(
-        tree.ref(oldTree),
-        tree.ref(oldOpt),
-        x,
-        y,
+      const pRef = tree.ref(oldTree);
+      const oRef = tree.ref(oldOpt);
+      const [newTree, newOpt, lossArr, checkArr] = guarded([pRef, oRef, x, y], () =>
+        m.stepFn()(pRef, oRef, x, y),
       );
       const loss = lossArr.item();
       const check = checkArr.item();
@@ -152,11 +153,13 @@ function makeEngine(): Engine {
       const m = internals(model);
       const t = peekParams(params);
       checkBatch(m, x, null, n);
+      checkTree(m, t);
       const xa = np.array(Float32Array.from(x), {
         shape: [n, m.dataColumns.length],
         dtype: np.float32,
       });
-      const out = m.predictFn()(tree.ref(t), xa);
+      const pRef = tree.ref(t);
+      const out = guarded([pRef, xa], () => m.predictFn()(pRef, xa));
       return Float32Array.from(out.dataSync() as Float32Array);
     },
 
@@ -165,8 +168,10 @@ function makeEngine(): Engine {
       const m = internals(model);
       const t = peekParams(params);
       checkBatch(m, batch.x, batch.y, batch.n);
+      checkTree(m, t);
       const { x, y } = batchArrays(m, batch);
-      return m.evalFn()(tree.ref(t), x, y).item();
+      const pRef = tree.ref(t);
+      return guarded([pRef, x, y], () => m.evalFn()(pRef, x, y)).item();
     },
 
     lossGrid() {

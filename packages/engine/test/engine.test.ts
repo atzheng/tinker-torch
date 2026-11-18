@@ -274,3 +274,31 @@ describe('divergence', () => {
     engine.dispose(ok.state);
   });
 });
+
+describe('failing calls and finiteness', () => {
+  test('params of another model are rejected with a sentence, before anything is consumed', () => {
+    const { graph, data, batch } = mlp();
+    const model = engine.compile(graph, data);
+    const other = loadFixture('two_param');
+    const otherModel = engine.compile(other.graph, other.data);
+    const foreign = engine.init(otherModel, 1);
+    expect(() => engine.predict(model, foreign, batch.x, batch.n)).toThrow(/different model/);
+    expect(() => engine.evaluate(model, foreign, batch)).toThrow(/different model/);
+    expect(() => engine.startTraining(model, foreign, 1)).toThrow(/different model/);
+    // still alive and usable with its own model
+    expect(engine.toHost(foreign)['lin1']?.W).toHaveLength(1);
+    engine.dispose(foreign);
+  });
+
+  test('a finite parameter near 3e38 is not reported as diverged', () => {
+    const { fx, graph, data } = loadFixture('linear_nobias_d2');
+    const model = engine.compile(withLr(graph, 0), data);
+    const big = toHostParams({ lin1: { W: Array.from(fx.params['lin1']?.W ?? [], () => 3e38) } });
+    const state = engine.startTraining(model, engine.fromHost(model, big), 1);
+    const zero = { x: new Float32Array(2), y: new Float32Array(1), n: 1 };
+    const r = engine.step(model, state, zero);
+    expect(r.diverged).toBe(false);
+    expect(r.loss).toBe(0);
+    engine.dispose(r.state);
+  });
+});

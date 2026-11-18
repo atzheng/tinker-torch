@@ -47,3 +47,25 @@ test('10,000 steps (with predict, evaluate, clone and diverged steps) leave the 
   // the engine's own use leaves only the library-global caches behind
   expect(engine.liveArrays()).toBeLessThanOrEqual(2);
 }, 120_000);
+
+test('failing calls (params of another model) leak no buffers', async () => {
+  const engine = await createEngine();
+  const a = loadFixture('mlp_tanh_sgd_5steps');
+  const b = loadFixture('two_param');
+  const model = engine.compile(a.graph, a.data);
+  const foreign = engine.init(engine.compile(b.graph, b.data), 1);
+  const batch = toBatch(a.fx);
+  const state = engine.startTraining(model, engine.fromHost(model, toHostParams(a.fx.params)), 1);
+  const bad = { ...state, params: foreign };
+  const fail = () => {
+    expect(() => engine.predict(model, foreign, batch.x, batch.n)).toThrow();
+    expect(() => engine.evaluate(model, foreign, batch)).toThrow();
+    expect(() => engine.step(model, bad, batch)).toThrow();
+  };
+  fail();
+  const before = engine.liveArrays();
+  for (let i = 0; i < 100; i++) fail();
+  expect(engine.liveArrays()).toBe(before);
+  engine.dispose(state);
+  engine.dispose(foreign);
+});

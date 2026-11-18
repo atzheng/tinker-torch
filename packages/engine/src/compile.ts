@@ -171,9 +171,10 @@ export function compile(graph: Graph, data: DataInfo): Model {
         const [updates, newOpt] = optimizer.update(grads, optState);
         const newParams = optax.applyUpdates(params, updates) as ParamTree;
         // One scalar that is non-finite when any updated parameter is (read next to the loss).
+        // leaf * 0 is 0 for every finite value (even 3e38, where a plain sum would overflow) and NaN for inf/NaN.
         let check = np.array(0);
         for (const leaf of tree.leaves(tree.ref(newParams)) as JArray[])
-          check = check.add(leaf.sum());
+          check = check.add(leaf.mul(0).sum());
         return [newParams, newOpt, loss, check];
       }) as unknown as StepFn;
       return stepFn;
@@ -263,4 +264,37 @@ export function batchArrays(m: Internals, b: Batch): { x: JArray; y: JArray } {
     x: np.array(Float32Array.from(b.x), { shape: [b.n, d], dtype: np.float32 }),
     y: np.array(Float32Array.from(b.y), { shape: [b.n], dtype: np.float32 }),
   };
+}
+
+/** Throws a plain sentence when `t` does not have the parameter shapes of the model. Borrows `t`. */
+export function checkTree(m: Internals, t: ParamTree): void {
+  const same = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
+  const bad = new Error('These parameters were made for a different model.');
+  const ids = Object.keys(t);
+  if (ids.length !== m.shapes.size) throw bad;
+  for (const [id, s] of m.shapes) {
+    const l = Object.hasOwn(t, id) ? t[id] : undefined;
+    if (!l || !same(l.W.shape, s.W)) throw bad;
+    if (s.b ? !l.b || !same(l.b.shape, s.b) : l.b !== undefined) throw bad;
+  }
+}
+
+/**
+ * Runs `fn` (which hands `held` to a jitted function, consuming it). If `fn` throws, disposes
+ * everything in `held` that is still alive, so a failing call leaks no buffer, then rethrows.
+ * `held` holds jax arrays and trees of them.
+ */
+export function guarded<T>(held: unknown[], fn: () => T): T {
+  try {
+    return fn();
+  } catch (e) {
+    for (const h of held) {
+      try {
+        tree.dispose(h as ParamTree);
+      } catch {
+        // already consumed by the failed call
+      }
+    }
+    throw e;
+  }
 }
