@@ -156,7 +156,9 @@ export function TrainingBar() {
         <label className={styles.field}>
           <select
             value={String(s.batch)}
-            onChange={(e) => s.setBatch(e.target.value === 'full' ? 'full' : Number(e.target.value))}
+            onChange={(e) =>
+              s.setBatch(e.target.value === 'full' ? 'full' : Number(e.target.value))
+            }
             aria-label="Batch size"
             data-testid="batch"
           >
