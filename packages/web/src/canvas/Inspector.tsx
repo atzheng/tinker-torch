@@ -1,8 +1,10 @@
 import type { ComponentType } from 'react';
-import type { Analysis, Graph, Node, PieceType } from '@tinker/core';
+import type { Analysis, Graph, HostParams, Node, PieceType } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import { deleteSelection } from './actions.js';
+import { biasAt, weightAt } from './neuronPure.js';
 import { edgeIndexOf } from './pure.js';
+import { hostShape } from '../state/hostShape.js';
 import { useStore } from '../state/store.js';
 import type { Selection } from '../state/viewSlice.js';
 
@@ -82,6 +84,69 @@ function WireInspector({
   );
 }
 
+/** The live value of a weight; follows the train slice's `host` while it runs. */
+function EdgeInspector(p: {
+  graph: Graph;
+  analysis: Analysis;
+  node: string;
+  i: number;
+  j: number;
+  fallback: HostParams | undefined;
+}) {
+  const host = useStore((s) => s.host) ?? p.fallback;
+  const inW = p.analysis.inWidth[p.node];
+  const n = p.graph.nodes.find((x) => x.id === p.node);
+  const w =
+    n?.type === 'linear' && inW !== undefined
+      ? weightAt(
+          host,
+          p.node,
+          p.i,
+          p.j,
+          inW,
+          n.out,
+          hostShape(host, p.node, useStore.getState().dataInfo),
+        )
+      : undefined;
+  return (
+    <>
+      <h2 className="tk-inspector-title">Weight</h2>
+      <p className="tk-muted">
+        <code>{p.node}</code>: input {p.i} to unit {p.j}
+      </p>
+      <p data-testid="inspector-weight">
+        {w === undefined ? 'No value yet' : `Value ${w.toFixed(4)}`}
+      </p>
+    </>
+  );
+}
+
+function UnitInspector(p: {
+  graph: Graph;
+  analysis: Analysis;
+  node: string;
+  index: number;
+  fallback: HostParams | undefined;
+}) {
+  const host = useStore((s) => s.host) ?? p.fallback;
+  const n = p.graph.nodes.find((x) => x.id === p.node);
+  if (!n) return null;
+  const b = n.type === 'linear' && n.bias ? biasAt(host, n.id, p.index) : undefined;
+  const inW = p.analysis.inWidth[n.id];
+  return (
+    <>
+      <h2 className="tk-inspector-title">
+        Unit {p.index} <code>{n.id}</code>
+      </h2>
+      <p className="tk-muted">{PIECE_LABEL[n.type]}</p>
+      {n.type === 'linear' && inW !== undefined && (
+        <p data-testid="inspector-fanin">{inW} incoming weights</p>
+      )}
+      {b !== undefined && <p data-testid="inspector-bias">Bias {b.toFixed(4)}</p>}
+    </>
+  );
+}
+
 /**
  * Settings and facts for the selected piece or wire. Positioned by the canvas beside the piece.
  * Every change goes through core edits and `graphSlice.apply` (the Fields do that), so undo
@@ -91,11 +156,14 @@ export function Inspector({
   selection,
   analysis,
   wireMessages,
+  weights,
 }: {
   selection: Selection;
   analysis: Analysis;
   /** The sentences the canvas shows on the selected wire (`placeIssues().byEdge`), so both agree. */
   wireMessages: string[];
+  /** Weights shown for a selected edge or unit until the train slice has its own. */
+  weights?: HostParams | undefined;
 }) {
   const graph = useStore((s) => s.graph);
   const select = useStore((s) => s.select);
@@ -112,15 +180,36 @@ export function Inspector({
       >
         {'×'}
       </button>
-      <button
-        type="button"
-        className="tk-inspector-delete"
-        data-testid="inspector-delete"
-        onClick={deleteSelection}
-      >
-        Delete
-      </button>
+      {(selection.kind === 'node' || selection.kind === 'wire') && (
+        <button
+          type="button"
+          className="tk-inspector-delete"
+          data-testid="inspector-delete"
+          onClick={deleteSelection}
+        >
+          Delete
+        </button>
+      )}
       {selection.kind === 'node' && node && <NodeInspector node={node} analysis={analysis} />}
+      {selection.kind === 'edge' && (
+        <EdgeInspector
+          graph={graph}
+          analysis={analysis}
+          node={selection.node}
+          i={selection.i}
+          j={selection.j}
+          fallback={weights}
+        />
+      )}
+      {selection.kind === 'unit' && (
+        <UnitInspector
+          graph={graph}
+          analysis={analysis}
+          node={selection.node}
+          index={selection.index}
+          fallback={weights}
+        />
+      )}
       {selection.kind === 'wire' && (
         <WireInspector
           graph={graph}

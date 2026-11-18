@@ -53,9 +53,9 @@ function ptr(el: Element, type: string, x: number, y: number) {
 function screenOf(fn: (l: ReturnType<typeof layoutLayers>) => [number, number]): [number, number] {
   const g = s().graph;
   const layout = layoutLayers(g, analyse(g, s().dataInfo));
-  const t = fitTransform(layout.size, { w: 800, h: 500 });
+  const t = fitTransform(layout.size, { w: 800, h: 500 - 44 }); // 44: header strip above the drawing
   const [x, y] = fn(layout);
-  return [x * t.scale + t.tx, y * t.scale + t.ty];
+  return [x * t.scale + t.tx, y * t.scale + t.ty + 44];
 }
 
 function dragEntry(key: string, to: [number, number]) {
