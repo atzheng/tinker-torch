@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { layoutLayers } from '@tinker/core';
+import { inputPortsOf as inputPortsOfType, layoutLayers } from '@tinker/core';
 import './canvas.css';
+import { useEditShortcuts } from './actions.js';
+import {
+  dnd,
+  editForDrop,
+  inputPortAt,
+  outputPortAt,
+  resolveDrop,
+  type DragPayload,
+} from './dnd.js';
+import { lockedIds } from '../state/locks.js';
 import { Inspector } from './Inspector.js';
 import { LayerView } from './LayerView.js';
+import { Toast } from './Toast.js';
 import {
   edgeIndexOf,
   errorNodes,
@@ -81,6 +92,11 @@ export function Canvas() {
   const weights = useWeights(analysis);
   const selection = useSelection();
   const coarse = useCoarse();
+  const apply = useStore((s) => s.apply);
+  const selectNode = useStore((s) => s.selectNode);
+  const drag = useSyncExternalStore(dnd.subscribe, dnd.get, () => null);
+  useEditShortcuts();
+  useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no preview
 
   const layout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
   const t: Transform = useMemo(() => fitTransform(layout.size, view), [layout.size, view]);
@@ -96,6 +112,35 @@ export function Canvas() {
   );
   const errNodes = useMemo(() => errorNodes(analysis.issues), [analysis]);
   const errEdges = useMemo(() => new Set(placed.byEdge.keys()), [placed]);
+
+  // Drag and drop: the palette and the port handles ask the canvas what is under the pointer.
+  useEffect(() => {
+    const toAbstract = (cx: number, cy: number) => {
+      const r = ref.current?.getBoundingClientRect();
+      return {
+        x: (cx - (r?.left ?? 0) - t.tx) / t.scale,
+        y: (cy - (r?.top ?? 0) - t.ty) / t.scale,
+      };
+    };
+    return dnd.setHandler({
+      resolve: (payload: DragPayload, cx, cy) =>
+        resolveDrop(
+          payload,
+          graph,
+          layout,
+          analysis.edgeWidth,
+          t.scale,
+          toAbstract(cx, cy),
+          coarse ? 32 : 20,
+        ),
+      commit: (payload, target) => {
+        const edit = editForDrop(graph, payload, target, { locked: lockedIds() });
+        if (!edit) return;
+        const result = apply(edit);
+        if (result.ok && result.select !== undefined) selectNode(result.select);
+      },
+    });
+  }, [graph, layout, analysis, t, coarse, apply, selectNode]);
 
   const px = (x: number) => x * t.scale + t.tx;
   const py = (y: number) => y * t.scale + t.ty;
@@ -152,9 +197,40 @@ export function Canvas() {
             select={select}
             scale={t.scale}
             coarse={coarse}
+            drag={drag}
           />
         </g>
+        {drag?.payload.kind === 'wire' &&
+          (() => {
+            const from = outputPortAt(layout, drag.payload.from);
+            const box = ref.current?.getBoundingClientRect();
+            if (!from || !box) return null;
+            const tg = drag.target;
+            let end: [number, number] = [drag.x - box.left, drag.y - box.top];
+            if (tg?.kind === 'port') {
+              const node = graph.nodes.find((n) => n.id === tg.node);
+              const k = node
+                ? Math.max(
+                    0,
+                    inputPortsOfType(node.type).findIndex(
+                      (p) => tg.port === node.id || tg.port === `${node.id}.${p}`,
+                    ),
+                  )
+                : 0;
+              const at =
+                node && inputPortAt(layout, node.id, k, inputPortsOfType(node.type).length);
+              if (at) end = [px(at[0]), py(at[1])];
+            }
+            return (
+              <path
+                className="tk-wire-preview"
+                data-testid="wire-preview"
+                d={`M${px(from[0])} ${py(from[1])} L${end[0]} ${end[1]}`}
+              />
+            );
+          })()}
       </svg>
+      <Toast />
       {placed.global.length > 0 && (
         <div className="tk-global-issues" data-testid="issue-global" role="status">
           {placed.global.map((m) => (

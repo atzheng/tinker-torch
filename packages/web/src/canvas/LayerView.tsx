@@ -2,7 +2,9 @@ import type { ComponentType } from 'react';
 import type { Analysis, Graph, HostParams, LayerLayout, Node } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
+import { dnd, hasOutputPort, inputPortAt, outputPortAt, type DndState } from './dnd.js';
 import { edgeIndexOf, layerHitShapes } from './pure.js';
+import { inputPortsOf } from '@tinker/core';
 import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
@@ -21,6 +23,8 @@ export type LayerViewProps = {
   /** Screen pixels per abstract unit. */
   scale: number;
   coarse: boolean;
+  /** The palette or wire drag in progress, for drop highlights and port handles. */
+  drag?: DndState | null;
 };
 
 /** Props for a piece's layer drawing, from the analysis and the weights. */
@@ -53,7 +57,11 @@ function layerProps(
 export function LayerView(p: LayerViewProps) {
   const { graph, analysis, layout, scale } = p;
   const hitPx = p.coarse ? 32 : 20;
-  const shapes = layerHitShapes(layout, scale, analysis.edgeWidth);
+  const outputs = new Set(graph.nodes.filter((n) => hasOutputPort(n.type)).map((n) => n.id));
+  const shapes = layerHitShapes(layout, scale, analysis.edgeWidth, outputs);
+  const target = p.drag?.target ?? null;
+  const dropEdge = target?.kind === 'wire' ? target.edge : -1;
+  const dropNode = target?.kind === 'node' ? target.id : target?.kind === 'port' ? target.node : '';
   const sel = p.selection;
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
   return (
@@ -85,6 +93,7 @@ export function LayerView(p: LayerViewProps) {
             width={analysis.edgeWidth[w.edge] ?? null}
             error={p.errorEdges.has(w.edge)}
             selected={selectedEdge === w.edge}
+            drop={dropEdge === w.edge}
             scale={scale}
             hitPx={hitPx}
             onSelect={() => p.select({ kind: 'wire', from: edge[0], to: edge[1] })}
@@ -106,6 +115,7 @@ export function LayerView(p: LayerViewProps) {
             data-type={node.type}
             data-selected={selected}
             data-error={p.errorNodes.has(node.id)}
+            data-drop={dropNode === node.id}
             className="tk-node"
             role="button"
             tabIndex={0}
@@ -133,6 +143,52 @@ export function LayerView(p: LayerViewProps) {
           </g>
         );
       })}
+      {graph.nodes.map((node) => {
+        const at = hasOutputPort(node.type) ? outputPortAt(layout, node.id) : undefined;
+        const shape = shapes.find((s) => s.kind === 'port' && s.node === node.id);
+        if (!at || !shape) return null;
+        return (
+          <g
+            key={`out-${node.id}`}
+            data-testid={`port-out-${node.id}`}
+            className="tk-port"
+            onPointerDown={pointerDownWith({
+              onTap: () => p.select({ kind: 'node', id: node.id }),
+              onStart: (pt) => dnd.begin({ kind: 'wire', from: node.id }, pt.x, pt.y),
+              onMove: (pt) => dnd.move(pt.x, pt.y),
+              onEnd: (pt) => dnd.end(pt.x, pt.y),
+              onCancel: () => dnd.cancel(),
+            })}
+          >
+            <rect className="tk-hit" x={shape.x} y={shape.y} width={shape.w} height={shape.h} />
+            <circle className="tk-port-dot" cx={shape.x + shape.w / 2} cy={at[1]} r={5} />
+          </g>
+        );
+      })}
+      {p.drag?.payload.kind === 'wire' &&
+        graph.nodes.map((node) => {
+          const ports = inputPortsOf(node.type);
+          if (node.id === (p.drag?.payload.kind === 'wire' ? p.drag.payload.from : '')) return null;
+          return ports.map((port, k) => {
+            const at = inputPortAt(layout, node.id, k, ports.length);
+            if (!at) return null;
+            const on =
+              target?.kind === 'port' &&
+              target.node === node.id &&
+              target.port === (ports.length === 1 ? node.id : `${node.id}.${port}`);
+            return (
+              <circle
+                key={`in-${node.id}-${port}`}
+                data-testid={`port-in-${node.id}-${port}`}
+                data-drop={on}
+                className="tk-port-in"
+                cx={at[0]}
+                cy={at[1]}
+                r={on ? 8 : 5.5}
+              />
+            );
+          });
+        })}
       {layout.wires.map((w) => {
         const edge = graph.edges[w.edge];
         const hit = shapes.find((s) => s.kind === 'wire' && s.edge === w.edge);
@@ -146,6 +202,7 @@ export function LayerView(p: LayerViewProps) {
             width={analysis.edgeWidth[w.edge] ?? null}
             error={p.errorEdges.has(w.edge)}
             selected={selectedEdge === w.edge}
+            drop={dropEdge === w.edge}
             scale={scale}
             hitPx={hitPx}
             hit={hit}
