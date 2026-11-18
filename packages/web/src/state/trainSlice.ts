@@ -214,6 +214,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     // 1. Take the parameters out of the live state, then free it.
     if (rt.state && engine) rt.host = engine.toHost(rt.state.params);
     disposeState();
+    if (rt.model && engine) engine.disposeModel(rt.model); // frees its jitted functions
     rt.model = null;
     stopLoop();
 
@@ -257,13 +258,15 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     if (!engine) {
       issue = get().engineStatus === 'error' ? 'The training engine could not be loaded.' : null;
     } else {
+      let model: Model | null = null;
       try {
-        const model = engine.compile(graph, dataInfo);
+        model = engine.compile(graph, dataInfo);
         const params = engine.fromHost(model, rt.host);
         rt.state = engine.startTraining(model, params, rt.seed);
         rt.model = model;
         if (structural) evaluateInitial();
       } catch (e) {
+        if (model && rt.model !== model) engine.disposeModel(model); // compiled but never used
         issue = e instanceof Error ? e.message : 'The model could not be compiled.';
       }
     }
