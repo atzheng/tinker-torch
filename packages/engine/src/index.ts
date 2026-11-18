@@ -28,6 +28,8 @@ export const ENGINE_CORE = CORE_NAME;
 
 /** TrainStates that were consumed by `step` or disposed. */
 const deadStates = new WeakSet<object>();
+/** Optimizer name a TrainState was started with (the state trees of the optimizers differ). */
+const stateOptimizer = new WeakMap<object, string>();
 
 function liveState(s: TrainState): void {
   if (deadStates.has(s)) throw new Error('This TrainState was already consumed or disposed.');
@@ -102,18 +104,28 @@ function makeEngine(): Engine {
       checkTree(m, t);
       const opt = m.optimizer().init(tree.ref(t));
       takeParams(params);
-      return { params: wrapParams(t), opt, step: 0, key: random.key(seed) };
+      const started: TrainState = { params: wrapParams(t), opt, step: 0, key: random.key(seed) };
+      stateOptimizer.set(started, m.graph.train.optimizer);
+      return started;
     },
 
     /**
      * CONSUMES `state` and its `params`. Returns a new state. On a non-finite loss or non-finite
      * updated parameters it returns `diverged: true` and a state equal to the old one (same
      * arrays); it never throws for divergence. The loss is read every step (jax-js is lazy). If the
-     * batch does not fit the model it throws before consuming anything.
+     * batch does not fit the model, or `state` was started for a different optimizer (switching
+     * optimizer means compile + startTraining again), it throws before consuming anything.
+     * The first call with a new batch size retraces the jitted step (about 10-30 ms measured,
+     * against about 0.5 ms when cached); repeated sizes reuse the trace.
      */
     step(model, state, batch): StepResult {
       const m = internals(model);
       liveState(state);
+      if (stateOptimizer.get(state) !== m.graph.train.optimizer) {
+        throw new Error(
+          'This training state was started for a different optimizer; start training again.',
+        );
+      }
       const oldTree = peekParams(state.params);
       const oldOpt = state.opt as optax.OptState;
       checkBatch(m, batch.x, batch.y, batch.n);
@@ -123,8 +135,9 @@ function makeEngine(): Engine {
       // the outcome, so it stays valid if anything throws and a diverged step can return it.
       const pRef = tree.ref(oldTree);
       const oRef = tree.ref(oldOpt);
-      const [newTree, newOpt, lossArr, checkArr] = guarded([pRef, oRef, x, y], () =>
-        m.stepFn()(pRef, oRef, x, y),
+      const kRef = (state.key as JArray).ref;
+      const [newTree, newOpt, lossArr, checkArr, newKey] = guarded([pRef, oRef, x, y, kRef], () =>
+        m.stepFn()(pRef, oRef, x, y, kRef),
       );
       const loss = lossArr.item();
       const check = checkArr.item();
@@ -132,20 +145,28 @@ function makeEngine(): Engine {
       if (!Number.isFinite(loss) || !Number.isFinite(check)) {
         tree.dispose(newTree);
         tree.dispose(newOpt);
+        newKey.dispose();
         // Same arrays, same Params object, new TrainState object.
-        return {
-          state: { params: state.params, opt: state.opt, step: state.step, key: state.key },
-          loss,
-          diverged: true,
+        const same: TrainState = {
+          params: state.params,
+          opt: state.opt,
+          step: state.step,
+          key: state.key,
         };
+        stateOptimizer.set(same, m.graph.train.optimizer);
+        return { state: same, loss, diverged: true };
       }
       disposeParams(state.params);
       tree.dispose(oldOpt);
-      return {
-        state: { params: wrapParams(newTree), opt: newOpt, step: state.step + 1, key: state.key },
-        loss,
-        diverged: false,
+      (state.key as JArray).dispose();
+      const next: TrainState = {
+        params: wrapParams(newTree),
+        opt: newOpt,
+        step: state.step + 1,
+        key: newKey,
       };
+      stateOptimizer.set(next, m.graph.train.optimizer);
+      return { state: next, loss, diverged: false };
     },
 
     /** Borrows `model` and `params`. Dropout off; post-link; [n, width] row-major. */

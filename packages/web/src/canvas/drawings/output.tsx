@@ -1,8 +1,32 @@
+import type { OutputLink } from '@tinker/core';
+import { SelectField, editSetting } from './fields.js';
 import type { WebPiece } from './types.js';
 
-/** Placeholder: the drawings and inspector fields for 'output' arrive with the canvas beads. */
+const LINKS: readonly (readonly [OutputLink, string])[] = [
+  ['identity', 'Raw value'],
+  ['sigmoid', 'Sigmoid probability'],
+  ['softmax', 'Softmax probabilities'],
+];
+
+/** Layer drawing: a dot labelled y-hat (with the link name when it is not the raw value). */
 export const outputPiece: WebPiece<'output'> = {
-  Layer: () => <g data-placeholder="output-layer" />,
+  Layer: ({ node, w, h }) => (
+    <g data-piece="output">
+      <circle className="tk-dot" cx={w * 0.3} cy={h / 2} r={8} />
+      <text className="tk-text" x={w * 0.3 + 16} y={h / 2} dominantBaseline="middle">
+        {'ŷ'}
+        {node.link === 'identity' ? '' : ` (${node.link})`}
+      </text>
+    </g>
+  ),
   Neuron: () => <g data-placeholder="output-neuron" />,
-  Fields: () => <div>output</div>,
+  Fields: ({ node }) => (
+    <SelectField
+      label="Output"
+      testid="field-link"
+      value={node.link}
+      options={LINKS}
+      onChange={(v) => editSetting(node.id, 'link', v)}
+    />
+  ),
 };
