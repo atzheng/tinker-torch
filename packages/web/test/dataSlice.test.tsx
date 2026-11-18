@@ -2,7 +2,7 @@
 import { beforeEach, expect, test } from 'vitest';
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { analyse, sample } from '@tinker/core';
+import { analyse, sample, setColumns } from '@tinker/core';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { useStore } from '../src/state/store.js';
 import { DataControls } from '../src/topbar/DataControls.js';
@@ -103,6 +103,35 @@ test('setInputColumns keeps dataset order and refuses an empty list', () => {
   expect(input().columns).toEqual(['x1', 'x2']);
   s().setInputColumns('x', []);
   expect(input().columns).toEqual(['x1', 'x2']);
+});
+
+test('setInputColumns goes through setColumns as one undo step; an unknown id sets the error', () => {
+  s().setData({ set: 'plane' });
+  const before = s().past.length;
+  s().setInputColumns('x', ['x2']);
+  expect(input().columns).toEqual(['x2']);
+  expect(s().past.length).toBe(before + 1);
+  s().undo();
+  expect(input().columns).toEqual(['x1', 'x2']);
+  s().setInputColumns('nope', ['x1']);
+  expect(s().error).not.toBeNull();
+});
+
+test('a dataset switch resets the columns and is a single undo step', () => {
+  const before = s().past.length;
+  s().setData({ set: 'plane' });
+  expect(s().past.length).toBe(before + 1);
+  expect(input().columns).toEqual(['x1', 'x2']);
+  s().undo();
+  expect(input().columns).toEqual(['x1']);
+  expect(s().graph.data.set).not.toBe('plane');
+});
+
+test('core setColumns refuses a locked Input and repeated columns', () => {
+  const r = setColumns(s().graph, 'x', ['x1'], { locked: ['x'] });
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.error).toBe('This piece is locked.');
+  expect(setColumns(s().graph, 'x', ['x1', 'x1']).ok).toBe(false);
 });
 
 function mount(el: ReactElement) {
