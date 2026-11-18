@@ -342,4 +342,17 @@ describe('failing calls and finiteness', () => {
     expect(r.loss).toBe(0);
     engine.dispose(r.state);
   });
+
+  test('a finite loss whose update makes a parameter infinite is reported as diverged, state unchanged', () => {
+    const { graph, data } = loadFixture('linear_nobias_d2');
+    const model = engine.compile(withLr(graph, 1e38), data);
+    const ones = toHostParams({ lin1: { W: [1, 1] } });
+    const state = engine.startTraining(model, engine.fromHost(model, ones), 1);
+    const batch = { x: Float32Array.from([10, 10]), y: new Float32Array(1), n: 1 };
+    const r = engine.step(model, state, batch);
+    expect(r.loss).toBe(400); // finite
+    expect(r.diverged).toBe(true);
+    expect(Array.from(engine.toHost(r.state.params)['lin1']?.W ?? [])).toEqual([1, 1]);
+    engine.dispose(r.state);
+  });
 });

@@ -150,7 +150,7 @@ function makeEngine(): Engine {
       const loss = lossArr.item();
       const check = checkArr.item();
       deadStates.add(state);
-      if (!Number.isFinite(loss) || !Number.isFinite(check)) {
+      if (!Number.isFinite(loss) || check !== 0) {
         tree.dispose(newTree);
         tree.dispose(newOpt);
         newKey.dispose();
