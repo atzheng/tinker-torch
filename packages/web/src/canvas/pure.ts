@@ -30,6 +30,9 @@ export function fitTransform(
 /** Smallest touch target, in screen pixels (CONTRACTS.md section 10). */
 export const HIT_MIN_PX = 32;
 
+/** An output handle sits this far inside its piece's right edge, clear of the wire label's region. */
+export const PORT_INSET = 28;
+
 /**
  * Extra margin to add on each side of a shape that is `size` abstract units across so its hit
  * shape is at least `minPx` on screen at `scale`. Drawn shapes keep their size; only the
@@ -187,25 +190,42 @@ export function labelSize(text: string, scale: number): { fs: number; lw: number
 
 export type HitRect = { x: number; y: number; w: number; h: number };
 export type HitShape =
-  ({ kind: 'node'; id: NodeId } & HitRect) | ({ kind: 'wire'; edge: number } & HitRect);
+  | ({ kind: 'node'; id: NodeId } & HitRect)
+  | ({ kind: 'wire'; edge: number } & HitRect)
+  | ({ kind: 'port'; node: NodeId } & HitRect);
 
 /**
  * Hit shapes of the layer view in paint order (the last one wins a press): every piece, then every
  * wire label on top, so a label is always tappable. A label's rectangle is at least 32 screen px
  * each way. A piece's is its box, grown to 32 px tall when short, and horizontally only when the box
  * is narrower than 32 px, by at most 6 units, so it never reaches into the gap where labels sit.
- * `widths[i]` is the label text of wire edge i (null: no label, so no label shape).
+ * `widths[i]` is the label text of wire edge i (null: no label, so no label shape). `outputs` lists
+ * the pieces that have an output port: each gets a 32 px square at the middle of its right edge,
+ * painted above the pieces and below the labels (the handle a wire is dragged from).
  */
 export function layerHitShapes(
   layout: LayerLayout,
   scale: number,
   widths: readonly (number | null | undefined)[],
+  outputs: ReadonlySet<NodeId> = new Set(),
 ): HitShape[] {
   const shapes: HitShape[] = [];
   for (const [id, b] of Object.entries(layout.nodes)) {
     const px = b.w * scale >= HIT_MIN_PX ? 0 : Math.min(hitPad(b.w, scale), 6);
     const py = hitPad(b.h, scale);
     shapes.push({ kind: 'node', id, x: b.x - px, y: b.y - py, w: b.w + 2 * px, h: b.h + 2 * py });
+  }
+  for (const [id, b] of Object.entries(layout.nodes)) {
+    if (!outputs.has(id)) continue;
+    const s = HIT_MIN_PX / scale;
+    shapes.push({
+      kind: 'port',
+      node: id,
+      x: b.x + b.w - PORT_INSET - s / 2,
+      y: b.y + b.h / 2 - s / 2,
+      w: s,
+      h: s,
+    });
   }
   const labels: { shape: HitShape & { kind: 'wire' }; cy: number; half: number }[] = [];
   for (const w of layout.wires) {
