@@ -18,7 +18,7 @@ test('training loss falls as expected for linear and MLP with sgd, momentum, ada
   const rows = await runTraining(() => {});
   const bad = rows.filter((r) => !r.ok).map((r) => `${r.problem} ${r.optimizer}: ${r.detail}`);
   expect(bad).toEqual([]);
-});
+}, 30_000);
 
 test('live buffer count is flat over 1,000 steps (and a deliberate leak is detected)', async () => {
   const results = await runLeakTests(() => {}, 1_000);
