@@ -187,6 +187,59 @@ describe('layoutLayers', () => {
   });
 });
 
+describe('review fixes', () => {
+  test('an unwired piece listed before the loss does not move the loss or target', () => {
+    const base = mlp(4);
+    const before = layoutLayers(base, analyse(base, info));
+    const gr = mlp(4);
+    gr.nodes.splice(1, 0, { id: 'drop', type: 'dropout', p: 0.5 });
+    const after = layoutLayers(gr, analyse(gr, info));
+    for (const id of ['x', 'yhat', 'y', 'loss']) expect(after.nodes[id]).toEqual(before.nodes[id]);
+    expect(after.nodes['drop']?.y).toBeGreaterThan(before.nodes['x']?.y ?? 0);
+  });
+
+  test('label anchors: longest horizontal segment midpoint', () => {
+    const gr = skip();
+    const L = layoutLayers(gr, analyse(gr, info));
+    for (const w of L.wires) {
+      const [lx, ly] = w.labelAt;
+      const onSeg = w.points.some((p, k) => {
+        const q = w.points[k + 1];
+        return (
+          q &&
+          p[1] === q[1] &&
+          ly === p[1] &&
+          lx >= Math.min(p[0], q[0]) &&
+          lx <= Math.max(p[0], q[0])
+        );
+      });
+      expect(onSeg).toBe(true);
+    }
+    const w0 = L.wires[0];
+    const p = w0?.points ?? [];
+    const l1 = Math.abs((p[1]?.[0] ?? 0) - (p[0]?.[0] ?? 0));
+    const l2 = Math.abs((p[3]?.[0] ?? 0) - (p[2]?.[0] ?? 0));
+    const [m, n] = l1 >= l2 ? [0, 1] : [2, 3];
+    expect(w0?.labelAt).toEqual([((p[m]?.[0] ?? 0) + (p[n]?.[0] ?? 0)) / 2, p[m]?.[1]]);
+    const sk = L.wires.find((w) => gr.edges[w.edge]?.[1] === 'add.b');
+    const sp = sk?.points ?? [];
+    expect(sk?.labelAt).toEqual([((sp[2]?.[0] ?? 0) + (sp[3]?.[0] ?? 0)) / 2, sp[2]?.[1]]);
+  });
+
+  test('neuron edges are i-major then j', () => {
+    const gr = mlp(4);
+    const es = layoutNeurons(gr, analyse(gr, info)).edges.filter((e) => e.node === 'lin2');
+    expect(es.map((e) => e.i * 1 + e.j)).toEqual([0, 1, 2, 3]);
+    const e1 = layoutNeurons(gr, analyse(gr, info)).edges.filter((e) => e.node === 'lin1');
+    expect(e1.map((e) => [e.i, e.j])).toEqual([
+      [0, 0],
+      [0, 1],
+      [0, 2],
+      [0, 3],
+    ]);
+  });
+});
+
 describe('layoutNeurons', () => {
   test('1-4-1 has 4+4 weight edges and units at distinct positions', () => {
     const gr = mlp(4);

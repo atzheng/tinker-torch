@@ -9,7 +9,8 @@ import type { Analysis } from './analyse.js';
 export type Box = { x: number; y: number; w: number; h: number };
 export type LayerLayout = {
   nodes: Record<NodeId, Box & { col: number }>;
-  wires: { edge: number; points: [number, number][] }[];
+  /** `labelAt`: where the width label sits, the midpoint of the longest horizontal segment (first on ties). */
+  wires: { edge: number; points: [number, number][]; labelAt: [number, number] }[];
   size: [number, number];
 };
 export type NeuronUnitKind = 'in' | 'sum' | 'act' | 'out' | 'target';
@@ -159,12 +160,14 @@ function assignRows(
   col: Record<NodeId, number>,
 ): Record<NodeId, number> {
   const row = nullRecord<number>();
+  const wired = new Set(edges.flatMap((e) => [e.from, e.to]));
   const columns = [...new Set(nodes.map((n) => col[n.id] ?? 0))].sort((a, b) => a - b);
   for (const c of columns) {
     const here = nodes.filter((n) => (col[n.id] ?? 0) === c);
     const ordered = [
-      ...here.filter((n) => n.type !== 'target'),
-      ...here.filter((n) => n.type === 'target'),
+      ...here.filter((n) => wired.has(n.id) && n.type !== 'target'),
+      ...here.filter((n) => wired.has(n.id) && n.type === 'target'),
+      ...here.filter((n) => !wired.has(n.id)),
     ];
     const set = new Set<number>();
     for (const n of ordered) {
@@ -189,6 +192,22 @@ function assignRows(
     }
   }
   return row;
+}
+
+function labelAnchor(points: [number, number][]): [number, number] {
+  let best: [number, number] = points[0] ?? [0, 0];
+  let len = -1;
+  for (let k = 0; k + 1 < points.length; k++) {
+    const a = points[k];
+    const b = points[k + 1];
+    if (!a || !b || a[1] !== b[1]) continue;
+    const l = Math.abs(b[0] - a[0]);
+    if (l > len) {
+      len = l;
+      best = [(a[0] + b[0]) / 2, a[1]];
+    }
+  }
+  return best;
 }
 
 function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
@@ -277,7 +296,7 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
       const laneY = top - LAYOUT.lane * (1 + (laneOf.get(e.index) ?? 0));
       points.push([x0, y0], [gapR, y0], [gapR, laneY], [gapL, laneY], [gapL, y1], [x1, y1]);
     }
-    wires.push({ edge: e.index, points });
+    wires.push({ edge: e.index, points, labelAt: labelAnchor(points) });
   }
   return { boxes, wires, size: [width, height] };
 }

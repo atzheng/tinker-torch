@@ -191,9 +191,17 @@ function makeRng(seed: number): Rng;   // sfc32 or splitmix32; same seed -> same
 // core/params.ts
 type HostParams = Record<NodeId, { W: Float32Array; b?: Float32Array }>; // W row-major [in, out]; only linear nodes
 function initParams(graph: Graph, analysis: Analysis, seed: number): HostParams;
+function reconcileParams(old: HostParams, oldGraph: Graph, oldAnalysis: Analysis, graph: Graph, analysis: Analysis, seed: number): HostParams;
+function countParams(host: HostParams): number;
+function paramsToJson(host: HostParams): Record<NodeId, { W: number[]; b?: number[] }>; // prototype-free object
+function paramsFromJson(json: unknown, graph: Graph, analysis: Analysis): { params: HostParams; dropped: NodeId[] };
 ```
 
 Initialisation follows `nn.Linear`: W and b both uniform on ±1/√in. Different seeds give different values; the same seed always gives the same values. Note the layout: torch stores `weight` as [out, in]; HostParams stores [in, out] so that the forward pass is `x @ W + b`. Fixtures (section 11) are written in HostParams layout.
+
+HostParams has an entry for exactly the linear nodes on `analysis.order` with a known input width (an entry has `b` iff the node has bias). Each node draws W then b from `makeRng(seed).fork(nodeId)`, so adding a node does not change the others' init. `reconcileParams` takes the graph and analysis the old params belong to (flat arrays alone cannot tell 2x3 from 3x2). Per node: W (the same array object) is kept when its old and new [in, out] are equal, even if bias was toggled; b is kept when both have it, drawn fresh from the node's rng stream when bias is turned on, and dropped when turned off; if [in, out] changed, the node is re-initialised; nodes that left the path are dropped; `old` is never mutated. `paramsFromJson` drops malformed entries (non-arrays, non-finite numbers, holes), shape-mismatched entries and unknown nodes, listing their ids in `dropped`; linear nodes with no saved entry are absent, so callers follow it with `reconcileParams`.
+
+HostParams arrays are immutable once created: `reconcileParams` shares unchanged arrays with `old` (and so with undo history), so nobody writes into them in place. The engine's `fromHost` copies into jax arrays and `toHost` creates new arrays.
 
 All data sampling, initialisation and mini-batch shuffling use `core/rng.ts`, never `Math.random` and never jax random. Only dropout masks use jax random, keyed from `TrainState.key`.
 
@@ -236,6 +244,7 @@ function truth(set: DatasetName, xRaw: Float32Array): Float32Array; // regressio
 - `truth` takes raw (unstandardised) x. Regression returns f*(x). Classification returns P(y=1|x) of the clean generator: blobs the exact logistic of the two Gaussians, circle (cut at r = 1.15, mid-gap), xor and moons (class 1 = inner moon, the nearer half circle) 0 or 1. All v1 classification sets are binary, so `info.kind` is `'binary'` with `numClasses` 2; regression has `numClasses` 1. `DataInfo` is defined in `core/graph.ts`.
 - Classification labels alternate 0, 1, 0, 1, ... so the train and validation parts are each balanced.
 - `data/grid.ts`: `grid1d(domain, m = 200, standardization = null)` and `grid2d(domain, m = 64, standardization = null)` return `{ n, d, xRaw, xStd }` (row-major Float32Arrays; xStd equals xRaw when standardization is null). Both span the domain inclusive of the ends. grid2d row index is `iy * m + ix`, x1 varying fastest.
+- Web data slice (`state/dataSlice.ts`): the slice holds `dataset: Dataset` and `dataInfo: DataInfo` (`dataset.info`), always equal to `sample(graph.data)`; a store subscription re-samples whenever `graph.data` changes identity (data action, undo, redo, load). Actions: `setData(patch)` (clamps to the schema ranges; one undo step per call via `graphSlice.apply`, because history holds whole graphs including `graph.data`; the top bar commits number fields on blur or Enter, not per keystroke), `resample()` (new seed from `makeRng(seed).fork('resample').int(2 ** 31)`), `setInputColumns(id, columns)`. Switching to a set with different columns resets every Input piece to all columns of the new set.
 - `data/batches.ts`: `batchSchedule(nTrain, batch, seed)` is an infinite generator of fresh `Int32Array` index arrays, one per step; each epoch shuffles with `makeRng(seed).fork('epoch' + e)` and cuts the order into batches, keeping a smaller last batch so every row appears once per epoch. `batch: 'full'` yields all rows in order every step. `stepsPerEpoch(nTrain, batch)` gives steps per epoch. `gatherBatch(xTrain, yTrain, d, idx)` copies those rows into a `Batch` (section 7).
 
 ## 7. Engine (`engine/src/index.ts`)
@@ -293,7 +302,7 @@ setColumns(g, inputNodeId, columns)
 // all edits refuse to change a node listed in `locked` (preset field, section 12): error "This piece is locked."
 ```
 
-Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, newGraph, newAnalysis, seed)` in `core/params.ts`).
+Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, oldGraph, oldAnalysis, newGraph, newAnalysis, seed)` in `core/params.ts`).
 
 ## 9. Layout geometry (`core/layout.ts`)
 
@@ -313,9 +322,9 @@ Choices fixed by `layout.ts` (constants in the exported `LAYOUT`; all in abstrac
 
 - Both functions lay out the whole node set, not `analysis.order`. Duplicate ids: the first node wins. An edge that does not resolve (`resolveEdge` fails) gets no wire. Records are prototype-free.
 - Columns: longest path; the edge from a target into a loss does not count; a cycle is broken at its first node in graph order; a node with no wires (other than Input and Target) goes in the last column. Rows: a node follows its first-listed source's row, moving down past taken rows; a target sits one row below the prediction in the prediction's column.
-- A wire's `points` run from the right-middle of the source box to the left side of the destination box, entering at height `(k+1)/(ports+1)` of the box for input port k (so `add.a` and `add.b` differ). Adjacent columns: one elbow in the gap. Any other wire (skip, same column, backwards) rises into a lane above every box (shorter spans nearer the boxes), runs across, and drops in the gap left of the destination, so no segment enters a box interior. Wire label spots are the middle of the first long segment; the web decides.
+- A wire's `points` run from the right-middle of the source box to the left side of the destination box, entering at height `(k+1)/(ports+1)` of the box for input port k (so `add.a` and `add.b` differ). Adjacent columns: one elbow in the gap. Any other wire (skip, same column, backwards) rises into a lane above every box (shorter spans nearer the boxes), runs across, and drops in the gap left of the destination, so no segment enters a box interior. Each wire also has `labelAt: [x, y]`, the midpoint of its longest horizontal segment (first on ties); the web puts the width label there. Edges that do not resolve get no wire geometry (their issues must be shown at node or global level); doubly-fed edges, extra losses and cycle edges do get wires.
 - Neuron view uses a wider column gap. Unit circles per node: Input (`in`, one per column), expanded Linear (`sum`, one per output), an Activation whose first source is an expanded Linear (`act`, same count), Output (`out`), Target (`target`, one); only when the width is known and at most 8. Everything else is a box. `boxes` covers every node (a unit column's box is the bounding box of its circles); `wires` connect boxes in both views.
-- `edges[].from` is the unit centre of the upstream node when it has as many units as the Linear has inputs, else a point on the upstream box's right side spread evenly. `to` is the `sum` unit centre. Endpoints are centres; the web trims by the circle radius. Biases are not edges. `collapsed` lists every Linear that is not expanded, including ones with unknown widths.
+- `edges[].from` is the unit centre of the upstream node when it has as many units as the Linear has inputs, else a point on the upstream box's right side spread evenly. `to` is the `sum` unit centre. Endpoints are centres; the web trims by the circle radius. Biases are not edges. `edges` is ordered by node (graph order), then i-major then j, so a node's edge index is `i*out + j`, matching HostParams `W` row-major `[in, out]`. `collapsed` lists every Linear that is not expanded, including ones with unknown widths.
 
 ## 10. Web conventions
 

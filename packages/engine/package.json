@@ -9,7 +9,9 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -b",
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "spike": "node --experimental-strip-types --no-warnings spike/node.ts",
+    "spike:web": "pnpm --filter @tinker/web exec vite ../engine/spike/web --config ../engine/spike/web/vite.config.ts"
   },
   "dependencies": {
     "@jax-js/jax": "0.1.27",
