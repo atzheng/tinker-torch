@@ -185,11 +185,11 @@ export function compile(graph: Graph, data: DataInfo): Model {
           )(tree.ref(params), x, y, masks);
           const [updates, newOpt] = optimizer.update(grads, optState);
           const newParams = optax.applyUpdates(params, updates) as ParamTree;
-          // One scalar that is non-finite when any updated parameter is (read next to the loss).
-          // leaf * 0 is 0 for every finite value (even 3e38, where a plain sum would overflow) and NaN for inf/NaN.
+          // One scalar: how many updated parameters are non-finite (0 = all finite), read next to the loss.
+          // (jax-js folds x * 0 to 0, NaN included, so x * 0 cannot be used; isfinite is exact, also at 3e38.)
           let check = np.array(0);
           for (const leaf of tree.leaves(tree.ref(newParams)) as JArray[])
-            check = check.add(leaf.mul(0).sum());
+            check = check.add(np.isfinite(leaf).astype(np.float32).mul(-1).add(1).sum());
           return [newParams, newOpt, loss, check, newKey];
         },
       ) as unknown as StepFn;

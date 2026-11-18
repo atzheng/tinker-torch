@@ -271,12 +271,13 @@ interface Engine {
   predict(model: Model, params: Params, x: Float32Array, n: number): Float32Array; // dropout off; output after the link; [n, width]
   evaluate(model: Model, params: Params, batch: Batch): number;          // mean loss + penalty, dropout off
   lossGrid(model: Model, params: Params, batch: Batch, axes: [ParamAxis, ParamAxis], a: Float32Array, b: Float32Array): Float32Array; // [a.length, b.length]
-  trainMany(model: Model, seeds: number[], data: Batch[], steps: number): HostParams[]; // vmap over k copies
+  trainMany(model: Model, seeds: number[], data: Batch[], steps: number): ManyResult[]; // vmap over k copies
   clone(params: Params): Params;
   dispose(x: Params | TrainState): void;
   liveArrays(): number;                                        // for the leak test; method chosen by the spike
 }
 type ParamAxis = { node: NodeId; tensor: 'W' | 'b'; index: number };
+type ManyResult = { params: HostParams; diverged: boolean };         // one trained copy of trainMany
 function createEngine(): Promise<Engine>; // awaits jax init(); Wasm device; never WebGPU in v1
 ```
 
@@ -301,6 +302,7 @@ function createEngine(): Promise<Engine>; // awaits jax init(); Wasm device; nev
     - `diverged` is true when the loss is non-finite or any updated parameter is non-finite (a non-finite update is never kept); `loss` is then the value read, which may be finite. A batch that does not fit the model throws before anything is consumed.
     - `TrainState.key` is created from the seed; each `step` splits it (`np.unstack(random.split(key, 2))`), samples one keep mask per Dropout node on the loss path inside the jitted step but outside `valueAndGrad` (`PieceCtx.dropoutMask(nodeId)` hands it to the piece; random ops traced under `valueAndGrad`, and `np.take` index arrays, leave a constant buffer per compiled model that is never freed) and stores the next key in the new state. Pieces must not create array constants (index arrays, `random.*`) inside the differentiated walk. A diverged step returns the old key. `predict` and `evaluate` run with `PieceCtx.train = false` (Dropout is the identity).
     - Jitted functions are built lazily per model and never disposed (the interface has no model disposal), so each `compile` leaves one set until garbage collection.
+  - `trainMany` (`tinker-hj4.6`): copy i is `init(model, seeds[i])` + `startTraining(model, .., seeds[i])` + `steps` full-batch `step` calls on `data[i]`, vectorised: `jit(vmap(step))` over params, optimizer state (the scalar step count is broadcast to `[k]`), the dropout key (`random.key(seeds[i])`, so each copy has its own masks) and `x [k, n, d]`, `y [k, n]`. All `data[i]` must have the same `n` (it throws "All copies need training sets of the same size." otherwise); there is no padding or mini-batching. Everything is borrowed. The finite check reads one `[k]` flag every step (laziness). A copy whose loss or updated parameters become non-finite freezes at its last finite parameters, optimizer state and key and is returned with `diverged: true`; the other copies are unaffected (bit-identical to a run without it); when every copy has diverged the loop stops early. Arrays are passed to the jitted function as arguments, never captured; all arrays are disposed before returning (also on a throw). The vmapped step is cached per compiled model like the other jitted functions.
   - Ownership pitfalls found by the spike: optax `update` disposes its `params` argument; destructuring a jax Array leaks the parent (use `np.unstack` for split keys).
 
 ## 8. Edits (`core/edit.ts`)

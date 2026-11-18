@@ -12,6 +12,8 @@ export type Params = { readonly __brand: 'Params' };
  */
 export type TrainState = { params: Params; opt: unknown; step: number; key: unknown };
 export type StepResult = { state: TrainState; loss: number; diverged: boolean };
+/** One trained copy of `trainMany`: its parameters, and whether it diverged (then `params` are its last finite ones). */
+export type ManyResult = { params: HostParams; diverged: boolean };
 export type ParamAxis = { node: NodeId; tensor: 'W' | 'b'; index: number };
 
 export interface Engine {
@@ -32,7 +34,7 @@ export interface Engine {
     a: Float32Array,
     b: Float32Array,
   ): Float32Array;
-  trainMany(model: Model, seeds: number[], data: Batch[], steps: number): HostParams[];
+  trainMany(model: Model, seeds: number[], data: Batch[], steps: number): ManyResult[];
   clone(params: Params): Params;
   dispose(x: Params | TrainState): void;
   liveArrays(): number;
