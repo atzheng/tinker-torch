@@ -1,11 +1,7 @@
 import type { StateCreator } from 'zustand';
-import { parseGraph, type Graph, type NodeId } from '@tinker/core';
+import { parseGraph, type EditResult, type Graph } from '@tinker/core';
 
-/**
- * Same shape as `EditResult` in CONTRACTS.md section 8. `core/edit.ts` (another bead) exports the
- * canonical type; this structural copy keeps the slice independent of it until it merges.
- */
-export type EditResult = { ok: true; graph: Graph; select?: NodeId } | { ok: false; error: string };
+export type { EditResult };
 
 /** Undo history is capped so a long session cannot grow without bound. */
 export const HISTORY_LIMIT = 200;

@@ -5,5 +5,6 @@ export * from './registry.js';
 export * from './rng.js';
 export * from './data/index.js';
 export * from './analyse.js';
+export * from './edit.js';
 export * from './layout.js';
 export * from './params.js';

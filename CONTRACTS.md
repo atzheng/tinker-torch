@@ -302,6 +302,17 @@ setColumns(g, inputNodeId, columns)
 // all edits refuse to change a node listed in `locked` (preset field, section 12): error "This piece is locked."
 ```
 
+Choices fixed by the implementation (`core/edit.ts`, exports `EditResult` and `EditOptions`):
+
+- Every edit takes a last optional argument `opts?: { locked?: readonly NodeId[] }`; the store passes the preset's `locked`. A node counts as changed when its own settings change or a wire into it is added, removed or rewired (so `deleteNode` refuses when the piece or any piece it feeds is locked, and `insertOnWire`, `connect` and `deleteEdge` refuse when the wire's destination is locked). Source nodes are not changed by a new wire out of them.
+- Every ok graph has been through `parseGraph` (defaults filled, huber `delta` 1), so it always re-parses. Edits never check trainability; `analyse` reports it.
+- `insertOnWire`: the piece must have an input and an output (not Input, Target or a loss). The wire `a -> b` becomes `a -> new` at the same index and `new -> b` right after it; an Add goes in on `a`. `select` is the new id.
+- `swapPiece`: same family, except Output and Target never swap for each other. Dropout and Add (both `structure`) can swap; wires move to the new piece's input ports by position. A swap that would drop a wire (e.g. a connected Add `b` when becoming a Dropout) is refused with one sentence, never silently. Same-type swaps carry over each setting that exists on the new type and still validates, except the identity key (`fn` of an activation or loss). A loss keeps its `penalty`; `delta` carries on huber -> huber, is set to 1 when swapping to huber from another loss, and is dropped otherwise. `select` is the node.
+- `connect`, `deleteEdge`, `insertOnWire` and `deleteNode` can shift edge indices, so the store and canvas must not hold edge indices across edits: re-derive them from the new graph (or use `select`).
+- `connect`: stored in short form (`x`, `loss.pred`); replaces every wire into that port, appended at the end of `edges`. Refuses a bad port (resolveEdge's sentence), a self-wire or cycle, and an identical wire that already exists. It does not enforce the Output/Target wiring rules (analyse does).
+- `deleteNode`: closes the gap only when the piece has a single input port with exactly one wire in, at least one wire out, and the width arriving equals the width it passes on (or either is not yet known; widths come from `analyse` on a data info built from the graph's Input columns). Each outgoing wire keeps its index and its source becomes the upstream node. Otherwise the wires in and out are removed.
+- `setSetting(g, id, key, value)`: `key` must be a setting of that piece type (`delta` and `penalty` for losses); `id` and `type` cannot be set; `undefined` removes an optional setting; setting a loss `fn` other than huber drops `delta`. The value is checked by the node schema.
+- `setPenalty(g, lossId, null)` removes the penalty. `setColumns` refuses repeated columns but allows an empty list.
 Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, oldGraph, oldAnalysis, newGraph, newAnalysis, seed)` in `core/params.ts`).
 
 ## 9. Layout geometry (`core/layout.ts`)
