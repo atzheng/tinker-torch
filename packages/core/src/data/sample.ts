@@ -1,14 +1,11 @@
-import type { DataConfig, DatasetName } from '../graph.js';
+import type { DataConfig, DataInfo, DatasetName } from '../graph.js';
 import { makeRng } from '../rng.js';
 import { SETS, generate } from './sets.js';
-
-/** Same shape as `DataInfo` in CONTRACTS.md section 4. */
-export type DatasetInfo = { columns: string[]; kind: 'regression' | 'binary'; numClasses: number };
 
 export type Standardization = { mean: number[]; std: number[] };
 
 export type Dataset = {
-  info: DatasetInfo;
+  info: DataInfo;
   /** Row-major [nTrain, d]. Standardised when `standardization` is not null. */
   xTrain: Float32Array;
   yTrain: Float32Array;
