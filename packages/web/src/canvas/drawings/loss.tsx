@@ -1,8 +1,91 @@
+import { LOSS_FNS, type LossFn } from '@tinker/core';
+import { NumberField, SelectField, editPenalty, editSetting } from './fields.js';
 import type { WebPiece } from './types.js';
 
-/** Placeholder: the drawings and inspector fields for 'loss' arrive with the canvas beads. */
+export const LOSS_LABEL: Record<LossFn, string> = {
+  squared_error: 'Squared error',
+  absolute_error: 'Absolute error',
+  huber: 'Huber',
+  log_loss: 'Log loss',
+  cross_entropy: 'Cross-entropy',
+};
+
+const LOSS_LINES: Record<LossFn, string[]> = {
+  squared_error: ['Squared', 'error'],
+  absolute_error: ['Absolute', 'error'],
+  huber: ['Huber'],
+  log_loss: ['Log', 'loss'],
+  cross_entropy: ['Cross-', 'entropy'],
+};
+
+/** Layer drawing: a loss circle with the loss name (two short lines when it has two words). */
 export const lossPiece: WebPiece<'loss'> = {
-  Layer: () => <g data-placeholder="loss-layer" />,
+  Layer: ({ node, w, h }) => {
+    const lines = LOSS_LINES[node.fn];
+    return (
+      <g data-piece="loss">
+        <circle className="tk-shape" cx={w / 2} cy={h / 2} r={Math.min(w, h) / 2 - 2} />
+        {lines.map((t, i) => (
+          <text
+            key={t}
+            className="tk-text tk-small"
+            x={w / 2}
+            y={h / 2 + (i - (lines.length - 1) / 2) * 13}
+            textAnchor="middle"
+            dominantBaseline="middle"
+          >
+            {t}
+          </text>
+        ))}
+      </g>
+    );
+  },
   Neuron: () => <g data-placeholder="loss-neuron" />,
-  Fields: () => <div>loss</div>,
+  Fields: ({ node }) => (
+    <>
+      <SelectField
+        label="Loss"
+        testid="field-loss-fn"
+        value={node.fn}
+        options={LOSS_FNS.map((f) => [f, LOSS_LABEL[f]] as const)}
+        onChange={(v) => editSetting(node.id, 'fn', v)}
+      />
+      {node.fn === 'huber' && (
+        <NumberField
+          label="Threshold delta"
+          testid="field-delta"
+          value={node.delta ?? 1}
+          min={0}
+          step={0.1}
+          onCommit={(v) => editSetting(node.id, 'delta', v)}
+        />
+      )}
+      <SelectField
+        label="Weight penalty"
+        testid="field-penalty-kind"
+        value={node.penalty?.kind ?? 'none'}
+        options={[
+          ['none', 'None'],
+          ['l2', 'L2'],
+          ['l1', 'L1'],
+        ]}
+        onChange={(v) =>
+          editPenalty(
+            node.id,
+            v === 'none' ? null : { kind: v, lambda: node.penalty?.lambda ?? 0.01 },
+          )
+        }
+      />
+      {node.penalty && (
+        <NumberField
+          label="Strength lambda"
+          testid="field-penalty-lambda"
+          value={node.penalty.lambda}
+          min={0}
+          step={0.01}
+          onCommit={(v) => editPenalty(node.id, { kind: node.penalty?.kind ?? 'l2', lambda: v })}
+        />
+      )}
+    </>
+  ),
 };

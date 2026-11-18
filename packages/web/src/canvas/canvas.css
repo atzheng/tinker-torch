@@ -1,0 +1,251 @@
+/* Canvas region: all colours come from theme.css variables. */
+.tk-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.tk-canvas * {
+  -webkit-tap-highlight-color: transparent;
+}
+.tk-svg {
+  display: block;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+/* Transparent hit shapes: receive presses, draw nothing. */
+.tk-hit {
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+}
+path.tk-hit {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* Pieces */
+.tk-node {
+  --piece-stroke: var(--text-muted);
+  cursor: pointer;
+  outline: none;
+}
+.tk-node[data-error='true'] {
+  --piece-stroke: var(--error);
+}
+.tk-node[data-selected='true'] {
+  --piece-stroke: var(--accent);
+}
+.tk-node:focus-visible .tk-ring {
+  stroke: var(--focus-ring);
+  stroke-width: 2;
+}
+.tk-ring {
+  fill: none;
+  stroke: transparent;
+  pointer-events: none;
+}
+.tk-node[data-selected='true'] .tk-ring {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.tk-node[data-error='true'] .tk-ring {
+  stroke: var(--error);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+.tk-shape {
+  fill: var(--surface);
+  stroke: var(--piece-stroke);
+  stroke-width: 1.5;
+}
+.tk-stroke {
+  fill: none;
+  stroke: var(--piece-stroke);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.tk-dot {
+  fill: var(--text);
+  stroke: var(--piece-stroke);
+  stroke-width: 1;
+}
+.tk-text {
+  fill: var(--text);
+  font: 17px var(--font);
+  pointer-events: none;
+}
+.tk-small {
+  font-size: 12.5px;
+}
+.tk-muted {
+  fill: var(--text-muted);
+  color: var(--text-muted);
+}
+.tk-heat-bg {
+  fill: var(--surface-2);
+  stroke: var(--border);
+}
+
+/* Wires */
+.tk-wire {
+  cursor: pointer;
+  --wire-color: var(--wire);
+}
+.tk-wire[data-error='true'] {
+  --wire-color: var(--error);
+}
+.tk-wire-line {
+  fill: none;
+  stroke: var(--wire-color);
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.tk-wire-halo {
+  fill: none;
+  stroke: var(--accent);
+  stroke-opacity: 0.35;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.tk-arrow {
+  fill: var(--wire);
+}
+.tk-arrow-error {
+  fill: var(--error);
+}
+.tk-label-bg {
+  fill: var(--surface);
+  stroke: var(--wire-color);
+  stroke-width: 1;
+}
+.tk-label-text {
+  fill: var(--wire-color);
+  font-family: var(--font);
+  font-weight: 600;
+  pointer-events: none;
+}
+.tk-wire[data-error='true'] .tk-label-bg {
+  fill: var(--error-bg);
+}
+
+/* Issue sentences */
+.tk-callout,
+.tk-global-issues {
+  position: absolute;
+  pointer-events: none;
+  color: var(--error);
+  background: var(--error-bg);
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.tk-callout {
+  width: max-content;
+  max-width: 200px;
+  transform: translateX(-50%);
+}
+.tk-global-issues {
+  left: 8px;
+  top: 8px;
+  max-width: calc(100% - 16px);
+}
+.tk-callout p,
+.tk-global-issues p {
+  margin: 0;
+}
+
+/* Inspector */
+.tk-inspector-pos {
+  position: absolute;
+  z-index: 2;
+}
+.tk-inspector {
+  position: relative;
+  max-height: calc(100vh - 160px);
+  overflow: auto;
+  padding: 10px 12px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  font-size: 13px;
+}
+.tk-inspector p {
+  margin: 4px 0;
+}
+.tk-inspector-title {
+  margin: 0 28px 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.tk-inspector-title code,
+.tk-inspector code {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.tk-inspector-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tk-inspector-close:hover {
+  background: var(--surface-2);
+}
+.tk-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0;
+}
+.tk-field input[type='number'],
+.tk-field select {
+  width: 120px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.tk-check {
+  justify-content: flex-start;
+}
+.tk-issues {
+  margin: 8px 0 0;
+  padding: 6px 8px 6px 22px;
+  color: var(--error);
+  background: var(--error-bg);
+  border-radius: var(--radius);
+}
+@media (pointer: coarse) {
+  .tk-inspector-close {
+    width: 32px;
+    height: 32px;
+  }
+  .tk-field input[type='number'],
+  .tk-field select {
+    min-height: 32px;
+  }
+  .tk-check input {
+    width: 22px;
+    height: 22px;
+  }
+}

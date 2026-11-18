@@ -1,8 +1,15 @@
 import type { WebPiece } from './types.js';
 
-/** Placeholder: the drawings and inspector fields for 'target' arrive with the canvas beads. */
+/** Layer drawing: a dot labelled y. */
 export const targetPiece: WebPiece<'target'> = {
-  Layer: () => <g data-placeholder="target-layer" />,
+  Layer: ({ w, h }) => (
+    <g data-piece="target">
+      <circle className="tk-dot" cx={w * 0.3} cy={h / 2} r={8} />
+      <text className="tk-text" x={w * 0.3 + 16} y={h / 2} dominantBaseline="middle">
+        y
+      </text>
+    </g>
+  ),
   Neuron: () => <g data-placeholder="target-neuron" />,
-  Fields: () => <div>target</div>,
+  Fields: () => <p className="tk-muted">No settings.</p>,
 };

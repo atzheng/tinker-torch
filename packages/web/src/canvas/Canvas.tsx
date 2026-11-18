@@ -1,4 +1,187 @@
-/** Placeholder: filled in by a later bead. */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { layoutLayers } from '@tinker/core';
+import './canvas.css';
+import { Inspector } from './Inspector.js';
+import { LayerView } from './LayerView.js';
+import {
+  edgeIndexOf,
+  errorNodes,
+  fitTransform,
+  placeInspector,
+  placeIssues,
+  type InspectorPlacement,
+  wireOfNode,
+  type Transform,
+} from './pure.js';
+import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
+import { useStore } from '../state/store.js';
+
+const DEFAULT_SIZE = { w: 800, h: 500 };
+const INSPECTOR_W = 248;
+
+function useElementSize(ref: React.RefObject<HTMLElement | null>) {
+  const [size, setSize] = useState(DEFAULT_SIZE);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = () => {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) setSize({ w: r.width, h: r.height });
+    };
+    read();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return size;
+}
+
+const isCoarse = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(pointer: coarse)').matches;
+
+function Callout(props: { x: number; y: number; viewW: number; text: string[]; testid: string }) {
+  const half = 100;
+  const left = Math.min(Math.max(props.x, half + 4), Math.max(half + 4, props.viewW - half - 4));
+  return (
+    <div className="tk-callout" data-testid={props.testid} style={{ left, top: props.y }}>
+      {props.text.map((t) => (
+        <p key={t}>{t}</p>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The canvas region: the layer view drawn to fit, issue callouts, and the inspector beside the
+ * selected piece. Selection lives in the view slice (`selection`); tapping the background clears it.
+ * Neuron view and the grain toggle are tinker-ran.1.
+ */
 export function Canvas() {
-  return <div className="placeholder">Canvas</div>;
+  const ref = useRef<HTMLDivElement>(null);
+  const view = useElementSize(ref);
+  const graph = useStore((s) => s.graph);
+  const select = useStore((s) => s.select);
+  const analysis = useAnalysis();
+  const weights = useWeights(analysis);
+  const selection = useSelection();
+  const coarse = isCoarse();
+
+  const layout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
+  const t: Transform = useMemo(() => fitTransform(layout.size, view), [layout.size, view]);
+  const placed = useMemo(
+    () =>
+      placeIssues(
+        analysis.issues,
+        new Set(layout.wires.map((w) => w.edge)),
+        new Set(graph.nodes.map((n) => n.id)),
+        (id) => wireOfNode(graph, id),
+      ),
+    [analysis, layout, graph],
+  );
+  const errNodes = useMemo(() => errorNodes(analysis.issues), [analysis]);
+  const errEdges = useMemo(() => new Set(placed.byEdge.keys()), [placed]);
+
+  const px = (x: number) => x * t.scale + t.tx;
+  const py = (y: number) => y * t.scale + t.ty;
+
+  // The inspector goes below the piece (or wire label), above when there is no room below, so it
+  // does not cover the wires beside the piece.
+  let anchor: InspectorPlacement | null = null;
+  if (selection?.kind === 'node') {
+    const box = layout.nodes[selection.id];
+    if (box) {
+      anchor = placeInspector(
+        { cx: px(box.x + box.w / 2), top: py(box.y), bottom: py(box.y + box.h) },
+        view,
+        INSPECTOR_W,
+      );
+    }
+  } else if (selection?.kind === 'wire') {
+    const w = layout.wires.find((x) => x.edge === edgeIndexOf(graph, selection.from, selection.to));
+    if (w) {
+      const y = py(w.labelAt[1]);
+      anchor = placeInspector(
+        { cx: px(w.labelAt[0]), top: y - 10, bottom: y + 10 },
+        view,
+        INSPECTOR_W,
+      );
+    }
+  }
+
+  return (
+    <div
+      ref={ref}
+      className="tk-canvas"
+      data-testid="canvas"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') select(null);
+      }}
+    >
+      <svg
+        className="tk-svg"
+        width={view.w}
+        height={view.h}
+        data-testid="canvas-svg"
+        onPointerDown={() => select(null)}
+      >
+        <g transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}>
+          <LayerView
+            graph={graph}
+            analysis={analysis}
+            layout={layout}
+            weights={weights}
+            errorEdges={errEdges}
+            errorNodes={errNodes}
+            selection={selection}
+            select={select}
+            scale={t.scale}
+            coarse={coarse}
+          />
+        </g>
+      </svg>
+      {placed.global.length > 0 && (
+        <div className="tk-global-issues" data-testid="issue-global" role="status">
+          {placed.global.map((m) => (
+            <p key={m}>{m}</p>
+          ))}
+        </div>
+      )}
+      {[...placed.byEdge].map(([edge, text]) => {
+        const w = layout.wires.find((x) => x.edge === edge);
+        if (!w) return null;
+        return (
+          <Callout
+            key={`e${edge}`}
+            testid={`issue-wire-${edge}`}
+            x={px(w.labelAt[0])}
+            y={py(w.labelAt[1]) + 14}
+            viewW={view.w}
+            text={text}
+          />
+        );
+      })}
+      {[...placed.byNode].map(([id, text]) => {
+        const box = layout.nodes[id];
+        if (!box) return null;
+        return (
+          <Callout
+            key={`n${id}`}
+            testid={`issue-node-${id}`}
+            x={px(box.x + box.w / 2)}
+            y={py(box.y + box.h) + 8}
+            viewW={view.w}
+            text={text}
+          />
+        );
+      })}
+      {selection && anchor && (
+        <div className="tk-inspector-pos" style={{ ...anchor, width: INSPECTOR_W }}>
+          <Inspector selection={selection} analysis={analysis} />
+        </div>
+      )}
+    </div>
+  );
 }
