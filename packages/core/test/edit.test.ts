@@ -209,10 +209,24 @@ describe('swapPiece', () => {
     expect(node(toAdd, 'dropout1')).toEqual({ id: 'dropout1', type: 'add' });
     const back = ok(swapPiece(toAdd, 'dropout1', entry('dropout')));
     expect(back.edges[1]).toEqual(['lin1', 'dropout1']);
-    // an Add with both inputs loses b when it becomes a dropout
+    // an Add with both inputs is refused as a dropout rather than silently losing b
     const two = ok(connect(toAdd, 'x', 'dropout1.b'));
-    const one = ok(swapPiece(two, 'dropout1', entry('dropout')));
-    expect(one.edges.filter(([, to]) => to === 'dropout1')).toEqual([['lin1', 'dropout1']]);
+    err(swapPiece(two, 'dropout1', entry('dropout')));
+  });
+
+  test('Output and Target never swap for each other', () => {
+    const g = base();
+    err(swapPiece(g, 'y', entry('output')));
+    err(swapPiece(g, 'yhat', entry('target')));
+    ok(swapPiece(g, 'yhat', { type: 'output', link: 'sigmoid' }));
+  });
+
+  test('huber delta carries over huber -> huber', () => {
+    const g = base((j) => {
+      j['nodes'][6] = { id: 'loss', type: 'loss', fn: 'huber', delta: 3 };
+    });
+    const out = ok(swapPiece(g, 'loss', entry('huber')));
+    expect(node(out, 'loss')).toMatchObject({ fn: 'huber', delta: 3 });
   });
 });
 

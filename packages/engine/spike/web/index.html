@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>jax-js spike</title>
+    <style>
+      body {
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        margin: 16px;
+        color: #111;
+        background: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          color: #eee;
+          background: #181818;
+        }
+      }
+      pre {
+        white-space: pre-wrap;
+      }
+      button {
+        margin-right: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>jax-js spike</h1>
+    <p id="env"></p>
+    <p>
+      <button id="all">Run all</button>
+      <button data-part="train">train</button>
+      <button data-part="ops">ops</button>
+      <button data-part="bench">bench</button>
+      <button data-part="leak">leak</button>
+    </p>
+    <pre id="log"></pre>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { sample } from '@tinker/core';
 import { createDataSlice, type DataSlice } from './dataSlice.js';
 import { createGraphSlice, type GraphSlice } from './graphSlice.js';
 import { createTrainSlice, type TrainSlice } from './trainSlice.js';
@@ -12,3 +13,11 @@ export const useStore = create<Store>()((...a) => ({
   ...createTrainSlice(...a),
   ...createViewSlice(...a),
 }));
+
+// The dataset follows graph.data whatever changed it (data action, undo, redo, load).
+useStore.subscribe((s, prev) => {
+  if (s.graph.data !== prev.graph.data) {
+    const dataset = sample(s.graph.data);
+    useStore.setState({ dataset, dataInfo: dataset.info });
+  }
+});

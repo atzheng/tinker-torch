@@ -148,6 +148,11 @@ export function swapPiece(
   if (CORE_PIECES[piece.type].family !== family) {
     return fail(`A ${old.type} piece can only be swapped for another piece of the same family.`);
   }
+  if (old.type !== piece.type && family === 'outputs') {
+    return fail(
+      `A ${piece.type} cannot replace the ${old.type}; they are different kinds of piece.`,
+    );
+  }
   const replace = (n: Node): Node[] => g.nodes.map((x) => (x.id === nodeId ? n : x));
 
   // Wires into the old piece move to the new piece's ports by position; extras are dropped.
@@ -155,6 +160,7 @@ export function swapPiece(
   const newPorts = inputPortsOf(piece.type);
   const resolved = resolveAll(g);
   const edges: Edge[] = [];
+  let dropped = false;
   g.edges.forEach((e, i) => {
     const r = resolved[i];
     if (!r || r.to.node !== nodeId) {
@@ -163,17 +169,25 @@ export function swapPiece(
     }
     const idx = oldPorts.indexOf(r.to.port);
     const port = newPorts[idx];
-    if (port === undefined) return;
+    if (port === undefined) {
+      dropped = true;
+      return;
+    }
     edges.push([e[0], newPorts.length === 1 ? nodeId : `${nodeId}.${port}`]);
   });
 
+  if (dropped) {
+    return fail(
+      `A ${piece.type} cannot replace the ${old.type}, because a wire into it would be lost.`,
+    );
+  }
   const base = { id: nodeId, ...piece } as Node;
   const identity = IDENTITY_KEYS[piece.type];
   const carried: Record<string, unknown> = {};
   const rest = old as unknown as Record<string, unknown>;
   const known = new Set<string>([
     ...Object.keys(CORE_PIECES[piece.type].defaults()),
-    ...(piece.type === 'loss' ? ['penalty'] : []),
+    ...(piece.type === 'loss' ? ['penalty', 'delta'] : []),
   ]);
   if (old.type === piece.type) {
     for (const key of Object.keys(rest)) {

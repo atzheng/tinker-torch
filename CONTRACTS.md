@@ -191,9 +191,17 @@ function makeRng(seed: number): Rng;   // sfc32 or splitmix32; same seed -> same
 // core/params.ts
 type HostParams = Record<NodeId, { W: Float32Array; b?: Float32Array }>; // W row-major [in, out]; only linear nodes
 function initParams(graph: Graph, analysis: Analysis, seed: number): HostParams;
+function reconcileParams(old: HostParams, oldGraph: Graph, oldAnalysis: Analysis, graph: Graph, analysis: Analysis, seed: number): HostParams;
+function countParams(host: HostParams): number;
+function paramsToJson(host: HostParams): Record<NodeId, { W: number[]; b?: number[] }>; // prototype-free object
+function paramsFromJson(json: unknown, graph: Graph, analysis: Analysis): { params: HostParams; dropped: NodeId[] };
 ```
 
 Initialisation follows `nn.Linear`: W and b both uniform on ±1/√in. Different seeds give different values; the same seed always gives the same values. Note the layout: torch stores `weight` as [out, in]; HostParams stores [in, out] so that the forward pass is `x @ W + b`. Fixtures (section 11) are written in HostParams layout.
+
+HostParams has an entry for exactly the linear nodes on `analysis.order` with a known input width (an entry has `b` iff the node has bias). Each node draws W then b from `makeRng(seed).fork(nodeId)`, so adding a node does not change the others' init. `reconcileParams` takes the graph and analysis the old params belong to (flat arrays alone cannot tell 2x3 from 3x2). Per node: W (the same array object) is kept when its old and new [in, out] are equal, even if bias was toggled; b is kept when both have it, drawn fresh from the node's rng stream when bias is turned on, and dropped when turned off; if [in, out] changed, the node is re-initialised; nodes that left the path are dropped; `old` is never mutated. `paramsFromJson` drops malformed entries (non-arrays, non-finite numbers, holes), shape-mismatched entries and unknown nodes, listing their ids in `dropped`; linear nodes with no saved entry are absent, so callers follow it with `reconcileParams`.
+
+HostParams arrays are immutable once created: `reconcileParams` shares unchanged arrays with `old` (and so with undo history), so nobody writes into them in place. The engine's `fromHost` copies into jax arrays and `toHost` creates new arrays.
 
 All data sampling, initialisation and mini-batch shuffling use `core/rng.ts`, never `Math.random` and never jax random. Only dropout masks use jax random, keyed from `TrainState.key`.
 
@@ -236,6 +244,7 @@ function truth(set: DatasetName, xRaw: Float32Array): Float32Array; // regressio
 - `truth` takes raw (unstandardised) x. Regression returns f*(x). Classification returns P(y=1|x) of the clean generator: blobs the exact logistic of the two Gaussians, circle (cut at r = 1.15, mid-gap), xor and moons (class 1 = inner moon, the nearer half circle) 0 or 1. All v1 classification sets are binary, so `info.kind` is `'binary'` with `numClasses` 2; regression has `numClasses` 1. `DataInfo` is defined in `core/graph.ts`.
 - Classification labels alternate 0, 1, 0, 1, ... so the train and validation parts are each balanced.
 - `data/grid.ts`: `grid1d(domain, m = 200, standardization = null)` and `grid2d(domain, m = 64, standardization = null)` return `{ n, d, xRaw, xStd }` (row-major Float32Arrays; xStd equals xRaw when standardization is null). Both span the domain inclusive of the ends. grid2d row index is `iy * m + ix`, x1 varying fastest.
+- Web data slice (`state/dataSlice.ts`): the slice holds `dataset: Dataset` and `dataInfo: DataInfo` (`dataset.info`), always equal to `sample(graph.data)`; a store subscription re-samples whenever `graph.data` changes identity (data action, undo, redo, load). Actions: `setData(patch)` (clamps to the schema ranges; one undo step per call via `graphSlice.apply`, because history holds whole graphs including `graph.data`; the top bar commits number fields on blur or Enter, not per keystroke), `resample()` (new seed from `makeRng(seed).fork('resample').int(2 ** 31)`), `setInputColumns(id, columns)`. Switching to a set with different columns resets every Input piece to all columns of the new set.
 - `data/batches.ts`: `batchSchedule(nTrain, batch, seed)` is an infinite generator of fresh `Int32Array` index arrays, one per step; each epoch shuffles with `makeRng(seed).fork('epoch' + e)` and cuts the order into batches, keeping a smaller last batch so every row appears once per epoch. `batch: 'full'` yields all rows in order every step. `stepsPerEpoch(nTrain, batch)` gives steps per epoch. `gatherBatch(xTrain, yTrain, d, idx)` copies those rows into a `Batch` (section 7).
 
 ## 7. Engine (`engine/src/index.ts`)
@@ -298,13 +307,13 @@ Choices fixed by the implementation (`core/edit.ts`, exports `EditResult` and `E
 - Every edit takes a last optional argument `opts?: { locked?: readonly NodeId[] }`; the store passes the preset's `locked`. A node counts as changed when its own settings change or a wire into it is added, removed or rewired (so `deleteNode` refuses when the piece or any piece it feeds is locked, and `insertOnWire`, `connect` and `deleteEdge` refuse when the wire's destination is locked). Source nodes are not changed by a new wire out of them.
 - Every ok graph has been through `parseGraph` (defaults filled, huber `delta` 1), so it always re-parses. Edits never check trainability; `analyse` reports it.
 - `insertOnWire`: the piece must have an input and an output (not Input, Target or a loss). The wire `a -> b` becomes `a -> new` at the same index and `new -> b` right after it; an Add goes in on `a`. `select` is the new id.
-- `swapPiece`: same family (Dropout and Add are both `structure`, so they can swap; wires move to the new piece's input ports by position, extras are dropped). Same-type swaps carry over each setting that exists on the new type and still validates, except the identity key (`fn` of an activation or loss). A loss keeps its `penalty`; `delta` is set only for huber (default 1) and dropped otherwise. `select` is the node.
+- `swapPiece`: same family, except Output and Target never swap for each other. Dropout and Add (both `structure`) can swap; wires move to the new piece's input ports by position. A swap that would drop a wire (e.g. a connected Add `b` when becoming a Dropout) is refused with one sentence, never silently. Same-type swaps carry over each setting that exists on the new type and still validates, except the identity key (`fn` of an activation or loss). A loss keeps its `penalty`; `delta` carries on huber -> huber, is set to 1 when swapping to huber from another loss, and is dropped otherwise. `select` is the node.
+- `connect`, `deleteEdge`, `insertOnWire` and `deleteNode` can shift edge indices, so the store and canvas must not hold edge indices across edits: re-derive them from the new graph (or use `select`).
 - `connect`: stored in short form (`x`, `loss.pred`); replaces every wire into that port, appended at the end of `edges`. Refuses a bad port (resolveEdge's sentence), a self-wire or cycle, and an identical wire that already exists. It does not enforce the Output/Target wiring rules (analyse does).
 - `deleteNode`: closes the gap only when the piece has a single input port with exactly one wire in, at least one wire out, and the width arriving equals the width it passes on (or either is not yet known; widths come from `analyse` on a data info built from the graph's Input columns). Each outgoing wire keeps its index and its source becomes the upstream node. Otherwise the wires in and out are removed.
 - `setSetting(g, id, key, value)`: `key` must be a setting of that piece type (`delta` and `penalty` for losses); `id` and `type` cannot be set; `undefined` removes an optional setting; setting a loss `fn` other than huber drops `delta`. The value is checked by the node schema.
 - `setPenalty(g, lossId, null)` removes the penalty. `setColumns` refuses repeated columns but allows an empty list.
-
-Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, newGraph, newAnalysis, seed)` in `core/params.ts`).
+Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, oldGraph, oldAnalysis, newGraph, newAnalysis, seed)` in `core/params.ts`).
 
 ## 9. Layout geometry (`core/layout.ts`)
 
