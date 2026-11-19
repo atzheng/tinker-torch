@@ -195,7 +195,7 @@ function Surface({
   const ref = usePlotCanvas(draw, [surface, path, range, hostKey]);
   return (
     <div className={styles.panel} data-testid="loss-surface">
-      <div className={styles.head}>
+      <div className={styles.head} data-panel-head="">
         <span className={styles.title}>Loss surface</span>
         {diverged ? <span data-testid="surface-diverged">Diverged</span> : null}
       </div>

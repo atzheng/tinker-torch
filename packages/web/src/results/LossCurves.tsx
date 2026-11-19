@@ -103,7 +103,7 @@ export function LossCurves() {
   const ref = usePlotCanvas(draw, [history, best, log, miniBatch, pins]);
   return (
     <div className={styles.panel} data-testid="loss-curves">
-      <div className={styles.head}>
+      <div className={styles.head} data-panel-head="">
         <span className={styles.title}>Loss</span>
         <label className={styles.toggle}>
           <input

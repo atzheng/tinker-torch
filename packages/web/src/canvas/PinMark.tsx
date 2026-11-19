@@ -36,6 +36,8 @@ export type PinMarkProps = {
   node: string;
   /** The box of the node the pin is attached to, in abstract units. */
   box: Rect;
+  /** Where the disc is centred (`placePins`); left out, the default spot. */
+  at?: readonly [number, number];
   /** Press rectangle (`pinHitRect`). */
   hit: Rect;
   selected?: boolean;
@@ -55,7 +57,7 @@ export type PinMarkProps = {
  * ghost form is the dashed "add" version shown on the selected node.
  */
 export function PinMark(p: PinMarkProps) {
-  const [cx, cy] = pinCentre(p.box, p.role);
+  const [cx, cy] = p.at ?? pinCentre(p.box, p.role);
   const px = p.box.x + p.box.w;
   const py = p.box.y + p.box.h / 2;
   const len = Math.hypot(cx - px, cy - py);
