@@ -112,7 +112,11 @@ path.tk-hit {
 .tk-node[data-inert='true'] .tk-body {
   stroke-dasharray: 4 3;
 }
-/* Hides the piece's own secondary lines under the "not connected" note. */
+/* The glyph, heat map, badge, tag and secondary lines mean nothing until the piece is wired: only the name stays. */
+.tk-node[data-inert='true'] :is(.tk-slot, .tk-secondary, .tk-secondary-tex) {
+  display: none;
+}
+/* Backstop for anything else a piece draws below its name. */
 .tk-inert-cover {
   fill: var(--node-fill);
   pointer-events: none;
