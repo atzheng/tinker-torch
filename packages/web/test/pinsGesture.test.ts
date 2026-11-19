@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import { addPrediction, analyse, layoutLayers, type Graph } from '@tinker/core';
 import { editForDrop, pinCanLandOn, resolveDrop, type DragPayload } from '../src/canvas/dnd.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import {
   HIT_MIN_PX,
   PIN,

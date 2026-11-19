@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { setLinearOut } from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 import { wheelZoomFactor } from '../src/canvas/viewport.js';
 

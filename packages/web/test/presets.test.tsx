@@ -2,10 +2,12 @@
 import { beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { analyse, deleteNode, sample, setSetting } from '@tinker/core';
+import { analyse, deleteNode, layoutLayers, sample, setSetting } from '@tinker/core';
+import { LAYER_FIT_MIN_SCALE } from '../src/canvas/viewport.js';
+import { initialGraph as defaultGraph } from '../src/state/graphSlice.js';
 import { PRESET_NAMES, bundledPreset } from '../src/presets/index.js';
 import { PromptLine } from '../src/presets/PromptLine.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { lockedIds } from '../src/state/locks.js';
 import { useStore } from '../src/state/store.js';
 import { loadText, saveText } from '../src/topbar/FileMenu.js';
@@ -25,7 +27,16 @@ function presetText(extra: Record<string, unknown>): string {
 }
 
 test('every bundled preset parses, is titled, has no prompt and analyses as trainable', () => {
-  expect(PRESET_NAMES).toEqual(['linear', 'logistic', 'sine', 'xor', 'skip', 'softmax']);
+  expect(PRESET_NAMES).toEqual([
+    'linear',
+    'logistic',
+    'sine',
+    'xor',
+    'skip',
+    'softmax',
+    'scalar',
+    'mlp',
+  ]);
   for (const name of PRESET_NAMES) {
     const f = bundledPreset(name);
     expect(f, name).not.toBeNull();
@@ -165,4 +176,17 @@ test('the prompt shows verbatim and can be dismissed', () => {
   });
   expect(host.querySelector('[data-testid="preset-prompt"]')).toBeNull();
   act(() => root.unmount());
+});
+
+test('the first-open graph is the scalar preset and its whole drawing fits at names >= 8 px', () => {
+  const f = bundledPreset('scalar');
+  if (!f) throw new Error('no scalar preset');
+  expect(defaultGraph()).toEqual(f.graph);
+  const g = f.graph;
+  const l = layoutLayers(g, analyse(g, sample(g.data).info));
+  // canvas widths (CONTRACTS section 10 viewports): 1024x768 touch is the narrowest, 561 px, 24 px margins
+  for (const w of [561, 647, 702, 1054]) {
+    expect((w - 48) / l.size[0], `canvas ${w}`).toBeGreaterThanOrEqual(LAYER_FIT_MIN_SCALE);
+  }
+  expect((400 - 48) / l.size[1]).toBeGreaterThanOrEqual(LAYER_FIT_MIN_SCALE);
 });
