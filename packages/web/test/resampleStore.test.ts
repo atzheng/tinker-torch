@@ -9,6 +9,7 @@ const s = () => useStore.getState();
 const result: OverlayResult = {
   d: 1,
   gridN: 2,
+  k: 1,
   curves: [Float32Array.of(0, 1)],
   mean: Float32Array.of(0, 1),
   bias2: 0.1,

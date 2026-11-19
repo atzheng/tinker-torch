@@ -57,3 +57,42 @@ test.each(Object.keys(BEFORE))(
     engine.disposeModel(model);
   },
 );
+
+// A multi-class preset (tinker-75o): softmax + cross-entropy on three blobs trains and gets most
+// points right.
+test('preset softmax trains: the loss falls and most training points are classified correctly', () => {
+  const url = new URL('../../web/src/presets/softmax.json', import.meta.url);
+  const file = parseFile(JSON.parse(readFileSync(url, 'utf8')));
+  if (!file.ok) throw new Error(file.error);
+  const g = file.file.graph;
+  const ds = sample(g.data);
+  expect(ds.info).toMatchObject({ kind: 'multiclass', numClasses: 3 });
+  const analysis = analyse(g, ds.info);
+  expect(analysis.issues).toEqual([]);
+  const model = engine.compile(g, ds.info);
+  let state = engine.startTraining(
+    model,
+    engine.fromHost(model, initParams(analysis, g.train.seed)),
+    g.train.seed,
+  );
+  const batches = batchSchedule(ds.nTrain, g.train.batch, g.train.seed);
+  const d = ds.info.columns.length;
+  const losses: number[] = [];
+  for (let i = 0; i < 200; i++) {
+    const idx = batches.next().value;
+    const r = engine.step(model, state, gatherBatch(ds.xTrain, ds.yTrain, d, idx));
+    state = r.state;
+    losses.push(r.loss);
+  }
+  expect(losses[199]).toBeLessThan((losses[0] ?? 0) * 0.5);
+  const out = engine.predict(model, state.params, ds.xTrain, ds.nTrain)[0];
+  expect(out?.length).toBe(ds.nTrain * 3);
+  let right = 0;
+  for (let i = 0; i < ds.nTrain; i++) {
+    const row = [0, 1, 2].map((j) => out?.[i * 3 + j] ?? 0);
+    if (row.indexOf(Math.max(...row)) === ds.yTrain[i]) right++;
+  }
+  expect(right / ds.nTrain).toBeGreaterThan(0.85);
+  engine.dispose(state);
+  engine.disposeModel(model);
+});

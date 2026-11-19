@@ -2,6 +2,8 @@ export {
   sample,
   truth,
   truthMargin,
+  truthProbs,
+  classCount,
   standardizeRows,
   unstandardizeRows,
   valCount,

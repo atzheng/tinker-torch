@@ -178,6 +178,7 @@ test.each([
   'prim_log_loss_sigmoid',
   'loss_cross_entropy',
   'prim_cross_entropy_softmax',
+  'prim_cross_entropy_softmax_k3',
 ])(
   'compiling %s repeatedly leaves no constants behind',
   async (name) => {

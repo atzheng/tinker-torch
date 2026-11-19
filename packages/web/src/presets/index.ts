@@ -6,6 +6,7 @@ import xor from './xor.json';
 import skip from './skip.json';
 import scalar from './scalar.json';
 import mlp from './mlp.json';
+import softmax from './softmax.json';
 
 /** Bundled presets by the name used in `?preset=<name>`, in menu order. Imported, never fetched. */
 export const PRESET_SOURCES: Record<string, unknown> = {
@@ -14,6 +15,7 @@ export const PRESET_SOURCES: Record<string, unknown> = {
   sine,
   xor,
   skip,
+  softmax,
   scalar,
   mlp,
 };
