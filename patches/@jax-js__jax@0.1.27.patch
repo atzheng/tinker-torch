@@ -1,0 +1,140 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 4b71bb87c8d1b4ace11e2747f298a3bd635d796c..73da21bb55141430c7cfce0549e1e70d3c0403ad 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -1274,7 +1274,7 @@ var Jaxpr = class Jaxpr {
+ 			hasher.update(eqn.primitive);
+ 			hasher.update(eqn.inputs.length);
+ 			for (const x of eqn.inputs) hasher.update(x instanceof Var ? vi(x) : x.value);
+-			hasher.update(JSON.stringify(eqn.params));
++			hasher.update(JSON.stringify(eqn.params, (_k, v) => v instanceof Jaxpr ? String(v.getHash()) : v));
+ 			hasher.update(eqn.outBinders.length);
+ 			for (const x of eqn.outBinders) hasher.update(vi(x));
+ 		}
+@@ -4009,7 +4009,7 @@ const vmapRules = {
+ 		return [outs, require_backend.rep(outs.length, 0)];
+ 	}
+ };
+-const vmapJaxprCache = /* @__PURE__ */ new Map();
++const vmapJaxprCache = /* @__PURE__ */ new WeakMap();
+ function vmapJaxpr(jaxpr, axisSize, dims) {
+ 	const cacheKey = JSON.stringify([axisSize, dims]);
+ 	const prevResult = vmapJaxprCache.get(jaxpr)?.get(cacheKey);
+@@ -4366,7 +4366,7 @@ const jvpRules = {
+ 		return [primalsOut, tangentsOut];
+ 	}
+ };
+-const jvpJaxprCache = /* @__PURE__ */ new Map();
++const jvpJaxprCache = /* @__PURE__ */ new WeakMap();
+ function jvpJaxpr(jaxpr) {
+ 	if (jvpJaxprCache.has(jaxpr)) return jvpJaxprCache.get(jaxpr);
+ 	const inAvals = jaxpr.inBinders.map((v) => v.aval);
+@@ -4443,15 +4443,20 @@ var PartialVal = class PartialVal {
+ 	}
+ };
+ function partialEvalFlat(f, pvalsIn) {
+-	const trace = new PartialEvalTrace(newMain(PartialEvalTrace));
+-	const tracersIn = pvalsIn.map((pval) => trace.newArg(pval));
+-	const unknownTracersIn = tracersIn.filter((t) => !t.pval.isKnown).map((t) => t.ref);
+-	const tracersOut = f(...tracersIn).map((out) => fullRaise(trace, out));
+-	const pvalsOut = tracersOut.map((t) => t.pval);
+-	return {
+-		jaxpr: partialEvalGraphToJaxpr(unknownTracersIn, tracersOut.filter((t) => !t.pval.isKnown)),
+-		pvalsOut
+-	};
++	const main = newMain(PartialEvalTrace);
++	try {
++		const trace = new PartialEvalTrace(main);
++		const tracersIn = pvalsIn.map((pval) => trace.newArg(pval));
++		const unknownTracersIn = tracersIn.filter((t) => !t.pval.isKnown).map((t) => t.ref);
++		const tracersOut = f(...tracersIn).map((out) => fullRaise(trace, out));
++		const pvalsOut = tracersOut.map((t) => t.pval);
++		return {
++			jaxpr: partialEvalGraphToJaxpr(unknownTracersIn, tracersOut.filter((t) => !t.pval.isKnown)),
++			pvalsOut
++		};
++	} finally {
++		main[Symbol.dispose]();
++	}
+ }
+ /**
+ * Helper function with shared Jaxpr logic between linearize and vjp.
+@@ -5006,7 +5011,7 @@ const transposeRules = {
+ 		return undefPrimals.map((isUndef) => isUndef ? outs[i++] : null);
+ 	}
+ };
+-const transposeJaxprCache = /* @__PURE__ */ new Map();
++const transposeJaxprCache = /* @__PURE__ */ new WeakMap();
+ function transposeJaxpr(jaxpr, undefPrimals) {
+ 	const cacheKey = JSON.stringify(undefPrimals);
+ 	const prevResult = transposeJaxprCache.get(jaxpr)?.get(cacheKey);
+diff --git a/dist/index.js b/dist/index.js
+index bc74d3da70379a9e23e1fe29764339aa15ead267..fead42685ab47eec0c6b392fa63497c1ca9b44c2 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1262,7 +1262,7 @@ var Jaxpr = class Jaxpr {
+ 			hasher.update(eqn.primitive);
+ 			hasher.update(eqn.inputs.length);
+ 			for (const x of eqn.inputs) hasher.update(x instanceof Var ? vi(x) : x.value);
+-			hasher.update(JSON.stringify(eqn.params));
++			hasher.update(JSON.stringify(eqn.params, (_k, v) => v instanceof Jaxpr ? String(v.getHash()) : v));
+ 			hasher.update(eqn.outBinders.length);
+ 			for (const x of eqn.outBinders) hasher.update(vi(x));
+ 		}
+@@ -3997,7 +3997,7 @@ const vmapRules = {
+ 		return [outs, rep(outs.length, 0)];
+ 	}
+ };
+-const vmapJaxprCache = /* @__PURE__ */ new Map();
++const vmapJaxprCache = /* @__PURE__ */ new WeakMap();
+ function vmapJaxpr(jaxpr, axisSize, dims) {
+ 	const cacheKey = JSON.stringify([axisSize, dims]);
+ 	const prevResult = vmapJaxprCache.get(jaxpr)?.get(cacheKey);
+@@ -4354,7 +4354,7 @@ const jvpRules = {
+ 		return [primalsOut, tangentsOut];
+ 	}
+ };
+-const jvpJaxprCache = /* @__PURE__ */ new Map();
++const jvpJaxprCache = /* @__PURE__ */ new WeakMap();
+ function jvpJaxpr(jaxpr) {
+ 	if (jvpJaxprCache.has(jaxpr)) return jvpJaxprCache.get(jaxpr);
+ 	const inAvals = jaxpr.inBinders.map((v) => v.aval);
+@@ -4431,15 +4431,20 @@ var PartialVal = class PartialVal {
+ 	}
+ };
+ function partialEvalFlat(f, pvalsIn) {
+-	const trace = new PartialEvalTrace(newMain(PartialEvalTrace));
+-	const tracersIn = pvalsIn.map((pval) => trace.newArg(pval));
+-	const unknownTracersIn = tracersIn.filter((t) => !t.pval.isKnown).map((t) => t.ref);
+-	const tracersOut = f(...tracersIn).map((out) => fullRaise(trace, out));
+-	const pvalsOut = tracersOut.map((t) => t.pval);
+-	return {
+-		jaxpr: partialEvalGraphToJaxpr(unknownTracersIn, tracersOut.filter((t) => !t.pval.isKnown)),
+-		pvalsOut
+-	};
++	const main = newMain(PartialEvalTrace);
++	try {
++		const trace = new PartialEvalTrace(main);
++		const tracersIn = pvalsIn.map((pval) => trace.newArg(pval));
++		const unknownTracersIn = tracersIn.filter((t) => !t.pval.isKnown).map((t) => t.ref);
++		const tracersOut = f(...tracersIn).map((out) => fullRaise(trace, out));
++		const pvalsOut = tracersOut.map((t) => t.pval);
++		return {
++			jaxpr: partialEvalGraphToJaxpr(unknownTracersIn, tracersOut.filter((t) => !t.pval.isKnown)),
++			pvalsOut
++		};
++	} finally {
++		main[Symbol.dispose]();
++	}
+ }
+ /**
+ * Helper function with shared Jaxpr logic between linearize and vjp.
+@@ -4994,7 +4999,7 @@ const transposeRules = {
+ 		return undefPrimals.map((isUndef) => isUndef ? outs[i++] : null);
+ 	}
+ };
+-const transposeJaxprCache = /* @__PURE__ */ new Map();
++const transposeJaxprCache = /* @__PURE__ */ new WeakMap();
+ function transposeJaxpr(jaxpr, undefPrimals) {
+ 	const cacheKey = JSON.stringify(undefPrimals);
+ 	const prevResult = transposeJaxprCache.get(jaxpr)?.get(cacheKey);
