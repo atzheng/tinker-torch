@@ -170,11 +170,16 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   const paramShapes = record<ParamShapes>();
   const computed = new Set<NodeId>();
   const visiting = new Set<NodeId>();
+  let loopHit = false; // set when a shape lookup re-enters a node that is still being computed
 
   function shapeOf(id: NodeId): Shape | undefined {
     if (computed.has(id)) return shape[id];
     const node = byId.get(id);
-    if (!node || !done.has(id) || visiting.has(id)) return undefined;
+    if (!node || !done.has(id)) return undefined;
+    if (visiting.has(id)) {
+      loopHit = true;
+      return undefined;
+    }
     visiting.add(id);
     compute(node);
     visiting.delete(id);
@@ -231,8 +236,17 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
         });
         return;
       }
-      // An unknown size here has its root cause at the Linear's input; no issue of its own.
-      if (ctx.weightShape(node.of) === undefined) return;
+      loopHit = false;
+      if (ctx.weightShape(node.of) === undefined) {
+        // Otherwise the root cause is at the Linear's input and has its own issue.
+        if (loopHit) {
+          issues.push({
+            at: { node: id },
+            message: `"${id}" reads the weights of "${node.of}", which depends on "${id}" itself.`,
+          });
+        }
+        return;
+      }
     }
     const r = (piece.outShape as ShapeFn)(node, inS, ctx);
     if (missing) {
@@ -331,6 +345,13 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   }
   const modelOrder = order.filter((id) => region[id] === 'model');
   const inOrder = new Set(order);
+  // Safety net: trainable must never hold with a missing shape.
+  if (issues.length === 0) {
+    const bare = order.find((id) => shape[id] === undefined);
+    if (bare !== undefined) {
+      issues.push({ at: { node: bare }, message: `The size of "${bare}" could not be worked out.` });
+    }
+  }
 
   // ---- L: a single number that depends on a parameter
   if (lossNode !== null) {

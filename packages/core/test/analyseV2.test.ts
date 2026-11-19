@@ -635,6 +635,47 @@ describe('analyse v2: Weights taps and the penalty', () => {
   });
 });
 
+describe('analyse v2: Weights loops', () => {
+  const loop = (): Graph => {
+    const gr = spec();
+    gr.nodes = gr.nodes.filter((n) => n.id !== 'l1' && n.id !== 'a1');
+    gr.nodes.push(
+      lin('l1', 4),
+      { id: 'add', type: 'add' },
+      { id: 'w1', type: 'weights', of: 'l1' },
+      { id: 'n1', type: 'norm', kind: 'l2' },
+    );
+    gr.edges = [
+      ['in', 'add.a'],
+      ['w1', 'n1'],
+      ['n1', 'add.b'],
+      ['add', 'l1'],
+      ['l1', 'l2'],
+      ['l2', 'diff.a'],
+      ['y', 'diff.b'],
+      ['diff', 'err'],
+      ['err', 'loss'],
+    ];
+    return gr;
+  };
+
+  test('a tap that depends on itself is an issue, not silence', () => {
+    const a = analyse(loop(), reg);
+    expect(a.trainable).toBe(false);
+    expect(a.issues).toContainEqual({
+      at: { node: 'w1' },
+      message: '"w1" reads the weights of "l1", which depends on "w1" itself.',
+    });
+  });
+
+  test('the safety net: no missing shape with no issue', () => {
+    for (const gr of [loop(), spec()]) {
+      const a = analyse(gr, reg);
+      if (a.trainable) for (const id of a.order) expect(a.shape[id]).toBeDefined();
+    }
+  });
+});
+
 describe('analyse v2: loss pieces take probabilities', () => {
   function build(
     link: 'sigmoid' | 'softmax' | null,
@@ -729,6 +770,9 @@ describe('analyse v2 against v1 analyse, through migration', () => {
       for (const [id, p] of Object.entries(a1.params)) {
         const mine = a2.params[id];
         if (mine !== undefined) expect(mine, `${id} params`).toBe(p);
+      }
+      for (const id of a2.order) {
+        expect(a2.shape[id], `${id} shape`).toBeDefined();
       }
       // roles: L is a single number, every ŷ is in the model region
       expect(a2.lossNode).not.toBeNull();
