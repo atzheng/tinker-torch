@@ -294,6 +294,7 @@ describe('analyse v2: prediction pins', () => {
     const gr = spec();
     gr.predictions = ['loss'];
     expect(messages(analyse(gr, reg))).toEqual([
+      'A prediction cannot depend on the target, but "loss" does.', // this loss reads y
       'A prediction must be one row per example, but "loss" is a single number.',
     ]);
   });
