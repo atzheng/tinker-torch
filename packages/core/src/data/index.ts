@@ -7,11 +7,34 @@ export {
   standardizeRows,
   unstandardizeRows,
   valCount,
+  hasTruth,
 } from './sample.js';
 export type { Dataset, Standardization } from './sample.js';
 export { SETS, spread } from './sets.js';
 export type { SetSpec, SetKind } from './sets.js';
-export { grid1d, grid2d } from './grid.js';
+export { grid1d, grid2d, grid2dSlice } from './grid.js';
 export type { Grid } from './grid.js';
 export { batchSchedule, gatherBatch, stepsPerEpoch } from './batches.js';
 export type { Batch } from './batches.js';
+export {
+  BUNDLED,
+  REAL_META,
+  getTable,
+  hasTable,
+  isBundled,
+  isRealSet,
+  loadRealSet,
+  registerTable,
+} from './real.js';
+export type { BundledName, RealMeta, RealTable } from './real.js';
+export {
+  CSV_LIMITS,
+  buildCsv,
+  inferKind,
+  isMissing,
+  parseCsv,
+  parseCsvCells,
+  registerCsv,
+  usableInputs,
+} from './csv.js';
+export type { Csv, CsvBuild, CsvColumn } from './csv.js';

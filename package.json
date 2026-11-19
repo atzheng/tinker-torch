@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "build": "pnpm -r run build",
     "dev": "pnpm --filter @tinker/web run dev",
-    "torch-ref": "uv run tools/torch-ref/gen.py"
+    "torch-ref": "uv run tools/torch-ref/gen.py",
+    "data-ref": "node tools/data-ref/build.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

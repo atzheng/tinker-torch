@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
 import {
+  hasTable,
+  isRealSet,
+  loadRealSet,
   paramsFromJson,
   paramsToJson,
   parseFileText,
@@ -42,6 +45,24 @@ export function loadText(text: string): { ok: boolean; message: string | null } 
  * the store (locked ids the graph does not have are ignored); a plain file clears any preset.
  */
 export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: string | null } {
+  const set = file.graph.data.set;
+  if (isRealSet(set) && !hasTable(set)) {
+    if (set === 'csv') {
+      return {
+        ok: false,
+        message: 'This file uses a CSV that is not open. Open the CSV from the Data menu first.',
+      };
+    }
+    // A bundled dataset: load its rows (from the app's own files), then load the file.
+    loadRealSet(set).then(
+      () => loadParsed(file),
+      () =>
+        useStore.setState({
+          error: 'The dataset could not be loaded. Reload the page and try again.',
+        }),
+    );
+    return { ok: true, message: null };
+  }
   const s = useStore.getState();
   let active: ActivePreset | null = null;
   if ('title' in file) {

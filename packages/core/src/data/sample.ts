@@ -1,6 +1,7 @@
 import type { DataConfig, DataInfo, DatasetName } from '../common.js';
 import { makeRng } from '../rng.js';
 import { SETS, generate } from './sets.js';
+import { realRows } from './real.js';
 
 export type Standardization = { mean: number[]; std: number[] };
 
@@ -45,6 +46,11 @@ export function valCount(n: number, val: number): number {
   return Math.min(n, Math.max(0, Math.round(n * val)));
 }
 
+/** True for the generators (they have a clean truth); false for real datasets. */
+export function hasTruth(set: DatasetName): boolean {
+  return !SETS[set].real;
+}
+
 /** Regression 1, binary 2, multiclass k. */
 export function classCount(set: DatasetName): number {
   const spec = SETS[set];
@@ -54,8 +60,11 @@ export function classCount(set: DatasetName): number {
 export function sample(config: DataConfig): Dataset {
   const spec = SETS[config.set];
   const d = spec.d;
-  const n = config.n;
-  const rows = generate(config.set, n, config.noise, makeRng(config.seed));
+  const rng = makeRng(config.seed);
+  // A real set has fixed rows: n is its size, noise does not apply, the seed shuffles the split.
+  const real = spec.real ? realRows(config.set, rng) : null;
+  const rows = real ? real.rows : generate(config.set, config.n, config.noise, rng);
+  const n = rows.length;
   const nVal = valCount(n, config.val);
   const nTrain = n - nVal;
 
@@ -95,7 +104,8 @@ export function sample(config: DataConfig): Dataset {
 
   return {
     info: {
-      columns: spec.featureNames ?? Array.from({ length: d }, (_, c) => `x${c + 1}`),
+      columns: Array.from({ length: d }, (_, c) => `x${c + 1}`),
+      ...(spec.featureNames ? { featureNames: spec.featureNames } : {}),
       kind: spec.kind,
       numClasses: classCount(config.set),
       targetName: spec.targetName ?? 'y',
@@ -114,7 +124,7 @@ export function sample(config: DataConfig): Dataset {
     yVal,
     nVal,
     standardization,
-    domain: spec.domain.map(([lo, hi]) => [lo, hi]),
+    domain: (real ? real.domain : spec.domain).map(([lo, hi]) => [lo, hi]),
   };
 }
 
@@ -125,6 +135,7 @@ export function sample(config: DataConfig): Dataset {
  */
 export function truth(set: DatasetName, xRaw: Float32Array): Float32Array {
   const spec = SETS[set];
+  if (spec.real) throw new Error('A real dataset has no true function.');
   const d = spec.d;
   const n = Math.floor(xRaw.length / d);
   const out = new Float32Array(n);

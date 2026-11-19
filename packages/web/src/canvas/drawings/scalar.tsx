@@ -1,6 +1,7 @@
 import { useStore } from '../../state/store.js';
 import { useAnalysis, useWeights } from '../../state/derived.js';
 import { ValueField } from '../ValueField.js';
+import { featureName, fitText } from '../../state/names.js';
 import { NodeShell } from './NodeShell.js';
 import { SelectField, editSetting } from './fields.js';
 import type { NodeOf, WebPiece } from './types.js';
@@ -37,33 +38,39 @@ function ScalarValue(p: { node: NodeOf<'scalew'> | NodeOf<'bias'> }) {
 
 /** Which dataset column a Column piece reads. */
 function ColumnFields({ node }: { node: NodeOf<'column'> }) {
-  const columns = useStore((s) => s.dataInfo.columns);
+  const info = useStore((s) => s.dataInfo);
+  const columns = info.columns;
   const names = columns.includes(node.name) ? columns : [node.name, ...columns];
   return (
     <SelectField
       label="Column"
       testid="column-name"
       value={node.name}
-      options={names.map((c) => [c, c] as const)}
+      options={names.map((c) => [c, featureName(info, c)] as const)}
       onChange={(v) => editSetting(node.id, 'name', v)}
     />
   );
 }
 
 export const columnPiece: WebPiece<'column'> = {
-  Layer: ({ node, w, h, scale }) => (
-    <NodeShell
-      piece="column"
-      role="input"
-      w={w}
-      h={h}
-      scale={scale}
-      name="Column"
-      glyph={`x_{${node.name.replace(/^x/, '')}}`}
-      inPorts={0}
-      outPort
-    />
-  ),
+  Layer: function ColumnLayer({ node, w, h, scale }) {
+    const info = useStore((s) => s.dataInfo);
+    const fname = featureName(info, node.name);
+    return (
+      <NodeShell
+        piece="column"
+        role="input"
+        w={w}
+        h={h}
+        scale={scale}
+        name="Column"
+        glyph={`x_{${node.name.replace(/^x/, '')}}`}
+        {...(fname !== node.name ? { secondary: [fitText(fname, w - 48)] } : {})}
+        inPorts={0}
+        outPort
+      />
+    );
+  },
   Neuron: noNeuron('column'),
   Fields: ColumnFields,
 };
