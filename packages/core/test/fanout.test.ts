@@ -62,7 +62,10 @@ describe('analyse and edit', () => {
 
   test('connect from an output that already has wires adds one and keeps the others', () => {
     const g = fan(3);
-    const added = parseGraph({ ...g, nodes: [...g.nodes, { id: 'a4', type: 'activation', fn: 'relu' }] });
+    const added = parseGraph({
+      ...g,
+      nodes: [...g.nodes, { id: 'a4', type: 'activation', fn: 'relu' }],
+    });
     if (!added.ok) throw new Error(added.error);
     const r = connect(added.graph, 'h', 'a4');
     if (!r.ok) throw new Error(r.error);
@@ -90,11 +93,12 @@ describe('analyse and edit', () => {
     if (!withB.ok) throw new Error(withB.error);
     const rw = rewireEdge(withB.graph, i2, 'to', 'b');
     if (!rw.ok) throw new Error(rw.error);
-    expect(rw.graph.edges.filter((e) => e[0] === 'h').map((e) => e[1]).sort()).toEqual([
-      'a1',
-      'a3',
-      'b',
-    ]);
+    expect(
+      rw.graph.edges
+        .filter((e) => e[0] === 'h')
+        .map((e) => e[1])
+        .sort(),
+    ).toEqual(['a1', 'a3', 'b']);
   });
 
   test('deleting one consumer of a fanned-out output leaves the other wires', () => {
@@ -137,7 +141,10 @@ describe('layout', () => {
     const moved = moveNodes(g, { a1: [300, 200], a2: [300, 20] });
     if (!moved.ok) throw new Error(moved.error);
     const l = layoutLayers(moved.graph, analyse(moved.graph, info));
-    labelsApart(l, g.edges.flatMap((e, i) => (e[0] === 'h' ? [i] : [])));
+    labelsApart(
+      l,
+      g.edges.flatMap((e, i) => (e[0] === 'h' ? [i] : [])),
+    );
   });
 
   test('plain wires and weight pills out of one output do not overlap', () => {
