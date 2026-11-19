@@ -14,6 +14,8 @@ export const DATASET_NAMES = [
   'circle',
   'xor',
   'moons',
+  'blobs3',
+  'spiral3',
 ] as const;
 export const ACTIVATION_FNS = ['sigmoid', 'tanh', 'relu', 'gelu'] as const;
 export const OPTIMIZERS = ['sgd', 'momentum', 'adam'] as const;
@@ -69,9 +71,15 @@ export type DataConfig = z.infer<typeof dataSchema>;
 export type TrainConfig = z.infer<typeof trainSchema>;
 /** What the dataset says about itself (CONTRACTS.md section 4). */
 export type DataInfo = {
+  /** Feature (input column) names. */
   columns: string[];
-  kind: 'regression' | 'binary';
+  kind: 'regression' | 'binary' | 'multiclass';
+  /** Regression 1, binary 2, multiclass k >= 3. */
   numClasses: number;
+  /** Name of the target; `sample` always sets it ('y' for synthetic sets). */
+  targetName?: string;
+  /** Classification only: one name per class, in label order (`numClasses` entries). */
+  classNames?: string[];
 };
 export type Endpoint = { node: NodeId; port: string };
 

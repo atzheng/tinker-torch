@@ -11,6 +11,8 @@ import {
   stepsPerEpoch,
   truth,
   truthMargin,
+  truthProbs,
+  classCount,
   unstandardizeRows,
   type DataConfig,
   type DatasetName,
@@ -28,6 +30,7 @@ const cfg = (set: DatasetName, over: Partial<DataConfig> = {}): DataConfig => ({
 
 const REG = DATASET_NAMES.filter((s) => SETS[s].kind === 'regression');
 const CLS = DATASET_NAMES.filter((s) => SETS[s].kind === 'binary');
+const MULTI = DATASET_NAMES.filter((s) => SETS[s].kind === 'multiclass');
 
 const mean = (a: ArrayLike<number>) => Array.from(a).reduce((s, v) => s + v, 0) / a.length;
 const std = (a: ArrayLike<number>) => {
@@ -284,6 +287,55 @@ describe('gatherBatch', () => {
       expect(b.x[2 * k]).toBe(ds.xTrain[2 * i]);
       expect(b.x[2 * k + 1]).toBe(ds.xTrain[2 * i + 1]);
     });
+  });
+});
+
+describe('multi-class sets', () => {
+  test('there are at least two, each with k >= 3 classes', () => {
+    expect(MULTI.length).toBeGreaterThanOrEqual(2);
+    for (const set of MULTI) expect(classCount(set)).toBeGreaterThanOrEqual(3);
+  });
+
+  test.each(MULTI)(
+    '%s: info carries names; labels cycle and are balanced; truth is a class',
+    (set) => {
+      const k = classCount(set);
+      const ds = sample(cfg(set, { noise: 0, n: 90, val: 0.3 }));
+      expect(ds.info).toMatchObject({ kind: 'multiclass', numClasses: k, targetName: 'y' });
+      expect(ds.info.columns).toEqual(['x1', 'x2']);
+      expect(ds.info.classNames).toEqual(Array.from({ length: k }, (_, i) => `class ${i}`));
+      for (const ys of [ds.yTrain, ds.yVal]) {
+        const counts = new Array<number>(k).fill(0);
+        for (const y of ys) counts[y] = (counts[y] ?? 0) + 1;
+        expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+      }
+      expect(Array.from(ds.yTrain, (y) => Number.isInteger(y) && y >= 0 && y < k)).not.toContain(
+        false,
+      );
+      const t = truth(set, ds.xTrain);
+      expect(Array.from(t).every((c) => Number.isInteger(c) && c >= 0 && c < k)).toBe(true);
+      const p = truthProbs(set, ds.xTrain);
+      expect(p.length).toBe(ds.nTrain * k);
+      expect(p.slice(0, k).reduce((a, b) => a + b, 0)).toBe(1);
+    },
+  );
+
+  test('spiral3 at noise 0: every label equals the truth', () => {
+    const ds = sample(cfg('spiral3', { noise: 0, n: 150, val: 0 }));
+    expect(Array.from(ds.yTrain)).toEqual(Array.from(truth('spiral3', ds.xTrain)));
+  });
+
+  test('blobs3 at low noise: truth agrees with most labels', () => {
+    const ds = sample(cfg('blobs3', { noise: 0, n: 150, val: 0 }));
+    const t = truth('blobs3', ds.xTrain);
+    const same = Array.from(ds.yTrain).filter((y, i) => y === t[i]).length;
+    expect(same / ds.nTrain).toBeGreaterThan(0.9);
+  });
+
+  test('binary and regression sets get default names too', () => {
+    expect(sample(cfg('xor')).info.classNames).toEqual(['class 0', 'class 1']);
+    expect(sample(cfg('sine')).info.classNames).toBeUndefined();
+    expect(sample(cfg('sine')).info.numClasses).toBe(1);
   });
 });
 

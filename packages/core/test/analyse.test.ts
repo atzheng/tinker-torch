@@ -16,6 +16,7 @@ import {
 } from '../src/index.js';
 
 const reg: DataInfo = { columns: ['x1'], kind: 'regression', numClasses: 2 };
+const multi: DataInfo = { columns: ['x1', 'x2'], kind: 'multiclass', numClasses: 3 };
 const bin: DataInfo = { columns: ['x1', 'x2'], kind: 'binary', numClasses: 2 };
 
 function g(
@@ -293,6 +294,39 @@ describe('analyse v2: prediction pins', () => {
     expect(messages(analyse(build(2, ['x1']), reg))).toContain(
       'A softmax prediction needs a dataset with classes, but this dataset is regression.',
     );
+  });
+
+  test('multiclass: softmax(k) with cross-entropy is trainable; log loss is refused', () => {
+    const build = (width: number, loss: 'cross_entropy' | 'log_loss') =>
+      g(
+        [
+          input(['x1', 'x2']),
+          lin('l', width),
+          { id: 'sm', type: 'link', fn: loss === 'log_loss' ? 'sigmoid' : 'softmax' },
+          { id: 'y', type: 'target' },
+          { id: 'e', type: loss },
+          { id: 'loss', type: 'mean' },
+        ],
+        [
+          ['in', 'l'],
+          ['l', 'sm'],
+          ['sm', 'e.pred'],
+          ['y', 'e.target'],
+          ['e', 'loss'],
+        ],
+        ['sm'],
+        'loss',
+      );
+    expect(analyse(build(3, 'cross_entropy'), multi).issues).toEqual([]);
+    expect(analyse(build(3, 'cross_entropy'), multi).trainable).toBe(true);
+    expect(messages(analyse(build(2, 'cross_entropy'), multi))).toContain(
+      'This dataset has 3 classes, so the softmax prediction needs width 3, but "sm" has width 2.',
+    );
+    expect(messages(analyse(build(1, 'log_loss'), multi))).toContain(
+      'Log loss needs a dataset with two classes, but this dataset has 3; use cross-entropy with a softmax.',
+    );
+    // binary data still takes softmax(2) with cross-entropy
+    expect(analyse(build(2, 'cross_entropy'), bin).issues).toEqual([]);
   });
 
   test('a prediction that is a single number', () => {
