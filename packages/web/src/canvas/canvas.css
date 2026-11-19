@@ -39,15 +39,15 @@ path.tk-hit {
   cursor: pointer;
   outline: none;
 }
-.tk-node[data-role='input'] {
+[data-role='input'] {
   --role: var(--role-input);
   --role-fill: var(--role-input-fill);
 }
-.tk-node[data-role='pred'] {
+[data-role='pred'] {
   --role: var(--role-pred);
   --role-fill: var(--role-pred-fill);
 }
-.tk-node[data-role='loss'] {
+[data-role='loss'] {
   --role: var(--role-loss);
   --role-fill: var(--role-loss-fill);
 }

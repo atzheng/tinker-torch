@@ -11,7 +11,7 @@ import {
 } from '@tinker/core';
 import { ACTIVATION_SYMBOL } from './drawings/activation.js';
 import { WEB_PIECES } from './drawings/index.js';
-import { NODE_RADIUS, NodeShell, roleOf } from './drawings/NodeShell.js';
+import { NODE_RADIUS, NodeShell, roleOfNode } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 import type { LayerProps } from './drawings/types.js';
 import { layerProps } from './LayerView.js';
@@ -306,7 +306,7 @@ export function NeuronView(p: NeuronViewProps) {
             transform={`translate(${box.x} ${box.y})`}
             data-testid={`node-${node.id}`}
             data-type={node.type}
-            data-role={roleOf(node.type)}
+            data-role={roleOfNode(node)}
             data-locked={lockedSet.has(node.id)}
             data-selected={nodeSelected}
             data-error={p.errorNodes.has(node.id)}
@@ -360,13 +360,7 @@ export function NeuronView(p: NeuronViewProps) {
             transform={`translate(${u.x} ${u.y})`}
             data-testid={`unit-${u.node}-${u.index}`}
             data-kind={u.kind}
-            data-role={
-              u.kind === 'in' || u.kind === 'target'
-                ? 'input'
-                : u.kind === 'out'
-                  ? 'pred'
-                  : undefined
-            }
+            data-role={u.kind === 'sum' || u.kind === 'act' ? undefined : roleOfNode(node)}
             data-locked={lockedSet.has(u.node)}
             data-selected={selected}
             data-error={p.errorNodes.has(u.node)}

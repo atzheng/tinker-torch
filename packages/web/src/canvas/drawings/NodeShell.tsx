@@ -11,9 +11,12 @@ import { legibleAt } from '../pure.js';
 /** Ordinary pieces share one style; the three roles below are the only special ones. */
 export type NodeRole = 'input' | 'pred' | 'loss';
 
-/** The role of a piece type, or undefined for an ordinary piece. Moves to a pin with graph v2. */
-export function roleOf(type: PieceType): NodeRole | undefined {
-  switch (type) {
+/**
+ * The role of a node, or undefined for an ordinary one. The single place that maps graph data to
+ * roles: graph v2 (role pins on an output port) changes only this function.
+ */
+export function roleOfNode(node: { type: PieceType }): NodeRole | undefined {
+  switch (node.type) {
     case 'input':
     case 'target':
       return 'input';
@@ -24,6 +27,11 @@ export function roleOf(type: PieceType): NodeRole | undefined {
     default:
       return undefined;
   }
+}
+
+/** Box (node-local units) a custom glyph `slot` must stay inside: the KaTeX bead's foreignObject goes here. */
+export function slotBox(w: number, h: number) {
+  return { x: w - 52, y: h / 2 - 10, width: 40, height: 32 };
 }
 
 /** Corner radius of the body; the state ring sits 4 units outside it. */

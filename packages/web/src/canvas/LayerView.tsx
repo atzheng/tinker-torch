@@ -9,7 +9,7 @@ import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
 import { useStore } from '../state/store.js';
-import { roleOf, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
+import { roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 
 export type LayerViewProps = {
@@ -120,7 +120,7 @@ export function LayerView(p: LayerViewProps) {
             transform={`translate(${box.x} ${box.y})`}
             data-testid={`node-${node.id}`}
             data-type={node.type}
-            data-role={roleOf(node.type)}
+            data-role={roleOfNode(node)}
             data-locked={locked.has(node.id)}
             data-selected={selected}
             data-error={p.errorNodes.has(node.id)}
