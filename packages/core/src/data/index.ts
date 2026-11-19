@@ -1,4 +1,11 @@
-export { sample, truth, standardizeRows, unstandardizeRows, valCount } from './sample.js';
+export {
+  sample,
+  truth,
+  truthMargin,
+  standardizeRows,
+  unstandardizeRows,
+  valCount,
+} from './sample.js';
 export type { Dataset, Standardization } from './sample.js';
 export { SETS, spread } from './sets.js';
 export type { SetSpec, SetKind } from './sets.js';

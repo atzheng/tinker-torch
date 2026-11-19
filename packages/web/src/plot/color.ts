@@ -16,6 +16,8 @@ export type PlotColors = {
   divMid: string;
   divPos: string;
   seq: [string, string, string];
+  /** Outline behind 2-D fit points so they stand out on any region of the surface. */
+  halo: string;
   /** Point colours for class 0 and class 1. */
   class0: string;
   class1: string;
@@ -32,10 +34,11 @@ const FALLBACK: PlotColors = {
   truth: '#8a93a1',
   accent: '#2557d6',
   pins: ['#0b8a6a', '#b5499b', '#8a6d00'],
-  divNeg: '#e8a25f',
+  divNeg: '#f0b273',
   divMid: '#f3f1ee',
-  divPos: '#5b93e0',
+  divPos: '#2a62c4',
   seq: ['#440154', '#21918c', '#fde725'],
+  halo: '#ffffff',
   class0: '#d35400',
   class1: '#1f5fd1',
   font: 'system-ui, sans-serif',
@@ -67,6 +70,7 @@ export function readColors(el: Element): PlotColors {
       v('--seq-1', FALLBACK.seq[1]),
       v('--seq-2', FALLBACK.seq[2]),
     ],
+    halo: v('--point-halo', FALLBACK.halo),
     class0: v('--weight-neg', FALLBACK.class0),
     class1: v('--weight-pos', FALLBACK.class1),
     font: v('--font', FALLBACK.font),

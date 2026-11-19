@@ -15,6 +15,11 @@ export type SetSpec = {
    * `x` is one row of raw inputs.
    */
   f: (x: readonly number[]) => number;
+  /**
+   * Classification only: a smooth signed field that is positive where the truth is class 1 and
+   * zero on the decision boundary (for contouring; `f` itself jumps for most sets).
+   */
+  margin?: (x: readonly number[]) => number;
 };
 
 const D3: [number, number][] = [[-3, 3]];
@@ -96,6 +101,7 @@ export const SETS: Record<DatasetName, SetSpec> = {
     ],
     // Equal-variance Gaussians at (-1,-1) and (1,1): the log odds are linear in x1 + x2.
     f: (x) => sigmoid((4 * (at(x, 0) + at(x, 1))) / (2 * BLOB_STD * BLOB_STD)),
+    margin: (x) => at(x, 0) + at(x, 1),
   },
   circle: {
     name: 'circle',
@@ -103,6 +109,7 @@ export const SETS: Record<DatasetName, SetSpec> = {
     d: 2,
     domain: D2,
     f: (x) => (Math.hypot(at(x, 0), at(x, 1)) < CIRCLE_CUT ? 1 : 0),
+    margin: (x) => CIRCLE_CUT - Math.hypot(at(x, 0), at(x, 1)),
   },
   xor: {
     name: 'xor',
@@ -110,6 +117,7 @@ export const SETS: Record<DatasetName, SetSpec> = {
     d: 2,
     domain: D2,
     f: (x) => (at(x, 0) * at(x, 1) > 0 ? 1 : 0),
+    margin: (x) => at(x, 0) * at(x, 1),
   },
   moons: {
     name: 'moons',
@@ -126,6 +134,14 @@ export const SETS: Record<DatasetName, SetSpec> = {
       const dOut = distToHalfCircle(px, py, MOONS_OUTER.cx, MOONS_OUTER.cy, true);
       const dIn = distToHalfCircle(px, py, MOONS_INNER.cx, MOONS_INNER.cy, false);
       return dIn < dOut ? 1 : 0;
+    },
+    margin: (x) => {
+      const px = at(x, 0);
+      const py = at(x, 1);
+      return (
+        distToHalfCircle(px, py, MOONS_OUTER.cx, MOONS_OUTER.cy, true) -
+        distToHalfCircle(px, py, MOONS_INNER.cx, MOONS_INNER.cy, false)
+      );
     },
   },
 };

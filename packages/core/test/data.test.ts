@@ -10,6 +10,7 @@ import {
   spread,
   stepsPerEpoch,
   truth,
+  truthMargin,
   unstandardizeRows,
   type DataConfig,
   type DatasetName,
@@ -283,5 +284,36 @@ describe('gatherBatch', () => {
       expect(b.x[2 * k]).toBe(ds.xTrain[2 * i]);
       expect(b.x[2 * k + 1]).toBe(ds.xTrain[2 * i + 1]);
     });
+  });
+});
+
+describe('truthMargin', () => {
+  test.each(['blobs', 'circle', 'xor', 'moons'] as const)(
+    '%s: sign agrees with the truth class and the field is not binary',
+    (set) => {
+      const xs = new Float32Array(2 * 41 * 41);
+      const dom = SETS[set].domain;
+      let k = 0;
+      for (let i = 0; i < 41; i++)
+        for (let j = 0; j < 41; j++) {
+          const [a0, a1] = dom[0] ?? [0, 1];
+          const [b0, b1] = dom[1] ?? [0, 1];
+          xs[k++] = a0 + ((a1 - a0) * (i + 0.37)) / 41;
+          xs[k++] = b0 + ((b1 - b0) * (j + 0.21)) / 41;
+        }
+      const f = truth(set, xs);
+      const m = truthMargin(set, xs);
+      for (let i = 0; i < f.length; i++) {
+        if (Math.abs(m[i] ?? 0) < 1e-9) continue;
+        expect((m[i] ?? 0) > 0).toBe((f[i] ?? 0) >= 0.5);
+      }
+      expect(new Set(Array.from(m)).size).toBeGreaterThan(50);
+    },
+  );
+  test('circle margin is the signed distance to the cut radius', () => {
+    const m = truthMargin('circle', new Float32Array([0, 0, 1.15, 0, 0, 2]));
+    expect(m[1]).toBeCloseTo(0, 6);
+    expect(m[0]).toBeCloseTo(1.15, 6);
+    expect(m[2]).toBeCloseTo(-0.85, 6);
   });
 });

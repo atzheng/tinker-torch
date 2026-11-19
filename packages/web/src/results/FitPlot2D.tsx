@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { grid2d, truth, unstandardizeRows } from '@tinker/core';
+import { grid2d, truth, truthMargin, unstandardizeRows } from '@tinker/core';
 import { formatTick, linearScale, niceTicks, paddedRange } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { MARGINS, drawAxes } from '../plot/draw.js';
@@ -36,6 +36,8 @@ export function FitPlot2D() {
     const xv = st ? unstandardizeRows(dataset.xVal, 2, st) : dataset.xVal;
     const grid = grid2d(dataset.domain, GRID_2D, st);
     const f = truth(set, grid.xRaw);
+    // smooth signed field for the classification boundary (zero level), not the 0/1 truth
+    const margin = truthMargin(set, grid.xRaw);
     const range = classification
       ? ([0, 1] as [number, number])
       : (() => {
@@ -52,6 +54,7 @@ export function FitPlot2D() {
       xv,
       grid,
       f,
+      margin,
       range,
       off,
       img: new ImageData(GRID_2D, GRID_2D),
@@ -156,11 +159,11 @@ export function FitPlot2D() {
         ctx.strokeStyle = c.bg;
         ctx.lineWidth = 3.5;
         ctx.setLineDash([]);
-        lines(fixed.f, 0.5);
+        lines(fixed.margin, 0);
         ctx.setLineDash([6, 4]);
         ctx.strokeStyle = c.truth;
         ctx.lineWidth = 2;
-        lines(fixed.f, 0.5);
+        lines(fixed.margin, 0);
       } else if (mapped) {
         const [flo, fhi] = mapped;
         for (const level of niceTicks(flo, fhi, 6)) {
@@ -187,6 +190,12 @@ export function FitPlot2D() {
         const col = colourOf(y[i] ?? 0);
         ctx.beginPath();
         ctx.arc(px, py, hollow ? 4 : 3.5, 0, Math.PI * 2);
+        if (!classification) {
+          // halo so the point reads on a region of its own colour
+          ctx.strokeStyle = c.halo;
+          ctx.lineWidth = hollow ? 5.5 : 4.5;
+          ctx.stroke();
+        }
         if (hollow) {
           ctx.strokeStyle = c.bg;
           ctx.lineWidth = 4;
@@ -198,7 +207,7 @@ export function FitPlot2D() {
           ctx.fillStyle = col;
           ctx.fill();
           ctx.strokeStyle = classification ? c.bg : c.text;
-          ctx.lineWidth = 1.3;
+          ctx.lineWidth = classification ? 1.3 : 1.6;
           ctx.stroke();
         }
       }
