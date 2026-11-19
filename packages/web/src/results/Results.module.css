@@ -30,29 +30,17 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .head button {
   height: 26px;
   padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-}
-
-.head button:disabled {
-  opacity: 0.5;
 }
 
 .picker {
   height: 26px;
   max-width: 120px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--text);
-  font: inherit;
 }
 
 @media (pointer: coarse) {
@@ -79,7 +67,8 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: var(--text-muted);
+  color: var(--diag-fg);
+  cursor: default;
 }
 
 .swatch {
@@ -107,7 +96,9 @@
 .readout {
   flex: none;
   padding: 0 8px 2px;
-  color: var(--text-muted);
+  color: var(--diag-fg);
+  font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  cursor: default;
 }

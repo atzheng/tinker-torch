@@ -65,9 +65,11 @@ path.tk-hit {
   font: 600 15px var(--font);
   pointer-events: none;
 }
+/* Secondary lines are the tool's read-outs (dimensions, parameter counts): diagnostic, so
+   monospace and muted (theme.css, tinker-t6o). */
 .tk-secondary {
-  fill: var(--node-secondary);
-  font: 13px var(--font);
+  fill: var(--diag-fg);
+  font: 12px var(--font-mono);
   pointer-events: none;
 }
 .tk-glyph {
@@ -153,8 +155,8 @@ path.tk-hit {
   color: var(--text-muted);
 }
 .tk-heat-bg {
-  fill: var(--surface-2);
-  stroke: var(--border);
+  fill: var(--diag-bg);
+  stroke: var(--diag-border);
 }
 
 /* Wires: one style. Width labels are diagnostics (monospace, quiet), not nodes. */
@@ -217,9 +219,9 @@ path.tk-hit {
 .tk-global-issues {
   position: absolute;
   pointer-events: none;
-  color: var(--error);
-  background: var(--error-bg);
-  border: 1px solid var(--error);
+  color: var(--issue-fg);
+  background: var(--issue-bg);
+  border: 1px solid var(--issue-border);
   border-radius: var(--radius);
   padding: 4px 8px;
   font-size: 12px;
@@ -269,10 +271,6 @@ path.tk-hit {
   width: 8ch;
   min-height: 28px;
   font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
   padding: 2px 6px;
 }
 @media (pointer: coarse) {
@@ -319,9 +317,6 @@ path.tk-hit {
 .tk-field select {
   width: 120px;
   padding: 3px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface);
 }
 .tk-check {
   justify-content: flex-start;
@@ -329,8 +324,8 @@ path.tk-hit {
 .tk-issues {
   margin: 8px 0 0;
   padding: 6px 8px 6px 22px;
-  color: var(--error);
-  background: var(--error-bg);
+  color: var(--issue-fg);
+  background: var(--issue-bg);
   border-radius: var(--radius);
 }
 @media (pointer: coarse) {
@@ -394,9 +389,9 @@ path.tk-hit {
   z-index: 4;
   max-width: calc(100% - 24px);
   padding: 8px 14px;
-  background: var(--error-bg);
+  background: var(--issue-bg);
   color: var(--text);
-  border: 1px solid var(--error);
+  border: 1px solid var(--issue-border);
   border-radius: var(--radius);
   box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
   font-size: 13px;
@@ -411,9 +406,6 @@ path.tk-hit {
   font-size: 12px;
   color: var(--error);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
 }
 @media (pointer: coarse) {
   .tk-inspector-delete {
@@ -423,8 +415,15 @@ path.tk-hit {
 }
 
 /* Neuron view: one line per weight, coloured by sign (the line's data-sign is set by NeuronView). */
+/* A weight line is a control (drag it up or down) and a diagnostic (its colour and thickness are
+   the value): the vertical-resize cursor and the hover brightening mark the control. */
 .tk-edge {
-  cursor: pointer;
+  cursor: ns-resize;
+}
+@media (hover: hover) {
+  .tk-edge:hover .tk-edge-line {
+    stroke-opacity: 1;
+  }
 }
 .tk-edge-line {
   stroke: var(--wire);
@@ -449,10 +448,15 @@ path.tk-hit {
   outline: none;
 }
 .tk-unitbtn .tk-shape {
-  stroke: var(--text-muted);
+  fill: var(--ctl-fill);
+  stroke: var(--ctl-border);
 }
 .tk-unitbtn:hover .tk-shape {
+  fill: var(--ctl-fill-hover);
   stroke: var(--accent);
+}
+.tk-unitbtn:active .tk-shape {
+  fill: var(--ctl-fill-press);
 }
 .tk-unitbtn:focus-visible .tk-shape {
   stroke: var(--focus-ring);
@@ -488,20 +492,10 @@ path.tk-hit {
   min-height: 32px;
   min-width: 88px;
   padding: 0 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
   font: 14px var(--font);
-  cursor: pointer;
 }
 .tk-resetview {
   left: 104px;
-}
-.tk-grain[aria-pressed='true'] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-text);
 }
 
 /* Discoverability (tinker-6f8): candidate targets, wire-end handles, tap-to-add banner, hints */

@@ -114,7 +114,7 @@ export function ResampleReadout() {
     text = `$\\mathrm{bias}^2$ ${fmt(result.bias2)}  variance ${fmt(result.variance)}  (${notes.join('; ')})`;
   }
   return (
-    <div className={styles.readout} data-testid="resample-readout" role="status">
+    <div className={`${styles.readout} tk-diag`} data-testid="resample-readout" role="status">
       <TexText>{text}</TexText>
     </div>
   );

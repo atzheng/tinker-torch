@@ -175,21 +175,21 @@ export function TrainingBar() {
         </label>
       </div>
       <div className={styles.group}>
-        <span className={styles.stat}>
+        <span className={`${styles.stat} tk-diag`}>
           Step <b data-testid="step-count">{sinceReset}</b>
         </span>
-        <span className={styles.stat}>
+        <span className={`${styles.stat} tk-diag`}>
           Parameters <b data-testid="param-count">{s.analysis.totalParams}</b>
         </span>
         {import.meta.env.DEV && (
-          <span className={styles.stat} data-testid="live-arrays">
+          <span className={`${styles.stat} tk-diag`} data-testid="live-arrays">
             live {getEngine()?.liveArrays() ?? 0}
           </span>
         )}
       </div>
       {s.diverged && (
         <span
-          className={styles.diverged}
+          className={`${styles.diverged} tk-issue`}
           role="status"
           title="The loss is no longer a number. Lower the learning rate or press Reset."
           data-testid="status-diverged"
@@ -198,7 +198,7 @@ export function TrainingBar() {
         </span>
       )}
       {message && !s.diverged && (
-        <span className={styles.issue} title={message} data-testid="train-issue">
+        <span className={`${styles.issue} tk-issue`} title={message} data-testid="train-issue">
           {message}
         </span>
       )}

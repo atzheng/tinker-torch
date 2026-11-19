@@ -9,11 +9,6 @@
 .button {
   height: 28px;
   padding: 0 8px;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
 }
 
 /* Fixed so that the top bar's overflow clipping does not hide it. */

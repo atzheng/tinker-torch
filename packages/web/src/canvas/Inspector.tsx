@@ -74,7 +74,7 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
         {PIECE_LABEL[node.type]} <code>{node.id}</code>
       </h2>
       {node.type === 'linear' && (
-        <p data-testid="inspector-params" className="tk-muted">
+        <p data-testid="inspector-params" className="tk-diag">
           <TexText>
             {inW === undefined || count === undefined
               ? 'Parameters: unknown until the input width is known.'
@@ -82,7 +82,11 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
           </TexText>
         </p>
       )}
-      {inW !== undefined && node.type !== 'linear' && <p className="tk-muted">Width {inW}</p>}
+      {inW !== undefined && node.type !== 'linear' && (
+        <p className="tk-diag" data-testid="inspector-width-in">
+          Width {inW}
+        </p>
+      )}
       <Fields node={node} />
       {(!pinLive(graph, 'pred', node.id) || !pinLive(graph, 'loss', node.id)) && (
         <div className="tk-pin-actions">
@@ -161,7 +165,7 @@ function WireInspector({
       <p className="tk-muted">
         <code>{from}</code> to <code>{to}</code>
       </p>
-      <p data-testid="inspector-width">
+      <p data-testid="inspector-width" className="tk-diag">
         {width === null || width === undefined ? 'Width unknown' : `Width ${width}`}
       </p>
       <Issues messages={messages} />
@@ -243,7 +247,7 @@ function EdgeInspector(p: {
       <p className="tk-muted">
         <code>{p.node}</code>: input {p.i} to unit {p.j}
       </p>
-      <p data-testid="inspector-weight">
+      <p data-testid="inspector-weight" className="tk-diag">
         {w === undefined ? 'No value yet' : `Value ${w.toFixed(4)}`}
       </p>
       {w !== undefined && (
@@ -277,9 +281,15 @@ function UnitInspector(p: {
       </h2>
       <p className="tk-muted">{PIECE_LABEL[n.type]}</p>
       {n.type === 'linear' && inW !== undefined && (
-        <p data-testid="inspector-fanin">{inW} incoming weights</p>
+        <p data-testid="inspector-fanin" className="tk-diag">
+          {inW} incoming weights
+        </p>
       )}
-      {b !== undefined && <p data-testid="inspector-bias">Bias {b.toFixed(4)}</p>}
+      {b !== undefined && (
+        <p data-testid="inspector-bias" className="tk-diag">
+          Bias {b.toFixed(4)}
+        </p>
+      )}
       {b !== undefined && (
         <ValueField
           testid="inspector-bias-input"

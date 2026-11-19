@@ -222,7 +222,7 @@ export function FitPlot2D() {
       <div className={`${styles.head} ${styles.headWrap}`}>
         <span className={styles.title}>Fit</span>
         {classification ? (
-          <span className={styles.key} data-testid="fit-key">
+          <span className={`${styles.key} tk-diag-label`} data-testid="fit-key">
             <i className={styles.swatch} style={{ background: 'var(--weight-neg)' }} />
             class 0
             <i className={styles.swatch} style={{ background: 'var(--weight-pos)' }} />
@@ -232,7 +232,7 @@ export function FitPlot2D() {
             </span>
           </span>
         ) : (
-          <span className={styles.key} data-testid="fit-key">
+          <span className={`${styles.key} tk-diag-label`} data-testid="fit-key">
             {formatTick(fixed.range[0])}
             <i
               className={styles.bar}
@@ -260,7 +260,7 @@ export function FitPlot2D() {
       </div>
       <ResampleReadout />
       {noPrediction && (
-        <p className={styles.readout} data-testid="no-prediction">
+        <p className={`${styles.readout} tk-diag-label`} data-testid="no-prediction">
           No prediction selected.
         </p>
       )}

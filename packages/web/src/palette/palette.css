@@ -32,6 +32,9 @@
   text-align: left;
   cursor: pointer;
 }
+.tk-palette-toggle:hover {
+  color: var(--accent);
+}
 .tk-palette-toggle:focus-visible {
   outline: 2px solid var(--focus-ring);
 }
