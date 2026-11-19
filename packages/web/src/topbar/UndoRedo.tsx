@@ -9,11 +9,25 @@ export function UndoRedo() {
   const redo = useStore((s) => s.redo);
   return (
     <div className={styles.row} role="group" aria-label="History">
-      <button type="button" data-testid="btn-undo" disabled={!canUndo} onClick={undo}>
-        Undo
+      <button
+        type="button"
+        data-testid="btn-undo"
+        aria-label="Undo"
+        title="Undo"
+        disabled={!canUndo}
+        onClick={undo}
+      >
+        ↶
       </button>
-      <button type="button" data-testid="btn-redo" disabled={!canRedo} onClick={redo}>
-        Redo
+      <button
+        type="button"
+        data-testid="btn-redo"
+        aria-label="Redo"
+        title="Redo"
+        disabled={!canRedo}
+        onClick={redo}
+      >
+        ↷
       </button>
     </div>
   );

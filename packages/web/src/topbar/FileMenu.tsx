@@ -9,6 +9,7 @@ import {
 } from '@tinker/core';
 import type { ActivePreset } from '../state/presetSlice.js';
 import { useStore } from '../state/store.js';
+import { Popover } from './Popover.js';
 import styles from './FileMenu.module.css';
 
 export const SAVE_FILE_NAME = 'tinker-model.tinker.json';
@@ -110,29 +111,42 @@ export function FileMenu() {
 
   return (
     <div className={styles.row} data-testid="file-menu">
-      <button
-        type="button"
-        data-testid="file-save"
-        onClick={() => {
-          download(saveText(withWeights), SAVE_FILE_NAME);
-          setNote(null);
-        }}
-      >
-        Save
-      </button>
-      <label className={styles.check}>
-        <input
-          type="checkbox"
-          data-testid="file-with-weights"
-          checked={withWeights && hasHost}
-          disabled={!hasHost}
-          onChange={(e) => setWithWeights(e.target.checked)}
-        />
-        <span>Weights</span>
-      </label>
-      <button type="button" data-testid="file-load" onClick={() => input.current?.click()}>
-        Load
-      </button>
+      <Popover label="File" ariaLabel="File" buttonTestId="file-button" panelTestId="file-panel">
+        {(close) => (
+          <>
+            <button
+              type="button"
+              data-testid="file-save"
+              onClick={() => {
+                download(saveText(withWeights), SAVE_FILE_NAME);
+                setNote(null);
+              }}
+            >
+              Save
+            </button>
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                data-testid="file-with-weights"
+                checked={withWeights && hasHost}
+                disabled={!hasHost}
+                onChange={(e) => setWithWeights(e.target.checked)}
+              />
+              <span>Weights</span>
+            </label>
+            <button
+              type="button"
+              data-testid="file-load"
+              onClick={() => {
+                input.current?.click();
+                close();
+              }}
+            >
+              Load
+            </button>
+          </>
+        )}
+      </Popover>
       <input
         ref={input}
         type="file"

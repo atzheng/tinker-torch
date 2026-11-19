@@ -13,9 +13,7 @@ export function TopBar() {
         gap: 6,
         height: '100%',
         padding: '0 8px',
-        overflowX: 'auto', // narrow touch tablets scroll the bar sideways instead of clipping it
-        overflowY: 'hidden',
-        scrollbarWidth: 'none',
+        minWidth: 0,
       }}
     >
       <DataControls />
