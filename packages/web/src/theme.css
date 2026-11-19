@@ -25,6 +25,15 @@
   --series-val: #d98200;
   --series-true: #8a93a1;
 
+  /* 2-D fit plots: diverging ramp for probability (orange = class 0, blue = class 1), sequential
+     ramp (viridis stops) for regression. Colour-blind safe; no red/green. */
+  --div-neg: #e8a25f;
+  --div-mid: #f3f1ee;
+  --div-pos: #5b93e0;
+  --seq-0: #440154;
+  --seq-1: #21918c;
+  --seq-2: #fde725;
+
   --radius: 6px;
   --gap: 8px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -52,6 +61,13 @@
     --series-train: #5b9dff;
     --series-val: #ffb454;
     --series-true: #8a93a1;
+
+    --div-neg: #a85a1a;
+    --div-mid: #2c313b;
+    --div-pos: #2f68c0;
+    --seq-0: #440154;
+    --seq-1: #21918c;
+    --seq-2: #fde725;
   }
 }
 

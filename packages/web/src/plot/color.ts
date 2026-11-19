@@ -9,6 +9,14 @@ export type PlotColors = {
   val: string;
   truth: string;
   accent: string;
+  /** Diverging ramp (class 0 to class 1) and sequential ramp stops, as CSS colour strings. */
+  divNeg: string;
+  divMid: string;
+  divPos: string;
+  seq: [string, string, string];
+  /** Point colours for class 0 and class 1. */
+  class0: string;
+  class1: string;
   font: string;
 };
 
@@ -21,6 +29,12 @@ const FALLBACK: PlotColors = {
   val: '#d98200',
   truth: '#8a93a1',
   accent: '#2557d6',
+  divNeg: '#e8a25f',
+  divMid: '#f3f1ee',
+  divPos: '#5b93e0',
+  seq: ['#440154', '#21918c', '#fde725'],
+  class0: '#d35400',
+  class1: '#1f5fd1',
   font: 'system-ui, sans-serif',
 };
 
@@ -37,6 +51,16 @@ export function readColors(el: Element): PlotColors {
     val: v('--series-val', FALLBACK.val),
     truth: v('--series-true', FALLBACK.truth),
     accent: v('--accent', FALLBACK.accent),
+    divNeg: v('--div-neg', FALLBACK.divNeg),
+    divMid: v('--div-mid', FALLBACK.divMid),
+    divPos: v('--div-pos', FALLBACK.divPos),
+    seq: [
+      v('--seq-0', FALLBACK.seq[0]),
+      v('--seq-1', FALLBACK.seq[1]),
+      v('--seq-2', FALLBACK.seq[2]),
+    ],
+    class0: v('--weight-neg', FALLBACK.class0),
+    class1: v('--weight-pos', FALLBACK.class1),
     font: v('--font', FALLBACK.font),
   };
 }
