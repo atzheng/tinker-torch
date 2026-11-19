@@ -9,11 +9,18 @@ export const ACTIVATION_SYMBOL: Record<ActivationFn, string> = {
   relu: 'ReLU',
   gelu: 'GELU',
 };
-const LABEL: Record<ActivationFn, string> = {
+export const ACTIVATION_LABEL: Record<ActivationFn, string> = {
   sigmoid: 'Sigmoid',
   tanh: 'Tanh',
   relu: 'ReLU',
   gelu: 'GELU',
+};
+
+/** The operation in the layer drawing's glyph slot; the name beside it is the function's name. */
+const ACTIVATION_GLYPH: Partial<Record<ActivationFn, string>> = {
+  sigmoid: 'σ(x)',
+  relu: 'max(0,x)',
+  gelu: 'x·Φ(x)',
 };
 
 /** Layer drawing: the shared node with the function's symbol as its glyph. */
@@ -24,8 +31,8 @@ export const activationPiece: WebPiece<'activation'> = {
       w={w}
       h={h}
       scale={scale}
-      name="Activation"
-      glyph={ACTIVATION_SYMBOL[node.fn]}
+      name={ACTIVATION_LABEL[node.fn]}
+      glyph={ACTIVATION_GLYPH[node.fn]}
       inPorts={1}
       outPort
     />
@@ -36,7 +43,7 @@ export const activationPiece: WebPiece<'activation'> = {
       label="Function"
       testid="field-fn"
       value={node.fn}
-      options={ACTIVATION_FNS.map((f) => [f, LABEL[f]] as const)}
+      options={ACTIVATION_FNS.map((f) => [f, ACTIVATION_LABEL[f]] as const)}
       onChange={(v) => editSetting(node.id, 'fn', v)}
     />
   ),

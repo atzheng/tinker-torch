@@ -17,6 +17,36 @@ export function legibleAt(scale: number | undefined, fontUnits: number): boolean
   return scale === undefined || fontUnits * scale >= MIN_TEXT_PX;
 }
 
+const NAME_MIN_UNITS = 10;
+const NAME_EM = 0.52;
+
+/**
+ * A piece name fitted to `maxW` units: the font is `base`, shrunk (to at least 10) so the text
+ * fits, then raised again, within that fit and `cap` units, so it stays at least MIN_TEXT_PX on
+ * screen. When even 10 units is too wide the text is cut with an ellipsis, so it never exceeds
+ * `maxW` (estimated, 0.52 em per character) and is never hidden.
+ */
+export function fitName(
+  scale: number | undefined,
+  text: string,
+  maxW: number,
+  base: number,
+  cap = base * 1.4,
+): { text: string; size: number } {
+  let t = text;
+  let fit = maxW / Math.max(1, t.length * NAME_EM);
+  if (fit < NAME_MIN_UNITS) {
+    const chars = Math.max(2, Math.floor(maxW / (NAME_MIN_UNITS * NAME_EM)));
+    if (chars < t.length) t = `${t.slice(0, chars - 1)}\u2026`;
+    fit = Math.max(NAME_MIN_UNITS, maxW / Math.max(1, t.length * NAME_EM));
+  }
+  let f = Math.min(base, fit);
+  if (scale !== undefined && f * scale < MIN_TEXT_PX) {
+    f = Math.max(f, Math.min(MIN_TEXT_PX / scale, cap, fit));
+  }
+  return { text: t, size: f };
+}
+
 export type Transform = { scale: number; tx: number; ty: number };
 
 /** Scale and centre a drawing of `size` abstract units into a `view` of pixels, with a margin. */
