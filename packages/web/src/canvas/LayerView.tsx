@@ -9,6 +9,7 @@ import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
 import { useStore } from '../state/store.js';
+import { roleOf, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 
 export type LayerViewProps = {
@@ -119,6 +120,8 @@ export function LayerView(p: LayerViewProps) {
             transform={`translate(${box.x} ${box.y})`}
             data-testid={`node-${node.id}`}
             data-type={node.type}
+            data-role={roleOf(node.type)}
+            data-locked={locked.has(node.id)}
             data-selected={selected}
             data-error={p.errorNodes.has(node.id)}
             data-drop={dropNode === node.id}
@@ -144,9 +147,16 @@ export function LayerView(p: LayerViewProps) {
               width={hit.w}
               height={hit.h}
             />
-            <rect className="tk-ring" x={-4} y={-4} width={box.w + 8} height={box.h + 8} rx={12} />
+            <rect
+              className="tk-ring"
+              x={-4}
+              y={-4}
+              width={box.w + 8}
+              height={box.h + 8}
+              rx={NODE_RADIUS + 4}
+            />
             <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
-            {locked.has(node.id) && <LockBadge x={box.w - 8} y={8} />}
+            {locked.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
         );
       })}
@@ -168,7 +178,7 @@ export function LayerView(p: LayerViewProps) {
             })}
           >
             <rect className="tk-hit" x={shape.x} y={shape.y} width={shape.w} height={shape.h} />
-            <circle className="tk-port-dot" cx={shape.x + shape.w / 2} cy={at[1]} r={5} />
+            <circle className="tk-port-dot" cx={at[0]} cy={at[1]} r={PORT_R} />
           </g>
         );
       })}
@@ -191,7 +201,7 @@ export function LayerView(p: LayerViewProps) {
                 className="tk-port-in"
                 cx={at[0]}
                 cy={at[1]}
-                r={on ? 8 : 5.5}
+                r={on ? 8 : PORT_R + 1}
               />
             );
           });

@@ -1,5 +1,7 @@
 /* Canvas region: all colours come from theme.css variables. */
 .tk-canvas {
+  --piece-fill: var(--node-fill);
+  --piece-stroke: var(--node-border);
   position: relative;
   width: 100%;
   height: 100%;
@@ -30,11 +32,74 @@ path.tk-hit {
   stroke-linecap: round;
 }
 
-/* Pieces */
+/* Nodes: one style for every piece. A role (input, pred, loss) only swaps the two role variables. */
 .tk-node {
-  --piece-stroke: var(--text-muted);
+  --piece-stroke: var(--role, var(--node-border));
+  --piece-fill: var(--role-fill, var(--node-fill));
   cursor: pointer;
   outline: none;
+}
+.tk-node[data-role='input'] {
+  --role: var(--role-input);
+  --role-fill: var(--role-input-fill);
+}
+.tk-node[data-role='pred'] {
+  --role: var(--role-pred);
+  --role-fill: var(--role-pred-fill);
+}
+.tk-node[data-role='loss'] {
+  --role: var(--role-loss);
+  --role-fill: var(--role-loss-fill);
+}
+.tk-body,
+.tk-shape {
+  fill: var(--piece-fill);
+  stroke: var(--piece-stroke);
+  stroke-width: 1.5;
+}
+.tk-node[data-role] .tk-body {
+  stroke-width: 2;
+}
+.tk-name {
+  fill: var(--node-name);
+  font: 600 15px var(--font);
+  pointer-events: none;
+}
+.tk-secondary {
+  fill: var(--node-secondary);
+  font: 13px var(--font);
+  pointer-events: none;
+}
+.tk-glyph {
+  fill: var(--node-name);
+  font: 500 19px var(--font);
+  pointer-events: none;
+}
+.tk-badge circle {
+  fill: var(--role);
+}
+.tk-badge text {
+  fill: var(--on-role);
+  font: 600 13px var(--font);
+  pointer-events: none;
+}
+.tk-port-static {
+  fill: var(--node-fill);
+  stroke: var(--node-border);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+/* States, the same for every node (one rule each, never per type). */
+@media (hover: hover) {
+  .tk-node:hover {
+    --piece-fill: var(--node-fill-hover);
+  }
+}
+.tk-node:active {
+  --piece-fill: var(--node-fill-press);
+}
+.tk-node[data-locked='true'] .tk-body {
+  stroke-dasharray: none;
 }
 .tk-node[data-error='true'] {
   --piece-stroke: var(--error);
@@ -60,10 +125,10 @@ path.tk-hit {
   stroke-width: 1.5;
   stroke-dasharray: 5 3;
 }
-.tk-shape {
-  fill: var(--surface);
-  stroke: var(--piece-stroke);
-  stroke-width: 1.5;
+.tk-node[data-drop='true'] .tk-ring {
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: none;
 }
 .tk-stroke {
   fill: none;
@@ -72,12 +137,11 @@ path.tk-hit {
   stroke-linecap: round;
 }
 .tk-dot {
-  fill: var(--text);
-  stroke: var(--piece-stroke);
-  stroke-width: 1;
+  fill: var(--role, var(--text));
+  stroke: none;
 }
 .tk-text {
-  fill: var(--text);
+  fill: var(--node-name);
   font: 17px var(--font);
   pointer-events: none;
 }
@@ -93,13 +157,16 @@ path.tk-hit {
   stroke: var(--border);
 }
 
-/* Wires */
+/* Wires: one style. Width labels are diagnostics (monospace, quiet), not nodes. */
 .tk-wire {
   cursor: pointer;
   --wire-color: var(--wire);
 }
 .tk-wire[data-error='true'] {
   --wire-color: var(--error);
+}
+.tk-wire[data-selected='true'] {
+  --wire-color: var(--accent);
 }
 .tk-wire-line {
   fill: none;
@@ -110,7 +177,7 @@ path.tk-hit {
 .tk-wire-halo {
   fill: none;
   stroke: var(--accent);
-  stroke-opacity: 0.35;
+  stroke-opacity: 0.3;
   stroke-linejoin: round;
   pointer-events: none;
 }
@@ -121,18 +188,28 @@ path.tk-hit {
   fill: var(--error);
 }
 .tk-label-bg {
-  fill: var(--surface);
-  stroke: var(--wire-color);
+  fill: var(--diag-bg);
+  stroke: var(--diag-border);
   stroke-width: 1;
 }
 .tk-label-text {
-  fill: var(--wire-color);
-  font-family: var(--font);
-  font-weight: 600;
+  fill: var(--diag-fg);
+  font-family: var(--font-mono);
+  font-weight: 500;
   pointer-events: none;
+}
+.tk-wire[data-selected='true'] .tk-label-bg {
+  stroke: var(--accent);
+}
+.tk-wire[data-selected='true'] .tk-label-text {
+  fill: var(--text);
 }
 .tk-wire[data-error='true'] .tk-label-bg {
   fill: var(--error-bg);
+  stroke: var(--error);
+}
+.tk-wire[data-error='true'] .tk-label-text {
+  fill: var(--error);
 }
 
 /* Issue sentences */
@@ -280,17 +357,12 @@ path.tk-hit {
   stroke: var(--accent);
   opacity: 0.25;
 }
-.tk-node[data-drop='true'] .tk-ring {
-  stroke: var(--accent);
-  stroke-width: 3;
-  stroke-dasharray: none;
-}
 .tk-port {
   cursor: crosshair;
 }
 .tk-port-dot {
-  fill: var(--surface);
-  stroke: var(--wire);
+  fill: var(--node-fill);
+  stroke: var(--node-border);
   stroke-width: 1.5;
   pointer-events: none;
 }
@@ -299,7 +371,7 @@ path.tk-hit {
   fill: var(--accent);
 }
 .tk-port-in {
-  fill: var(--surface);
+  fill: var(--node-fill);
   stroke: var(--accent);
   stroke-width: 1.5;
   pointer-events: none;

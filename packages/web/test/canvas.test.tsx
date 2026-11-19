@@ -113,7 +113,7 @@ test('the inspector edits width and activation; undo restores both', () => {
   tap(must('node-act1'));
   setValue(must('field-fn'), 'tanh', HTMLSelectElement.prototype, 'change');
   expect(s().graph.nodes.find((n) => n.id === 'act1')).toMatchObject({ fn: 'tanh' });
-  expect(must('node-act1').textContent).toBe('tanh');
+  expect(must('node-act1').textContent).toContain('tanh');
 
   act(() => s().undo());
   expect(s().graph.nodes.find((n) => n.id === 'act1')).toMatchObject({ fn: 'relu' });

@@ -11,6 +11,8 @@ import {
 } from '@tinker/core';
 import { ACTIVATION_SYMBOL } from './drawings/activation.js';
 import { WEB_PIECES } from './drawings/index.js';
+import { NODE_RADIUS, NodeShell, roleOf } from './drawings/NodeShell.js';
+import { LockBadge } from './drawings/LockBadge.js';
 import type { LayerProps } from './drawings/types.js';
 import { layerProps } from './LayerView.js';
 import {
@@ -177,6 +179,8 @@ function UnitCircle(p: { kind: NeuronLayout['units'][number]['kind']; node: Node
 export function NeuronView(p: NeuronViewProps) {
   const { graph, analysis, layout, scale } = p;
   const hitPx = p.coarse ? 32 : 20;
+  const lockedList = useStore((s) => s.preset?.locked);
+  const lockedSet = new Set(lockedList ?? []);
   const [hover, setHover] = useState<{ k: number; x: number; y: number } | null>(null);
 
   const dims = useMemo(() => {
@@ -302,6 +306,8 @@ export function NeuronView(p: NeuronViewProps) {
             transform={`translate(${box.x} ${box.y})`}
             data-testid={`node-${node.id}`}
             data-type={node.type}
+            data-role={roleOf(node.type)}
+            data-locked={lockedSet.has(node.id)}
             data-selected={nodeSelected}
             data-error={p.errorNodes.has(node.id)}
             className="tk-node"
@@ -328,8 +334,16 @@ export function NeuronView(p: NeuronViewProps) {
                 height={hit.h}
               />
             )}
-            <rect className="tk-ring" x={-4} y={-4} width={box.w + 8} height={box.h + 8} rx={12} />
+            <rect
+              className="tk-ring"
+              x={-4}
+              y={-4}
+              width={box.w + 8}
+              height={box.h + 8}
+              rx={NODE_RADIUS + 4}
+            />
             {units ? null : <BoxDrawing node={node} box={box} p={p} />}
+            {lockedSet.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
         );
       })}
@@ -346,6 +360,14 @@ export function NeuronView(p: NeuronViewProps) {
             transform={`translate(${u.x} ${u.y})`}
             data-testid={`unit-${u.node}-${u.index}`}
             data-kind={u.kind}
+            data-role={
+              u.kind === 'in' || u.kind === 'target'
+                ? 'input'
+                : u.kind === 'out'
+                  ? 'pred'
+                  : undefined
+            }
+            data-locked={lockedSet.has(u.node)}
             data-selected={selected}
             data-error={p.errorNodes.has(u.node)}
             className="tk-node tk-unit"
@@ -408,21 +430,19 @@ function BoxDrawing({
   if (node.type === 'linear') {
     const inW = p.analysis.inWidth[node.id];
     return (
-      <g data-piece="linear-collapsed">
-        <rect className="tk-shape" x={0} y={0} width={box.w} height={box.h} rx={8} />
-        <text className="tk-text" x={10} y={box.h * 0.36} dominantBaseline="middle">
-          {inW ?? '?'} to {node.out}
-        </text>
-        <text
-          className="tk-text tk-small tk-muted"
-          data-testid={`edges-${node.id}`}
-          x={10}
-          y={box.h * 0.74}
-          dominantBaseline="middle"
-        >
-          {inW === undefined ? 'no input' : `${inW * node.out} edges`}
-        </text>
-      </g>
+      <NodeShell
+        piece="linear"
+        w={box.w}
+        h={box.h}
+        name="Linear"
+        secondary={[
+          `${inW ?? '?'} to ${node.out}`,
+          inW === undefined ? 'no input' : `${inW * node.out} edges`,
+        ]}
+        secondaryTestId={`edges-${node.id}`}
+        inPorts={1}
+        outPort
+      />
     );
   }
   return <OtherBox node={node} box={box} p={p} />;

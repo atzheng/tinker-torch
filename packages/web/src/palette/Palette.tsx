@@ -4,6 +4,29 @@ import { dnd } from '../canvas/dnd.js';
 import { startDrag } from '../gestures/drag.js';
 import './palette.css';
 
+/** The glyph a palette chip shows, the same one the node it creates carries (roles get a badge). */
+const GLYPH: Record<string, string> = {
+  input: 'x',
+  target: 'y',
+  output: 'ŷ',
+  feature: 'x²',
+  linear: 'W',
+  activation: 'σ',
+  dropout: 'p',
+  add: '+',
+};
+function chipOf(entry: PaletteEntry): { role?: 'input' | 'pred' | 'loss'; glyph?: string } {
+  if (entry.family === 'losses') return { role: 'loss', glyph: 'L' };
+  if (entry.family === 'penalties') return { glyph: 'λ' };
+  const role =
+    entry.key === 'input' || entry.key === 'target'
+      ? 'input'
+      : entry.key === 'output'
+        ? 'pred'
+        : undefined;
+  return { role, glyph: GLYPH[entry.key] };
+}
+
 const GROUPS: { family: PaletteEntry['family']; label: string }[] = [
   { family: 'inputs', label: 'Inputs' },
   { family: 'features', label: 'Features' },
@@ -36,6 +59,8 @@ export function Palette() {
               className="tk-palette-entry"
               data-testid={`palette-${entry.key}`}
               data-dragging={dragging?.key === entry.key}
+              data-role={chipOf(entry).role}
+              data-family={entry.family}
               onPointerDown={(e) => {
                 if (e.pointerType === 'mouse' && e.button !== 0) return;
                 // Touch: the palette scrolls vertically (`touch-action: pan-y`), so a drag begins
@@ -56,7 +81,12 @@ export function Palette() {
                 });
               }}
             >
-              {entry.label}
+              <span className="tk-chip-label">{entry.label}</span>
+              {chipOf(entry).glyph && (
+                <span className="tk-chip-glyph" aria-hidden="true">
+                  {chipOf(entry).glyph}
+                </span>
+              )}
             </button>
           ))}
         </section>
