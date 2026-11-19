@@ -7,7 +7,7 @@ import { Canvas } from '../src/canvas/Canvas.js';
 import { fitTransform } from '../src/canvas/pure.js';
 import { layerBaseView } from '../src/canvas/viewport.js';
 import { Palette } from '../src/palette/Palette.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 import { UndoRedo } from '../src/topbar/UndoRedo.js';
 

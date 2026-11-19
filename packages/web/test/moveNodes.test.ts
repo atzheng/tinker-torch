@@ -1,10 +1,18 @@
 import { beforeEach, describe, expect, test } from 'vitest';
-import { analyse, layoutLayers, moveNodes, parseFileText, serializeFile } from '@tinker/core';
+import {
+  analyse,
+  sample,
+  layoutLayers,
+  moveNodes,
+  parseFileText,
+  serializeFile,
+} from '@tinker/core';
 import { useStore } from '../src/state/store.js';
+import { mlpGraph } from './mlpGraph.js';
 import { PIN, pinCentre, pinHitRect, placePins } from '../src/canvas/pure.js';
 
 beforeEach(() => {
-  useStore.getState().loadGraph(useStore.getState().graph);
+  useStore.getState().loadGraph(mlpGraph());
 });
 
 describe('moving a piece through the store', () => {
@@ -27,10 +35,10 @@ describe('moving a piece through the store', () => {
 });
 
 describe('pin placement with pieces moved by hand', () => {
-  const g = useStore.getState().graph;
+  const g = mlpGraph();
   const layout = (positions?: Record<string, [number, number]>) => {
     const gg = positions ? { ...g, positions } : g;
-    return layoutLayers(gg, analyse(gg, useStore.getState().dataInfo));
+    return layoutLayers(gg, analyse(gg, sample(gg.data).info));
   };
 
   test('without avoidance the spot is the fixed offset from the port', () => {

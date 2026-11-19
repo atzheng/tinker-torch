@@ -4,7 +4,7 @@ import { loadEngine } from '../src/engine.js';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { setLinearOut } from '@tinker/core';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 import { Pins } from '../src/results/Pins.js';
 import { PIN_LIMIT } from '../src/results/pinsModel.js';

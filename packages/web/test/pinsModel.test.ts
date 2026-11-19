@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { swapPiece } from '@tinker/core';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import type { HistoryPoint } from '../src/state/trainSlice.js';
 import {
   PIN_LIMIT,

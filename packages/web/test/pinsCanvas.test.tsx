@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { Palette } from '../src/palette/Palette.js';
 import { deleteSelection } from '../src/canvas/actions.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

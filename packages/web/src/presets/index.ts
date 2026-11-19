@@ -4,9 +4,19 @@ import logistic from './logistic.json';
 import sine from './sine.json';
 import xor from './xor.json';
 import skip from './skip.json';
+import scalar from './scalar.json';
+import mlp from './mlp.json';
 
 /** Bundled presets by the name used in `?preset=<name>`, in menu order. Imported, never fetched. */
-export const PRESET_SOURCES: Record<string, unknown> = { linear, logistic, sine, xor, skip };
+export const PRESET_SOURCES: Record<string, unknown> = {
+  linear,
+  logistic,
+  sine,
+  xor,
+  skip,
+  scalar,
+  mlp,
+};
 
 export const PRESET_NAMES: string[] = Object.keys(PRESET_SOURCES);
 
