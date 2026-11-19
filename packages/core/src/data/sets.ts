@@ -1,5 +1,5 @@
 /** The 12 synthetic generators and their true functions (CONTRACTS.md section 6). */
-import type { DatasetName } from '../graph.js';
+import type { DatasetName } from '../common.js';
 import type { Rng } from '../rng.js';
 
 export type SetKind = 'regression' | 'binary';

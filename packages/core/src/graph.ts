@@ -1,66 +1,71 @@
-/** Graph format (CONTRACTS.md section 2): types, zod schema, parse and serialise, port helpers. */
+/** Graph format v2 (CONTRACTS.md section 2): types, zod schema, parse (with v1 migration) and serialise, port helpers. */
 import { z } from 'zod';
 import { CORE_PIECES } from './registry.js';
+import { parseGraph as parseGraphV1 } from './legacy/graph.js';
+import { migrateV1 } from './migrate.js';
+import {
+  ACTIVATION_FNS,
+  DATASET_NAMES,
+  OPTIMIZERS,
+  bool,
+  dataSchema,
+  edgeSchema,
+  int,
+  isRecord,
+  nodeId,
+  num,
+  oneOf,
+  parsePort,
+  trainSchema,
+  type ActivationFn,
+  type DataConfig,
+  type DataInfo,
+  type DatasetName,
+  type Edge,
+  type Endpoint,
+  type NodeId,
+  type PortRef,
+  type TrainConfig,
+} from './common.js';
 
-export const DATASET_NAMES = [
-  'line',
-  'quadratic',
-  'sine',
-  'step',
-  'wiggle',
-  'plane',
-  'bowl',
-  'saddle',
-  'blobs',
-  'circle',
-  'xor',
-  'moons',
-] as const;
-export const ACTIVATION_FNS = ['sigmoid', 'tanh', 'relu', 'gelu'] as const;
-export const OUTPUT_LINKS = ['identity', 'sigmoid', 'softmax'] as const;
-export const LOSS_FNS = [
-  'squared_error',
-  'absolute_error',
-  'huber',
-  'log_loss',
-  'cross_entropy',
-] as const;
-export const OPTIMIZERS = ['sgd', 'momentum', 'adam'] as const;
+export {
+  ACTIVATION_FNS,
+  DATASET_NAMES,
+  OPTIMIZERS,
+  parsePort,
+  type ActivationFn,
+  type DataConfig,
+  type DataInfo,
+  type DatasetName,
+  type Edge,
+  type Endpoint,
+  type NodeId,
+  type PortRef,
+  type TrainConfig,
+};
+
+export const LINK_FNS = ['sigmoid', 'softmax'] as const;
+export const NORM_KINDS = ['l2', 'l1'] as const;
 export const NODE_TYPES = [
   'input',
+  'target',
   'feature',
   'linear',
   'activation',
   'dropout',
   'add',
-  'output',
-  'target',
-  'loss',
+  'link',
+  'subtract',
+  'square',
+  'abs',
+  'huber',
+  'log_loss',
+  'cross_entropy',
+  'mean',
+  'scale',
+  'weights',
+  'norm',
 ] as const;
-
-const oneOf = (values: readonly string[]) => `must be one of ${values.join(', ')}`;
-const NODE_NAME = 'must be a node name (text)';
-
-function num(message: string, ok: (n: number) => boolean) {
-  return z
-    .number({ error: message })
-    .refine((n) => Number.isFinite(n) && ok(n), { error: message });
-}
-const int = (lo: number, hi: number) =>
-  num(
-    `must be a whole number from ${lo} to ${hi}`,
-    (n) => Number.isInteger(n) && n >= lo && n <= hi,
-  );
-const bool = z.boolean({ error: 'must be true or false' });
-
-const nodeId = z.string({ error: 'must be text' }).regex(/^[a-z][a-z0-9_]*$/, {
-  error: 'must start with a lowercase letter and use only a-z, 0-9 and _',
-});
-
-const penaltySchema = z.strictObject({
-  kind: z.enum(['l2', 'l1'], { error: oneOf(['l2', 'l1']) }),
-  lambda: num('must be a number from 0 to 100', (n) => n >= 0 && n <= 100),
-});
 
 const nodeSchema = z.discriminatedUnion('type', [
   z.strictObject({
@@ -70,6 +75,7 @@ const nodeSchema = z.discriminatedUnion('type', [
       error: 'must be a list of column names',
     }),
   }),
+  z.strictObject({ id: nodeId, type: z.literal('target') }),
   z.strictObject({
     id: nodeId,
     type: z.literal('feature'),
@@ -97,104 +103,81 @@ const nodeSchema = z.discriminatedUnion('type', [
   z.strictObject({ id: nodeId, type: z.literal('add') }),
   z.strictObject({
     id: nodeId,
-    type: z.literal('output'),
-    link: z.enum(OUTPUT_LINKS, { error: oneOf(OUTPUT_LINKS) }).default('identity'),
+    type: z.literal('link'),
+    fn: z.enum(LINK_FNS, { error: oneOf(LINK_FNS) }),
   }),
-  z.strictObject({ id: nodeId, type: z.literal('target') }),
-  z
-    .strictObject({
-      id: nodeId,
-      type: z.literal('loss'),
-      fn: z.enum(LOSS_FNS, { error: oneOf(LOSS_FNS) }),
-      delta: num('must be a number above 0', (n) => n > 0).optional(),
-      penalty: penaltySchema.optional(),
-    })
-    .refine((n) => n.delta === undefined || n.fn === 'huber', {
-      path: ['delta'],
-      error: 'can only be set on the Huber loss',
-    }),
+  z.strictObject({ id: nodeId, type: z.literal('subtract') }),
+  z.strictObject({ id: nodeId, type: z.literal('square') }),
+  z.strictObject({ id: nodeId, type: z.literal('abs') }),
+  z.strictObject({
+    id: nodeId,
+    type: z.literal('huber'),
+    delta: num('must be a number above 0', (n) => n > 0).default(1),
+  }),
+  z.strictObject({ id: nodeId, type: z.literal('log_loss') }),
+  z.strictObject({ id: nodeId, type: z.literal('cross_entropy') }),
+  z.strictObject({ id: nodeId, type: z.literal('mean') }),
+  z.strictObject({
+    id: nodeId,
+    type: z.literal('scale'),
+    c: num('must be a number', () => true),
+  }),
+  z.strictObject({ id: nodeId, type: z.literal('weights'), of: nodeId }),
+  z.strictObject({
+    id: nodeId,
+    type: z.literal('norm'),
+    kind: z.enum(NORM_KINDS, { error: oneOf(NORM_KINDS) }),
+  }),
 ]);
 
-const edgeSchema = z.tuple([z.string({ error: NODE_NAME }), z.string({ error: NODE_NAME })], {
-  error: 'must be a pair of node names',
-});
-
-const dataSchema = z.strictObject({
-  set: z.enum(DATASET_NAMES, { error: oneOf(DATASET_NAMES) }),
-  n: int(10, 500),
-  noise: num('must be a number from 0 to 1', (n) => n >= 0 && n <= 1),
-  val: num('must be a number from 0 to 0.5', (n) => n >= 0 && n <= 0.5),
-  seed: int(-2147483648, 4294967295),
-  standardize: bool.default(false),
-});
-
-const trainSchema = z.strictObject({
-  optimizer: z.enum(OPTIMIZERS, { error: oneOf(OPTIMIZERS) }),
-  lr: num('must be a number above 0', (n) => n > 0),
-  batch: z.union([z.literal('full'), int(1, 1_000_000)], {
-    error: 'must be "full" or a whole number of at least 1',
-  }),
-  seed: int(-2147483648, 4294967295),
-});
+const GRAPH_VERSION = 2 as const;
+const NODE_REF = 'must be a node name (text)';
 
 const graphSchema = z.strictObject({
-  version: z.literal(1, { error: 'must be 1' }),
+  version: z.literal(GRAPH_VERSION, { error: 'must be 2' }),
   nodes: z.array(nodeSchema, { error: 'must be a list of nodes' }),
   edges: z.array(edgeSchema, { error: 'must be a list of edges' }),
+  predictions: z
+    .array(z.string({ error: NODE_REF }), { error: 'must be a list of node names' })
+    .default([]),
+  loss: z.string({ error: NODE_REF }).nullable().default(null),
   data: dataSchema,
   train: trainSchema,
 });
 
-export type NodeId = string;
 export type Node = z.infer<typeof nodeSchema>;
 export type PieceType = Node['type'];
 export type NodeOf<T extends PieceType> = Extract<Node, { type: T }>;
 /** A node without its id (distributes over the union, unlike `Omit<Node, 'id'>`). */
 export type NodeBody = Node extends infer N ? (N extends Node ? Omit<N, 'id'> : never) : never;
-export type Penalty = z.infer<typeof penaltySchema>;
-export type ActivationFn = (typeof ACTIVATION_FNS)[number];
-export type OutputLink = (typeof OUTPUT_LINKS)[number];
-export type LossFn = (typeof LOSS_FNS)[number];
-export type DatasetName = (typeof DATASET_NAMES)[number];
-export type PortRef = string;
-export type Edge = [from: PortRef, to: PortRef];
-export type DataConfig = z.infer<typeof dataSchema>;
-export type TrainConfig = z.infer<typeof trainSchema>;
-/** What the dataset says about itself (CONTRACTS.md section 4). */
-export type DataInfo = {
-  columns: string[];
-  kind: 'regression' | 'binary';
-  numClasses: number;
-};
+export type LinkFn = (typeof LINK_FNS)[number];
+export type NormKind = (typeof NORM_KINDS)[number];
 export type Graph = {
-  version: 1;
+  version: 2;
   nodes: Node[];
   edges: Edge[];
+  /** The ŷ pins: output ports whose values predict() returns, in order. May be empty. */
+  predictions: PortRef[];
+  /** The L pin: the output port training minimises, or null when none is chosen yet. */
+  loss: PortRef | null;
   data: DataConfig;
   train: TrainConfig;
 };
 
 // ---------------------------------------------------------------- ports
 
-/** Splits "node" or "node.port". `port` is null for a bare node id. */
-export function parsePort(ref: PortRef): { node: NodeId; port: string | null } {
-  const dot = ref.indexOf('.');
-  if (dot < 0) return { node: ref, port: null };
-  return { node: ref.slice(0, dot), port: ref.slice(dot + 1) };
-}
-
-export type Endpoint = { node: NodeId; port: string };
 export type ResolvedEdge =
   { ok: true; from: Endpoint; to: Endpoint } | { ok: false; error: string };
+export type ResolvedPin = { ok: true; at: Endpoint } | { ok: false; error: string };
 
 /** Input port names of a node type (CONTRACTS.md section 2). */
 export function inputPortsOf(type: PieceType): string[] {
   return CORE_PIECES[type].inputPorts;
 }
 
-/** Whether nodes of this type have the output port `out`. */
-export function hasOutput(type: PieceType): boolean {
-  return type !== 'loss';
+/** Output port names of a node type: every piece has exactly `out`. */
+export function outputPortsOf(_type: PieceType): string[] {
+  return ['out'];
 }
 
 /**
@@ -210,12 +193,10 @@ export function resolveEdge(nodes: readonly Node[], edge: Edge): ResolvedEdge {
   const to = nodes.find((n) => n.id === dst.node);
   if (!from) return { ok: false, error: `${text} starts at "${src.node}", which is not a node.` };
   if (!to) return { ok: false, error: `${text} ends at "${dst.node}", which is not a node.` };
-  if (!hasOutput(from.type) || (src.port !== null && src.port !== 'out')) {
+  if (src.port !== null && src.port !== 'out') {
     return {
       ok: false,
-      error: hasOutput(from.type)
-        ? `${text} starts at "${fromRef}", but "${src.node}" only has the output "out".`
-        : `${text} starts at "${src.node}", which has no output.`,
+      error: `${text} starts at "${fromRef}", but "${src.node}" only has the output "out".`,
     };
   }
   const ports = inputPortsOf(to.type);
@@ -246,13 +227,21 @@ export function resolveEdge(nodes: readonly Node[], edge: Edge): ResolvedEdge {
   return { ok: true, from: { node: from.id, port: 'out' }, to: { node: to.id, port: toPort } };
 }
 
+/** Resolves a role pin (a ŷ or the L): a node, or "node.out". One sentence when it is wrong. */
+export function resolvePin(nodes: readonly Node[], ref: PortRef): ResolvedPin {
+  const { node, port } = parsePort(ref);
+  if (!nodes.some((n) => n.id === node)) {
+    return { ok: false, error: `The pin "${ref}" points at "${node}", which is not a node.` };
+  }
+  if (port !== null && port !== 'out') {
+    return { ok: false, error: `The pin "${ref}" must point at the output "out" of "${node}".` };
+  }
+  return { ok: true, at: { node, port: 'out' } };
+}
+
 // ---------------------------------------------------------------- parse
 
 export type ParseResult = { ok: true; graph: Graph } | { ok: false; error: string };
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
 
 function describeIssue(issue: z.core.$ZodIssue, json: unknown): string {
   const path = issue.path;
@@ -288,9 +277,16 @@ function describeIssue(issue: z.core.$ZodIssue, json: unknown): string {
   return `${where} field "${field}" ${message}.`;
 }
 
-/** Parses and validates a graph. Fills defaults, rejects unknown fields, gives one plain sentence on failure. */
+/**
+ * Parses and validates a graph. Accepts version 2, and version 1 which it migrates to identical math
+ * (CONTRACTS.md section 2). Fills defaults, rejects unknown fields, gives one plain sentence on failure.
+ */
 export function parseGraph(json: unknown): ParseResult {
   if (!isRecord(json)) return { ok: false, error: 'The graph must be a JSON object.' };
+  if (json['version'] === 1) {
+    const v1 = parseGraphV1(json);
+    return v1.ok ? { ok: true, graph: migrateV1(v1.graph) } : v1;
+  }
   // Node types are checked first so that an unknown type gets a clear sentence.
   if (Array.isArray(json['nodes'])) {
     for (const [i, raw] of json['nodes'].entries()) {
@@ -304,9 +300,13 @@ export function parseGraph(json: unknown): ParseResult {
             error: `Node ${id} has no type; the types are ${NODE_TYPES.join(', ')}.`,
           };
         }
+        const old =
+          type === 'output' || type === 'loss'
+            ? ` (the "${type}" piece only exists in version 1 files)`
+            : '';
         return {
           ok: false,
-          error: `Node ${id} has an unknown type ${JSON.stringify(type)}; the types are ${NODE_TYPES.join(', ')}.`,
+          error: `Node ${id} has an unknown type ${JSON.stringify(type)}${old}; the types are ${NODE_TYPES.join(', ')}.`,
         };
       }
     }
@@ -317,21 +317,50 @@ export function parseGraph(json: unknown): ParseResult {
     return { ok: false, error: issue ? describeIssue(issue, json) : 'The graph is not valid.' };
   }
   const g = parsed.data;
-  const nodes: Node[] = g.nodes.map((n) =>
-    n.type === 'loss' && n.fn === 'huber' && n.delta === undefined ? { ...n, delta: 1 } : n,
-  );
+  const nodes: Node[] = g.nodes;
   const seen = new Set<string>();
   for (const n of nodes) {
     if (seen.has(n.id)) return { ok: false, error: `Two nodes are both called "${n.id}".` };
     seen.add(n.id);
   }
+  for (const n of nodes) {
+    if (n.type !== 'weights') continue;
+    const target = nodes.find((m) => m.id === n.of);
+    if (target?.type !== 'linear') {
+      return {
+        ok: false,
+        error: `Node "${n.id}" field "of" must name a Linear piece, but "${n.of}" is not one.`,
+      };
+    }
+  }
   for (const edge of g.edges) {
     const r = resolveEdge(nodes, edge);
     if (!r.ok) return { ok: false, error: r.error };
   }
+  const pinned = new Set<string>();
+  for (const ref of g.predictions) {
+    const r = resolvePin(nodes, ref);
+    if (!r.ok) return { ok: false, error: r.error };
+    if (pinned.has(r.at.node)) {
+      return { ok: false, error: `"${r.at.node}" is pinned as a prediction twice.` };
+    }
+    pinned.add(r.at.node);
+  }
+  if (g.loss !== null) {
+    const r = resolvePin(nodes, g.loss);
+    if (!r.ok) return { ok: false, error: r.error };
+  }
   return {
     ok: true,
-    graph: { version: 1, nodes, edges: g.edges, data: g.data, train: g.train },
+    graph: {
+      version: GRAPH_VERSION,
+      nodes,
+      edges: g.edges,
+      predictions: g.predictions,
+      loss: g.loss,
+      data: g.data,
+      train: g.train,
+    },
   };
 }
 
@@ -339,14 +368,23 @@ export function parseGraph(json: unknown): ParseResult {
 
 const NODE_KEY_ORDER: Record<PieceType, string[]> = {
   input: ['id', 'type', 'columns'],
+  target: ['id', 'type'],
   feature: ['id', 'type', 'degree', 'sin', 'cos', 'products'],
   linear: ['id', 'type', 'out', 'bias'],
   activation: ['id', 'type', 'fn'],
   dropout: ['id', 'type', 'p'],
   add: ['id', 'type'],
-  output: ['id', 'type', 'link'],
-  target: ['id', 'type'],
-  loss: ['id', 'type', 'fn', 'delta', 'penalty'],
+  link: ['id', 'type', 'fn'],
+  subtract: ['id', 'type'],
+  square: ['id', 'type'],
+  abs: ['id', 'type'],
+  huber: ['id', 'type', 'delta'],
+  log_loss: ['id', 'type'],
+  cross_entropy: ['id', 'type'],
+  mean: ['id', 'type'],
+  scale: ['id', 'type', 'c'],
+  weights: ['id', 'type', 'of'],
+  norm: ['id', 'type', 'kind'],
 };
 
 function pick(obj: object, keys: string[]): Record<string, unknown> {
@@ -356,18 +394,15 @@ function pick(obj: object, keys: string[]): Record<string, unknown> {
   return out;
 }
 
-/** Two-space JSON with a stable key order. */
+/** Two-space JSON with a stable key order. Always writes version 2. */
 export function serializeGraph(graph: Graph): string {
-  const nodes = graph.nodes.map((n) => {
-    const o = pick(n, NODE_KEY_ORDER[n.type]);
-    if (n.type === 'loss' && n.penalty) o['penalty'] = pick(n.penalty, ['kind', 'lambda']);
-    return o;
-  });
   return JSON.stringify(
     {
-      version: graph.version,
-      nodes,
+      version: GRAPH_VERSION,
+      nodes: graph.nodes.map((n) => pick(n, NODE_KEY_ORDER[n.type])),
       edges: graph.edges,
+      predictions: graph.predictions,
+      loss: graph.loss,
       data: pick(graph.data, ['set', 'n', 'noise', 'val', 'seed', 'standardize']),
       train: pick(graph.train, ['optimizer', 'lr', 'batch', 'seed']),
     },

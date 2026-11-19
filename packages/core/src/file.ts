@@ -2,7 +2,7 @@ import { parseGraph, serializeGraph, type Graph, type NodeId } from './graph.js'
 
 export type SaveFile = {
   kind: 'tinker';
-  version: 1;
+  version: 2;
   graph: Graph;
   params?: Record<NodeId, { W: number[]; b?: number[] }>;
 };
@@ -17,7 +17,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 const fail = (error: string): ParseFileResult => ({ ok: false, error });
 
 /**
- * Validates a parsed JSON document as a Tinker file (CONTRACTS.md section 12). Gives one plain
+ * Validates a parsed JSON document as a Tinker file (CONTRACTS.md section 12; opens version 1 files by migrating their graph). Gives one plain
  * sentence on failure. `params` is only checked to be an object here: entries that do not fit the
  * graph are dropped later by `paramsFromJson`, with a notice, never an error.
  */
@@ -25,9 +25,9 @@ export function parseFile(json: unknown): ParseFileResult {
   if (!isRecord(json) || json['kind'] !== 'tinker') {
     return fail('This is not a Tinker file.');
   }
-  if (json['version'] !== 1) {
+  if (json['version'] !== 1 && json['version'] !== 2) {
     return fail(
-      `This file has version ${JSON.stringify(json['version']) ?? 'unknown'}, but this Tinker opens version 1 files.`,
+      `This file has version ${JSON.stringify(json['version']) ?? 'unknown'}, but this Tinker opens version 1 and 2 files.`,
     );
   }
   if (!('graph' in json)) return fail('This Tinker file has no graph.');
@@ -39,7 +39,8 @@ export function parseFile(json: unknown): ParseFileResult {
     return fail('The saved weights in this file must be an object.');
   }
 
-  const file: SaveFile = { kind: 'tinker', version: 1, graph: g.graph };
+  // A version 1 file is migrated by parseGraph; what we hold is always a version 2 file.
+  const file: SaveFile = { kind: 'tinker', version: 2, graph: g.graph };
   if (params !== undefined) file.params = params as SaveFile['params'];
 
   if ('title' in json || 'prompt' in json || 'locked' in json) {
@@ -80,7 +81,7 @@ export function serializeFile(
 ): string {
   const doc: Record<string, unknown> = {
     kind: 'tinker',
-    version: 1,
+    version: 2,
     graph: JSON.parse(serializeGraph(graph)) as unknown,
   };
   if (params) doc['params'] = params;
