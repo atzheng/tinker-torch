@@ -16,19 +16,23 @@ test('training steps do not create WebAssembly instances once kernels are warm',
   };
   for (let i = 0; i < 20; i++) once();
 
-  const Real = WebAssembly.Instance;
+  // The engine tsconfig has no DOM or Wasm lib types, hence the structural cast.
+  const wa = (
+    globalThis as unknown as { WebAssembly: { Instance: new (...a: unknown[]) => object } }
+  ).WebAssembly;
+  const Real = wa.Instance;
   let created = 0;
   class Counting extends Real {
-    constructor(...args: ConstructorParameters<typeof Real>) {
+    constructor(...args: unknown[]) {
       super(...args);
       created++;
     }
   }
-  WebAssembly.Instance = Counting as typeof WebAssembly.Instance;
+  wa.Instance = Counting;
   try {
     for (let i = 0; i < 200; i++) once();
   } finally {
-    WebAssembly.Instance = Real;
+    wa.Instance = Real;
   }
   expect(created).toBe(0);
   engine.dispose(state);
