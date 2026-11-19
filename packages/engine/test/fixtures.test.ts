@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 
-type Params = Record<string, { W: number[]; b?: number[] }>;
+type Params = Record<string, { W?: number[]; b?: number[] }>;
 type Fixture = {
   name: string;
   graph: {
@@ -79,21 +79,25 @@ for (const file of files) {
     const parsed = parseGraph(fx.graph); // version 1 fixtures are migrated
     expect(parsed.ok ? 'ok' : parsed.error).toBe('ok');
     const { n } = fx.batch;
-    const input = fx.graph.nodes.find((x) => x.type === 'input') as unknown as {
-      columns: string[];
-    };
-    expect(fx.batch.x).toHaveLength(n * input.columns.length);
+    const input = fx.graph.nodes.find((x) => x.type === 'input') as unknown as
+      { columns: string[] } | undefined;
+    // scalar graphs have no Input: their columns are the Column nodes' names
+    const d = input
+      ? input.columns.length
+      : fx.graph.nodes.filter((x) => x.type === 'column').length;
+    expect(fx.batch.x).toHaveLength(n * d);
     expect(fx.batch.y).toHaveLength(n);
     const linears = fx.graph.nodes.filter((x) => x.type === 'linear');
-    expect(Object.keys(fx.params).sort()).toEqual(linears.map((l) => l.id).sort());
+    const owners = fx.graph.nodes.filter((x) => ['linear', 'scalew', 'bias'].includes(x.type));
+    expect(Object.keys(fx.params).sort()).toEqual(owners.map((l) => l.id).sort());
     for (const l of linears) {
       const p = need(fx.params[l.id]);
-      expect(p.W.length % need(l.out)).toBe(0);
+      expect(need(p.W).length % need(l.out)).toBe(0);
       expect(p.b !== undefined).toBe(l.bias);
       if (l.bias) expect(p.b).toHaveLength(need(l.out));
       for (const set of [fx.expect.grads, fx.expect.after?.params]) {
         if (!set) continue;
-        expect(need(set[l.id]).W).toHaveLength(p.W.length);
+        expect(need(set[l.id]).W).toHaveLength(need(p.W).length);
         expect(need(set[l.id]).b?.length).toBe(p.b?.length);
       }
     }
@@ -101,7 +105,7 @@ for (const file of files) {
     expect(Number.isFinite(fx.expect.loss)).toBe(true);
     for (const v of [
       ...fx.expect.pred,
-      ...Object.values(fx.expect.grads).flatMap((g) => [...g.W, ...(g.b ?? [])]),
+      ...Object.values(fx.expect.grads).flatMap((g) => [...(g.W ?? []), ...(g.b ?? [])]),
     ]) {
       expect(Number.isFinite(v)).toBe(true);
     }

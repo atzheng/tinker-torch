@@ -56,6 +56,13 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   prim_link_shared: {},
   prim_dag_dropout_skip: {},
   prim_penalty_adam_300steps: {},
+  // scalar pieces (tinker-9io.4)
+  scalar_regression_d1: {},
+  scalar_regression_d3: {},
+  scalar_regression_d3_nobias: {},
+  scalar_sum_two_cols: {},
+  scalar_activation_after_sum: {},
+  scalar_adam_5steps: {},
 };
 
 /** Skipped until the named bead lands. */
