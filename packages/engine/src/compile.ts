@@ -236,10 +236,33 @@ export function compile(graph: Graph, data: DataInfo): Model {
           // The masks are sampled outside valueAndGrad: random ops traced under it leave one
           // constant buffer per compiled model that jit never frees.
           const [newKey, masks] = sampleMasks(self, key, x.shape[0] ?? 0);
-          const [loss, grads] = valueAndGrad(
+          // Only parameters the loss reads are differentiated: a layer only the predictions read
+          // (a prediction-only head), or only a Weights tap reads (its bias), gets zero gradients
+          // built here from the parameter itself. Differentiating them leaves one constant buffer
+          // per such leaf and compile that jit never frees.
+          const lossParams: ParamTree = {};
+          const zeroGrads: ParamTree = {};
+          const lossPlan = self.plans.loss;
+          const ownForward = new Set(lossPlan.steps.map((s) => s.node.id));
+          for (const [id, layer] of Object.entries(params)) {
+            const read = lossPlan.layerUses.has(id);
+            const wOnly = read && !ownForward.has(id); // read through Weights taps only
+            const used: Layer = {};
+            const zeros: Layer = {};
+            for (const [k, a] of Object.entries(layer)) {
+              if (read && (!wOnly || k === 'W')) used[k] = a.ref;
+              else zeros[k] = a.ref.sub(a.ref);
+            }
+            if (Object.keys(used).length > 0) lossParams[id] = used;
+            if (Object.keys(zeros).length > 0) zeroGrads[id] = zeros;
+          }
+          const [loss, lossGrads] = valueAndGrad(
             (p: ParamTree, xx: JArray, yy: JArray, mm: Masks) =>
               walk(self, 'loss', p, xx, yy, { train: true, masks: mm })[0] as JArray,
-          )(tree.ref(params), x, y, masks);
+          )(lossParams, x, y, masks);
+          const grads: ParamTree = {};
+          for (const id of Object.keys(params))
+            grads[id] = { ...(lossGrads as ParamTree)[id], ...zeroGrads[id] };
           const [updates, newOpt] = optimizer.update(grads, optState);
           const newParams = optax.applyUpdates(params, updates) as ParamTree;
           // One scalar: how many updated parameters are non-finite (0 = all finite), read next to the loss.
