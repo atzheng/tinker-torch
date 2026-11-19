@@ -1,9 +1,9 @@
 {
   "kind": "tinker",
-  "version": 1,
+  "version": 2,
   "title": "Linear regression on a line",
   "graph": {
-    "version": 1,
+    "version": 2,
     "nodes": [
       {
         "id": "x",
@@ -17,32 +17,38 @@
         "bias": true
       },
       {
-        "id": "yhat",
-        "type": "output",
-        "link": "identity"
-      },
-      {
         "id": "y",
         "type": "target"
       },
       {
+        "id": "diff",
+        "type": "subtract"
+      },
+      {
+        "id": "err",
+        "type": "square"
+      },
+      {
         "id": "loss",
-        "type": "loss",
-        "fn": "squared_error"
+        "type": "mean"
       }
     ],
     "edges": [
       ["x", "lin1"],
-      ["lin1", "yhat"],
-      ["yhat", "loss.pred"],
-      ["y", "loss.target"]
+      ["lin1", "diff.a"],
+      ["y", "diff.b"],
+      ["diff", "err"],
+      ["err", "loss"]
     ],
+    "predictions": ["lin1"],
+    "loss": "loss",
     "data": {
       "set": "line",
       "n": 40,
       "noise": 0.2,
       "val": 0.3,
-      "seed": 7
+      "seed": 7,
+      "standardize": false
     },
     "train": {
       "optimizer": "sgd",
