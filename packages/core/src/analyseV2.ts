@@ -349,7 +349,10 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   if (issues.length === 0) {
     const bare = order.find((id) => shape[id] === undefined);
     if (bare !== undefined) {
-      issues.push({ at: { node: bare }, message: `The size of "${bare}" could not be worked out.` });
+      issues.push({
+        at: { node: bare },
+        message: `The size of "${bare}" could not be worked out.`,
+      });
     }
   }
 
