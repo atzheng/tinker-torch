@@ -37,6 +37,7 @@ export type ScalarEditResult =
 const fail = (error: string): ScalarEditResult => ({ ok: false, error });
 
 const MISSING = 'The values of these pieces are not known yet, so they cannot be carried over.';
+const INVALID = 'That change would leave an invalid graph, so it was not made.';
 const NOT_A_GROUP =
   'These pieces are not exactly one set of Columns, Weights and a Sum that a Linear can replace.';
 
@@ -227,7 +228,7 @@ export function groupIntoLinear(
     predictions: graph.predictions.map(move),
     loss: graph.loss === null ? null : move(graph.loss),
   });
-  if (!parsed.ok) return fail(parsed.error);
+  if (!parsed.ok) return fail(INVALID);
   const layer: HostLayer = { W: Float32Array.from(order.map((o) => o.w)) };
   if (biasVals) layer['b'] = Float32Array.from(biasVals);
   return {
@@ -307,7 +308,7 @@ export function expandToScalars(
     predictions: graph.predictions.map(move),
     loss: graph.loss === null ? null : move(graph.loss),
   });
-  if (!parsed.ok) return fail(parsed.error);
+  if (!parsed.ok) return fail(INVALID);
   const layers: Record<NodeId, HostLayer> = {};
   ws.forEach((w, k) => {
     layers[w] = { W: Float32Array.of(W[k] ?? 0) };
