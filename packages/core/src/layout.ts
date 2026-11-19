@@ -366,7 +366,10 @@ export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
     if (!b || p.unit === null) continue;
     const pts: [number, number][] = [];
     for (let i = 0; i < p.count; i++) {
-      const pt: [number, number] = [b.x + b.w / 2, b.y + LAYOUT.unitLabelH + (i + 0.5) * LAYOUT.unitPitch];
+      const pt: [number, number] = [
+        b.x + b.w / 2,
+        b.y + LAYOUT.unitLabelH + (i + 0.5) * LAYOUT.unitPitch,
+      ];
       pts.push(pt);
       units.push({ node: n.id, index: i, kind: p.unit, x: pt[0], y: pt[1] });
     }
