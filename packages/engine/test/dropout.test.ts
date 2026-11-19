@@ -2,7 +2,7 @@ import type { Array as JArray } from '@jax-js/jax';
 import { beforeAll, expect, test } from 'vitest';
 import { createEngine } from '../src/index.js';
 import type { Engine } from '../src/index.js';
-import { loadFixture, toBatch, toHostParams, withLr } from './util.js';
+import { loadFixture, toBatch, toHostParams, withLr, predict0 } from './util.js';
 
 let engine: Engine;
 beforeAll(async () => {
@@ -28,8 +28,8 @@ test('dropout p = 0.5: step losses vary across steps (lr 0), predict and evaluat
   }
   expect(new Set(losses).size).toBeGreaterThan(1);
   expect(new Set(keys).size).toBe(keys.length);
-  const p1 = engine.predict(model, state.params, batch.x, batch.n);
-  const p2 = engine.predict(model, state.params, batch.x, batch.n);
+  const p1 = predict0(engine, model, state.params, batch.x, batch.n);
+  const p2 = predict0(engine, model, state.params, batch.x, batch.n);
   expect([...p1]).toEqual([...p2]);
   expect(engine.evaluate(model, state.params, batch)).toBe(
     engine.evaluate(model, state.params, batch),

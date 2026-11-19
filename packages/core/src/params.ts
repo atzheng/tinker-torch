@@ -24,7 +24,12 @@ function linearShapes(graph: Graph, analysis: Analysis): Map<NodeId, Shapes> {
   return out;
 }
 
-function initNode(shapes: Shapes, seed: number, id: NodeId): { W: Float32Array; b?: Float32Array } {
+/** One node's initial parameters (shared with the version 2 `initParams`). */
+export function initNode(
+  shapes: Shapes,
+  seed: number,
+  id: NodeId,
+): { W: Float32Array; b?: Float32Array } {
   // One stream per node: adding a node does not change the others.
   const rng = makeRng(seed).fork(id);
   const bound = 1 / Math.sqrt(shapes.W[0]);

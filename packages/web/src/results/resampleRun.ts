@@ -4,7 +4,7 @@
  * it makes is disposed before it returns, also when something throws.
  */
 import { grid1d, grid2d, makeRng, sample, type Graph } from '@tinker/core';
-import type { Engine } from '@tinker/engine';
+import type { Engine } from '../legacyEngine.js';
 
 export type ResampleRequest = {
   graph: Graph;

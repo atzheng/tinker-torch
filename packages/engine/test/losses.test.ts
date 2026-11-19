@@ -3,7 +3,7 @@
 import { beforeAll, describe, expect, test } from 'vitest';
 import { createEngine } from '../src/index.js';
 import type { Engine } from '../src/index.js';
-import { loadFixture, toBatch, toHostParams, withLr } from './util.js';
+import { loadFixture, toBatch, toHostParams, withLr, predict0 } from './util.js';
 
 let engine: Engine;
 beforeAll(async () => {
@@ -30,7 +30,7 @@ describe.each(['loss_log_loss', 'loss_cross_entropy'])('%s with huge logits', (n
       const params = engine.fromHost(model, host);
       const loss = engine.evaluate(model, params, batch);
       expect(Number.isFinite(loss)).toBe(true);
-      const pred = engine.predict(model, params, batch.x, batch.n);
+      const pred = predict0(engine, model, params, batch.x, batch.n);
       for (const p of pred) {
         expect(Number.isFinite(p)).toBe(true);
         expect(p).toBeGreaterThanOrEqual(0);

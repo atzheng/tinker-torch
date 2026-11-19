@@ -1,6 +1,8 @@
 /// <reference types="node" />
-import { parseGraph } from '@tinker/core';
-import type { DataInfo, Graph, HostParams } from '@tinker/core';
+import { v2 } from '@tinker/core';
+import type { DataInfo, HostParams } from '@tinker/core';
+
+type Graph = v2.Graph;
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +14,8 @@ export type Fixture = {
   batch: { x: number[]; y: number[]; n: number };
   expect: {
     pred: number[];
+    /** v2 fixtures: every ŷ pin in order (`pred` is the first); absent in v1 fixtures. */
+    predictions?: number[][];
     loss: number;
     grads: JsonParams;
     after?: { steps: number; params: JsonParams; losses: number[] };
@@ -32,7 +36,8 @@ export function fixtureNames(): string[] {
 
 export function loadFixture(name: string): { fx: Fixture; graph: Graph; data: DataInfo } {
   const fx = JSON.parse(readFileSync(`${dir}${name}.json`, 'utf8')) as Fixture;
-  const parsed = parseGraph(fx.graph);
+  // v1 fixture graphs are migrated by parseGraph; v2 ones are read as written
+  const parsed = v2.parseGraph(fx.graph);
   if (!parsed.ok) throw new Error(parsed.error);
   const input = parsed.graph.nodes.find((n) => n.type === 'input');
   const columns = input?.type === 'input' ? input.columns : [];
@@ -81,4 +86,17 @@ export function compare(
 /** Same graph with another learning rate. */
 export function withLr(graph: Graph, lr: number): Graph {
   return { ...graph, train: { ...graph.train, lr } };
+}
+
+/** The first yhat pin's predictions (the old single-output `predict`). */
+export function predict0(
+  engine: { predict(m: never, p: never, x: Float32Array, n: number): Float32Array[] },
+  model: unknown,
+  params: unknown,
+  x: Float32Array,
+  n: number,
+): Float32Array {
+  const out = engine.predict(model as never, params as never, x, n)[0];
+  if (!out) throw new Error('This model has no prediction pin.');
+  return out;
 }

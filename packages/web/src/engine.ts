@@ -7,7 +7,8 @@
  * publishes plain numbers and HostParams only.
  */
 import { useEffect, useState } from 'react';
-import type { Engine } from '@tinker/engine';
+import { adaptEngine } from './legacyEngine.js';
+import type { Engine } from './legacyEngine.js';
 
 let engine: Engine | null = null;
 let loading: Promise<Engine> | null = null;
@@ -41,7 +42,7 @@ export function loadEngine(): Promise<Engine> {
       probe.installProbe();
     }
     const mod = await import('@tinker/engine');
-    const e = await mod.createEngine();
+    const e = adaptEngine(await mod.createEngine()); // temporary v1 -> v2 adapter (tinker-8xw.4 removes it)
     engine = e;
     if (import.meta.env.DEV) {
       const w = window as unknown as { __tinker?: Record<string, unknown> };
