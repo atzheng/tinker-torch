@@ -4,3 +4,4 @@ export * from './registry.js';
 export * from './macros.js';
 export * from './migrate.js';
 export * from './file.js';
+export * from './analyseV2.js';
