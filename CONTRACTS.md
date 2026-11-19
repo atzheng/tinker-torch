@@ -70,7 +70,7 @@ Libraries, fixed: pnpm, TypeScript strict, vitest, zod, `@jax-js/jax` 0.1.27 and
 
 The graph is an arbitrary DAG of operations. The user pins one or more outputs as predictions (ŷ) and exactly one as the loss (L). Training minimises L; `predict()` returns the ŷ ports. Roles are pins on output ports, never nodes. Model and objective regions are derived from the pins (ancestors of ŷ are the model; what L needs beyond that is the objective), never a fixed layout zone.
 
-**Migration status.** `core/graph.ts`, `core/registry.ts`, `core/macros.ts`, `core/migrate.ts` and `core/file.ts` are version 2 and are exported as the namespace `v2` from `@tinker/core`. Analyse, edit, layout, params, the engine and the web app still consume version 1 (`core/legacy/*`, exported under the old names) until beads tinker-8xw.2 to .5 move them; then `legacy/` is deleted and the `v2` namespace is flattened into the root exports. Sections 4, 7 and 8 describe version 1 until their bead rewrites them. Version 1 documents are still readable: `v2.parseGraph` migrates them.
+**Migration status.** `core/graph.ts`, `core/registry.ts`, `core/macros.ts`, `core/migrate.ts` and `core/file.ts` are version 2 and are exported as the namespace `v2` from `@tinker/core`. Analyse, edit, layout, params, the engine and the web app still consume version 1 (`core/legacy/*`, exported under the old names) until beads tinker-8xw.2 to .5 move them; then `legacy/` is deleted and the `v2` namespace is flattened into the root exports. `core/analyseV2.ts` (section 4) is also version 2, as `v2.analyse`; sections 7 and 8 describe version 1 until their bead rewrites them. Version 1 documents are still readable: `v2.parseGraph` migrates them.
 
 ```ts
 type NodeId = string; // [a-z][a-z0-9_]*, unique
@@ -194,46 +194,52 @@ Feature output layout (the order of columns; the engine and the torch fixtures u
 
 Parameter count of a Linear: in·out + (bias ? out : 0). Every other piece has 0; the penalty's norms read Linear weights but own nothing. The penalty covers Linear weight matrices only, never biases.
 
-## 4. Analysis (`core/analyse.ts`)
+## 4. Analysis (`core/analyseV2.ts`, exported as `v2.analyse`)
+
+Graph v2 analysis. The version 1 `core/analyse.ts` (root export `analyse`) stays until the engine and web move (tinker-8xw.3, .4); then this file becomes `core/analyse.ts`.
 
 ```ts
-// DataInfo is defined in core/graph.ts (not analyse.ts) so that data and analysis both import it.
-type DataInfo = { columns: string[]; kind: 'regression' | 'binary'; numClasses: number }; // from the dataset
-type Issue = { at: { node?: NodeId; edge?: number }; message: string };  // edge = index into graph.edges
+// DataInfo is defined in core/common.ts and re-exported by graph.ts.
+type DataInfo = { columns: string[]; kind: 'regression' | 'binary'; numClasses: number };
+type Pin = { role: 'loss' } | { role: 'prediction'; index: number };       // index into graph.predictions
+type Issue = { at: { node?: NodeId; edge?: number; pin?: Pin }; message: string }; // edge = index into graph.edges
+type Region = 'model' | 'objective';
+type ParamShapes = { W?: [rows: number, cols: number]; b?: [number] };       // W is [in, out]
 type Analysis = {
-  order: NodeId[];                          // topological order of nodes on the path to the loss
-  inWidth: Record<NodeId, number>;          // width entering each node (single-input pieces)
-  outWidth: Record<NodeId, number>;
-  edgeWidth: (number | null)[];             // per graph.edges index, for the wire labels
-  params: Record<NodeId, number>; totalParams: number;
-  predNode: NodeId | null; lossNode: NodeId | null;
-  issues: Issue[];                          // empty when trainable
-  trainable: boolean;
+  order: NodeId[];                          // topological; what the roles need (below)
+  shape: Record<NodeId, Shape>;             // output shape per node; absent where unknown
+  inWidth: Record<NodeId, number>;          // example width entering the first input port, when known
+  outWidth: Record<NodeId, number>;         // example width out; absent for scalar / param / unknown
+  edgeShape: (Shape | null)[]; edgeWidth: (number | null)[];   // per graph.edges index
+  params: Record<NodeId, number>;           // per node whose input width is known (0 for most)
+  paramShapes: Record<NodeId, ParamShapes>; // per Linear whose input width is known
+  paramNodes: NodeId[];                     // Linears with live parameters, in node order
+  totalParams: number;                      // sum of params over paramNodes
+  predictions: NodeId[];                    // nodes carrying the ŷ pins, in pin order
+  lossNode: NodeId | null;                  // node carrying the L pin
+  region: Record<NodeId, Region>;           // absent = neither
+  modelOrder: NodeId[];                     // order restricted to the model region
+  paramWires: { linear: NodeId; weights: NodeId }[];   // weights.of wires, drawn dashed
+  fusable: { link: NodeId; loss: NodeId }[];           // sigmoid -> log_loss, softmax -> cross_entropy
+  issues: Issue[]; trainable: boolean;      // trainable = no issues
 };
 function analyse(graph: Graph, data: DataInfo): Analysis;
 ```
 
-Trainable means: no cycles; exactly one loss; every input port connected; a path input -> ... -> output -> loss.pred and target -> loss.target; widths resolve; the output/loss/target combination is in the table below; total parameters <= 10,000. Each failure gives one Issue with one plain sentence.
+Trainable means no issues. Each failure is one Issue with one plain sentence, at the root cause only (a node whose upstream shape is unknown gets no issue of its own). `analyse` does not assume `parseGraph` ran: bad edges, unknown pins, a missing `weights.of`, duplicate ids and cycles all become issues.
 
-`analyse` does not assume `parseGraph` rejected anything beyond unknown nodes/ports: cycles, self-edges, doubly-fed ports, duplicate or unknown Input columns and bad edges all become issues. Behaviour fixed here for later beads:
+Shapes come from the registry (`outShape`, section 3). Add and Subtract need equal shapes, no broadcasting; the mismatch is one issue at the node and the wire into `b`. A doubly fed port uses the first wire; each later wire is an issue with its `edge` and the receiving `node`. A cycle is one issue at its first node; those nodes and anything downstream have no shape and are never in `order`.
 
-- `order`: with exactly one loss that is not on a cycle, the ancestors of the loss (the loss last) in topological order, so dangling nodes are left out. With no loss, several losses, or a loss on a cycle, every node not blocked by a cycle, in topological order. Nodes on or downstream of a cycle are never in `order`.
-- `inWidth` and `outWidth` have no key where the width is unknown (never NaN or null). `inWidth` is absent for Input and Target; for Add it is the shared width and absent when the two inputs differ or one is missing; for the loss it is the width of `pred`. `outWidth` of a loss is absent.
-- `params` has a key for every node whose input width is known, including nodes off the loss path; `totalParams` sums only nodes in `order`. Consumers (init/reconcile, engine) iterate `order`, not the keys of `params`. The records are prototype-free, so lookups by node id are safe for any id.
-- Issues are reported at the root cause only: a node whose upstream width is unknown gets no issue of its own.
-- An Add width mismatch is one issue with both `node` (the Add) and `edge` (the wire into `b`). Other issues about one wire carry `edge`, and `node` too when a node is the cause.
-- A doubly-fed input port: the first wire (lowest edge index) is used for widths and order; each later wire gets an issue with its `edge` and the receiving `node`, and `edgeWidth` for it is null.
-- A self-edge or any cycle: one issue at the first node on the cycle; those nodes have unknown widths.
-- Wiring rules: Output may only feed `loss.pred` and Target only `loss.target` (issue on the edge otherwise); `loss.pred` must come from an Output and `loss.target` from a Target; an Input listing a column twice or a column the dataset lacks is an issue at the Input node.
-- `lossNode` and `predNode` can be non-null while the loss is not in `order` (a loss downstream of a cycle). Consumers may rely on `order` ending in `lossNode` only when `trainable` is true.
-- Duplicate node ids (only possible for an unparsed graph) give an issue at each later duplicate; the first node with the id is analysed.
-- `predNode` is the Output feeding `loss.pred` and `lossNode` the loss; both are null unless there is exactly one loss (`predNode` also null if `pred` is unconnected or not from an Output).
+Roles, each an issue when it fails:
 
-| Loss | Output link | Prediction width | Target |
-| --- | --- | --- | --- |
-| squared_error, absolute_error, huber | identity or sigmoid | 1 | regression or binary (as 0/1 numbers) |
-| log_loss | sigmoid | 1 | binary |
-| cross_entropy | softmax | numClasses (2 for all v1 sets) | binary (as class index) |
+- L: a pin must be set ("No loss is pinned ..." with `at: {}`) and name a node (`at.pin`). Its shape must be a single number (an example-shaped L says to add a Mean; a weight matrix is also refused), and its ancestors must include a parameter (a Linear, or a Weights tap of one). Pin issues carry `pin` and the pinned `node`.
+- ŷ: several pins are allowed (the fit plot picks one, default the first); `modelOrder` is the union of their ancestors. A pin naming no node, or the same node pinned twice (one issue on the duplicate), is an issue. Each pin is checked on its own: it must be per-example with width 1, or `numClasses` when the pinned node is a softmax link; a softmax ŷ needs a `binary` (classification) dataset. A graph with no ŷ pin still trains.
+- Log loss and cross-entropy take probabilities: their `pred` must come from a `link` of the matching fn (sigmoid for log loss, softmax for cross-entropy; issue at the node and the pred wire otherwise), the dataset must be `binary`, and cross-entropy's pred width must be `numClasses`. A matching pair is listed in `fusable`.
+- The 10,000 parameter limit applies to `totalParams` (issue with `at: {}`).
+
+Regions and order. Ancestry follows data wires (the first wire into each port). Model = ancestors of the ŷ pins (including the pinned nodes). Objective = ancestors of L that are not in the model. `order` is the topological order of model plus objective when L or a ŷ resolves, so dangling nodes are left out; otherwise every acyclic node. `modelOrder` is what `predict()` runs (dropout off). Wires from a Linear to a Weights tap (`weights.of`) are not data wires: the tap reads parameters, so it pulls in neither the Linear's inputs nor an ordering constraint, and a Linear read only through a tap is not in `order` (the engine does not run its forward pass). Such a Linear is still live: `paramNodes` lists every Linear in `order` plus every Linear read by a Weights node in `order`, and `totalParams` and the engine's parameter tables use that list, not the keys of `params`. `paramWires` lists every Weights node whose `of` is a Linear, for the dashed wire.
+
+`inWidth`/`outWidth`/`shape` have no key where unknown (never NaN or null). The records are prototype-free, so lookups by node id are safe for any id.
 
 ## 5. Parameters, initialisation, randomness
 
