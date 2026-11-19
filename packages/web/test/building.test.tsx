@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { analyse, layoutLayers } from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { fitTransform } from '../src/canvas/pure.js';
+import { layerBaseView } from '../src/canvas/viewport.js';
 import { Palette } from '../src/palette/Palette.js';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { useStore } from '../src/state/store.js';
@@ -53,9 +54,11 @@ function ptr(el: Element, type: string, x: number, y: number) {
 function screenOf(fn: (l: ReturnType<typeof layoutLayers>) => [number, number]): [number, number] {
   const g = s().graph;
   const layout = layoutLayers(g, analyse(g, s().dataInfo));
-  const t = fitTransform(layout.size, { w: 800, h: 500 - 44 }); // 44: header strip above the drawing
+  const view = { w: 800, h: 500 };
+  const f = fitTransform(layout.size, { w: view.w, h: view.h - 44 }); // 44: header strip above the drawing
+  const t = layerBaseView({ ...f, ty: f.ty + 44 }, layout.size, view, 44);
   const [x, y] = fn(layout);
-  return [x * t.scale + t.tx, y * t.scale + t.ty + 44];
+  return [x * t.scale + t.tx, y * t.scale + t.ty];
 }
 
 function dragEntry(key: string, to: [number, number]) {
@@ -152,13 +155,13 @@ test('edits during a run: a drop and a delete do not throw and pause the run; a 
   expect(s().graph.nodes.some((n) => n.id === 'dropout1')).toBe(false);
   expect(s().running).toBe(false);
 
-  // Target onto the Output: same family, but the edit refuses it.
+  // A Scale onto the Subtract: same family, but its second wire would be lost, so the edit refuses it.
   const before = s().graph;
   const [yx, yy] = screenOf((l) => {
-    const b = l.nodes['yhat'];
+    const b = l.nodes['diff'];
     return b ? [b.x + b.w / 2, b.y + b.h / 2] : [0, 0];
   });
-  dragEntry('target', [yx, yy])();
+  dragEntry('scale', [yx, yy])();
   expect(s().graph).toBe(before);
   expect(must('toast').textContent?.length).toBeGreaterThan(5);
 });

@@ -24,7 +24,7 @@ afterEach(() => {
 
 test('every piece is drawn by the one node shell: one body, same radius, ports on the edges', () => {
   const nodes = [...host.querySelectorAll('[data-testid^="node-"]')];
-  expect(nodes.length).toBe(7);
+  expect(nodes.length).toBe(8);
   for (const n of nodes) {
     const bodies = n.querySelectorAll('.tk-body');
     expect(bodies, n.getAttribute('data-testid') ?? '').toHaveLength(1);
@@ -36,9 +36,17 @@ test('every piece is drawn by the one node shell: one body, same radius, ports o
   }
 });
 
-test('only inputs, the prediction and the loss carry a role', () => {
+test('only inputs, the node pinned as ŷ and the node pinned as L carry a role', () => {
   const role = (id: string) =>
     host.querySelector(`[data-testid="node-${id}"]`)?.getAttribute('data-role') ?? null;
-  expect(['x', 'y', 'yhat', 'loss'].map(role)).toEqual(['input', 'input', 'pred', 'loss']);
-  expect(['lin1', 'act1', 'lin2'].map(role)).toEqual([null, null, null]);
+  expect(['x', 'y', 'lin2', 'loss'].map(role)).toEqual(['input', 'input', 'pred', 'loss']);
+  expect(['lin1', 'act1', 'diff', 'err'].map(role)).toEqual([null, null, null, null]);
+  // the pins are drawn as a badge on the pinned node, not as pieces of their own
+  expect(
+    host.querySelector('[data-testid="node-lin2"] [data-testid="pin-badge-pred"]'),
+  ).not.toBeNull();
+  expect(
+    host.querySelector('[data-testid="node-loss"] [data-testid="pin-badge-loss"]'),
+  ).not.toBeNull();
+  expect(host.querySelectorAll('[data-testid^="pin-badge-"]')).toHaveLength(2);
 });

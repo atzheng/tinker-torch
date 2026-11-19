@@ -32,6 +32,9 @@ test('every bundled preset parses, is titled, has no prompt and analyses as trai
     if (!f) continue;
     expect('title' in f).toBe(true);
     expect('prompt' in f).toBe(false);
+    expect(f.graph.version, name).toBe(2); // the bundled files are version 1 and open migrated
+    expect(f.graph.predictions, name).toHaveLength(1);
+    expect(f.graph.loss, name).toBe('loss');
     const a = analyse(f.graph, sample(f.graph.data).info);
     expect(a.issues, name).toEqual([]);
     expect(a.trainable, name).toBe(true);

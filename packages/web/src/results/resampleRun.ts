@@ -4,7 +4,7 @@
  * it makes is disposed before it returns, also when something throws.
  */
 import { grid1d, grid2d, makeRng, sample, type Graph } from '@tinker/core';
-import type { Engine } from '../legacyEngine.js';
+import type { Engine } from '@tinker/engine';
 
 export type ResampleRequest = {
   graph: Graph;
@@ -66,12 +66,13 @@ export function runResample(engine: Engine, req: ResampleRequest): ResampleRespo
           ? grid1d(ds.domain, gridN, ds.standardization)
           : grid2d(ds.domain, gridN, ds.standardization);
       const params = engine.fromHost(model, r.params);
-      let out: Float32Array;
+      let out: Float32Array | undefined;
       try {
-        out = engine.predict(model, params, grid.xStd, grid.n);
+        out = engine.predict(model, params, grid.xStd, grid.n)[0]; // the first ŷ pin
       } finally {
         engine.dispose(params);
       }
+      if (!out) throw new Error('No prediction selected.');
       const width = Math.max(1, Math.round(out.length / grid.n));
       // a binary model with two outputs: P(class 1) is the last column, as in the fit plots
       const col = d === 1 ? 0 : Math.min(1, width - 1);

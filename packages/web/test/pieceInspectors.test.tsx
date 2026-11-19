@@ -26,9 +26,15 @@ function everyPieceGraph(): Graph {
       { id: 'lin2', type: 'linear', out: 3, bias: true },
       { id: 'add', type: 'add' },
       { id: 'lin3', type: 'linear', out: 1, bias: true },
-      { id: 'yhat', type: 'output', link: 'identity' },
+      { id: 'yhat', type: 'link', fn: 'sigmoid' },
       { id: 'y', type: 'target' },
-      { id: 'loss', type: 'loss', fn: 'huber', delta: 1, penalty: { kind: 'l2', lambda: 0.01 } },
+      { id: 'diff', type: 'subtract' },
+      { id: 'hub', type: 'huber', delta: 1 },
+      { id: 'mean', type: 'mean' },
+      { id: 'wl1', type: 'weights', of: 'lin1' },
+      { id: 'n1', type: 'norm', kind: 'l2' },
+      { id: 'pen', type: 'scale', c: 0.01 },
+      { id: 'total', type: 'add' },
     ],
     edges: [
       ['x', 'feat'],
@@ -39,9 +45,17 @@ function everyPieceGraph(): Graph {
       ['lin1', 'add.b'],
       ['add', 'lin3'],
       ['lin3', 'yhat'],
-      ['yhat', 'loss.pred'],
-      ['y', 'loss.target'],
+      ['yhat', 'diff.a'],
+      ['y', 'diff.b'],
+      ['diff', 'hub'],
+      ['hub', 'mean'],
+      ['wl1', 'n1'],
+      ['n1', 'pen'],
+      ['mean', 'total.a'],
+      ['pen', 'total.b'],
     ],
+    predictions: ['yhat'],
+    loss: 'total',
   });
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.graph;
@@ -143,65 +157,75 @@ test('add inspector: both input widths, and the mismatch sentence', () => {
   expect(must('inspector-issues').textContent).toContain('same width');
 });
 
-test('loss inspector: fn, huber delta, penalty kind, lambda, remove; tag drawn', () => {
-  pick('loss');
+test('huber inspector: delta commits once and shows in the piece; zero is refused', () => {
+  pick('hub');
   const before = steps();
   typeAndBlur(must('field-delta'), '2');
-  expect(node('loss')).toMatchObject({ delta: 2 });
-  typeAndBlur(must('field-penalty-lambda'), '0.5');
-  expect(node('loss')).toMatchObject({ penalty: { kind: 'l2', lambda: 0.5 } });
-  choose('field-penalty-kind', 'l1');
-  expect(node('loss')).toMatchObject({ penalty: { kind: 'l1', lambda: 0.5 } });
-  expect(steps()).toBe(before + 3);
-  choose('field-penalty-kind', 'none');
-  expect(node('loss')).not.toHaveProperty('penalty.kind');
-  expect(q('penalty-tag-loss')).toBeNull();
-  expect(q('field-penalty-lambda')).toBeNull();
-  choose('field-loss-fn', 'squared_error');
-  expect(node('loss')).toMatchObject({ fn: 'squared_error' });
-  expect(q('field-delta')).toBeNull();
+  expect(node('hub')).toMatchObject({ delta: 2 });
+  expect(steps()).toBe(before + 1);
+  typeAndBlur(must('field-delta'), '0');
+  expect(node('hub')).toMatchObject({ delta: 2 });
+  expect(steps()).toBe(before + 1);
+  expect(s().error).toContain('above 0');
   act(() => s().undo());
-  expect(node('loss')).toMatchObject({ fn: 'huber' });
+  expect(node('hub')).toMatchObject({ delta: 1 });
 });
 
-test('output inspector: link select is one undo step', () => {
-  pick('yhat');
+test('scale inspector: c commits once, any finite number', () => {
+  pick('pen');
   const before = steps();
-  choose('field-link', 'sigmoid');
-  expect(node('yhat')).toMatchObject({ link: 'sigmoid' });
+  typeAndBlur(must('field-c'), '-0.5');
+  expect(node('pen')).toMatchObject({ c: -0.5 });
   expect(steps()).toBe(before + 1);
   act(() => s().undo());
-  expect(node('yhat')).toMatchObject({ link: 'identity' });
+  expect(node('pen')).toMatchObject({ c: 0.01 });
+});
+
+test('norm inspector: kind select is one undo step; weights says which Linear it reads', () => {
+  pick('n1');
+  const before = steps();
+  choose('field-norm', 'l1');
+  expect(node('n1')).toMatchObject({ kind: 'l1' });
+  expect(steps()).toBe(before + 1);
+  expect(must('node-n1').textContent).toContain('L1 norm');
+  act(() => s().undo());
+  expect(node('n1')).toMatchObject({ kind: 'l2' });
+  pick('wl1');
+  expect(must('weights-of').textContent).toContain('lin1');
+});
+
+test('link inspector: link select is one undo step', () => {
+  pick('yhat');
+  const before = steps();
+  choose('field-link', 'softmax');
+  expect(node('yhat')).toMatchObject({ fn: 'softmax' });
+  expect(steps()).toBe(before + 1);
+  act(() => s().undo());
+  expect(node('yhat')).toMatchObject({ fn: 'sigmoid' });
+});
+
+test('the pinned nodes carry a role badge: ŷ on the link, L on the final Add', () => {
+  expect(must('node-yhat').getAttribute('data-role')).toBe('pred');
+  expect(must('node-total').getAttribute('data-role')).toBe('loss');
+  expect(must('node-mean').getAttribute('data-role')).toBeNull();
 });
 
 test('locked pieces refuse every inspector edit', () => {
-  act(() =>
-    useStore.setState({ preset: { title: 'T', locked: ['feat', 'drop', 'loss', 'yhat'] } }),
-  );
+  act(() => useStore.setState({ preset: { title: 'T', locked: ['feat', 'drop', 'hub', 'yhat'] } }));
   const before = steps();
   pick('feat');
   typeAndBlur(must('field-degree'), '4');
   check('field-sin');
   pick('drop');
   typeAndBlur(must('field-p'), '0.4');
-  pick('loss');
+  pick('hub');
   typeAndBlur(must('field-delta'), '3');
-  choose('field-penalty-kind', 'none');
   pick('yhat');
-  choose('field-link', 'sigmoid');
+  choose('field-link', 'softmax');
   expect(steps()).toBe(before);
   expect(s().error).toBe('This piece is locked.');
   expect(node('feat')).toMatchObject({ degree: 2, sin: true });
-  expect(node('yhat')).toMatchObject({ link: 'identity' });
-});
-
-test('lambda above 100 is refused with the schema sentence', () => {
-  pick('loss');
-  const before = steps();
-  typeAndBlur(must('field-penalty-lambda'), '101');
-  expect(node('loss')).toMatchObject({ penalty: { lambda: 0.01 } });
-  expect(steps()).toBe(before);
-  expect(s().error).toContain('0 to 100');
+  expect(node('yhat')).toMatchObject({ fn: 'sigmoid' });
 });
 
 test('secondary text is hidden when it would be under 8 px on screen', () => {

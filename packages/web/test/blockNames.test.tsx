@@ -28,13 +28,15 @@ afterEach(() => {
 const nameOf = (id: string) =>
   host.querySelector(`[data-testid="node-${id}"] .tk-name`)?.textContent ?? null;
 
-test('layer view: each node shows its type, the activation its function, the loss its loss name', () => {
+test('layer view: each node shows its type, the activation its function', () => {
   expect(nameOf('x')).toBe('Input');
   expect(nameOf('lin1')).toBe('Linear');
   expect(nameOf('act1')).toBe('ReLU');
-  expect(nameOf('yhat')).toBe('Output');
+  expect(nameOf('lin2')).toBe('Linear');
   expect(nameOf('y')).toBe('Target');
-  expect(nameOf('loss')).toBe('Squared error');
+  expect(nameOf('diff')).toBe('Subtract');
+  expect(nameOf('err')).toBe('Square');
+  expect(nameOf('loss')).toBe('Mean');
 });
 
 test('fitName keeps names at least MIN_TEXT_PX on screen where the width allows, and never exceeds the width', () => {

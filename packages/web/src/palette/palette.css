@@ -48,7 +48,7 @@
   --role: var(--role-loss);
   --role-fill: var(--role-loss-fill);
 }
-.tk-palette-entry[data-family='penalties'] {
+.tk-palette-entry[data-kind='macro'] {
   border-style: dashed;
 }
 /* Ports: an input dot on the left edge, an output dot on the right, as on the node. */
@@ -72,8 +72,8 @@
 }
 .tk-palette-entry[data-family='inputs']::before,
 .tk-palette-entry[data-family='losses']::after,
-.tk-palette-entry[data-family='penalties']::before,
-.tk-palette-entry[data-family='penalties']::after,
+.tk-palette-entry[data-kind='macro']::before,
+.tk-palette-entry[data-kind='macro']::after,
 .tk-palette-entry[data-testid='palette-target']::before {
   display: none;
 }

@@ -12,14 +12,23 @@ import type { Selection } from '../state/viewSlice.js';
 
 export const PIECE_LABEL: Record<PieceType, string> = {
   input: 'Input',
+  target: 'Target',
   feature: 'Feature',
   linear: 'Linear',
   activation: 'Activation',
   dropout: 'Dropout',
   add: 'Add',
-  output: 'Output',
-  target: 'Target',
-  loss: 'Loss',
+  link: 'Link',
+  subtract: 'Subtract',
+  square: 'Square',
+  abs: 'Absolute value',
+  huber: 'Huber',
+  log_loss: 'Log loss',
+  cross_entropy: 'Cross-entropy',
+  mean: 'Mean',
+  scale: 'Scale',
+  weights: 'Weights',
+  norm: 'Norm',
 };
 
 function Issues({ messages }: { messages: string[] }) {

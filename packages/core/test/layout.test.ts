@@ -329,3 +329,50 @@ describe('layoutNeurons', () => {
     }
   });
 });
+
+describe('graph v2 shapes', () => {
+  test('a Weights tap sits one column after its Linear, even with no wire between them', () => {
+    const gr = mlp(4);
+    gr.nodes.push(
+      { id: 'tap', type: 'weights', of: 'lin1' },
+      { id: 'nrm', type: 'norm', kind: 'l2' },
+    );
+    gr.edges.push(['tap', 'nrm']);
+    const L = layoutLayers(gr, analyse(gr, info));
+    expect(L.nodes['tap']?.col).toBe((L.nodes['lin1']?.col ?? -1) + 1);
+    expect(L.nodes['nrm']?.col).toBe((L.nodes['tap']?.col ?? -1) + 1);
+  });
+
+  test('a Target feeding log loss sits one column left of it, below the prediction', () => {
+    const gr = g(
+      [
+        { id: 'x', type: 'input', columns: ['x1'] },
+        lin('lin1', 1),
+        { id: 'p', type: 'link', fn: 'sigmoid' },
+        { id: 'y', type: 'target' },
+        { id: 'err', type: 'log_loss' },
+        { id: 'loss', type: 'mean' },
+      ],
+      [
+        ['x', 'lin1'],
+        ['lin1', 'p'],
+        ['p', 'err.pred'],
+        ['y', 'err.target'],
+        ['err', 'loss'],
+      ],
+      ['p'],
+      'loss',
+    );
+    const L = layoutLayers(gr, analyse(gr, info));
+    expect(L.nodes['y']?.col).toBe((L.nodes['err']?.col ?? 0) - 1);
+    expect(L.nodes['y']?.col).toBe(L.nodes['p']?.col);
+    expect(L.nodes['y']?.y).toBeGreaterThan(L.nodes['p']?.y ?? 0);
+    // a sigmoid link with a narrow width is drawn as a column of 'out' units in neuron view
+    const kinds = new Set(
+      layoutNeurons(gr, analyse(gr, info))
+        .units.filter((u) => u.node === 'p')
+        .map((u) => u.kind),
+    );
+    expect([...kinds]).toEqual(['out']);
+  });
+});

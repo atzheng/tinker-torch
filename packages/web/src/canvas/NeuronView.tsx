@@ -306,7 +306,7 @@ export function NeuronView(p: NeuronViewProps) {
             transform={`translate(${box.x} ${box.y})`}
             data-testid={`node-${node.id}`}
             data-type={node.type}
-            data-role={roleOfNode(node)}
+            data-role={roleOfNode(node, graph)}
             data-locked={lockedSet.has(node.id)}
             data-selected={nodeSelected}
             data-error={p.errorNodes.has(node.id)}
@@ -364,7 +364,7 @@ export function NeuronView(p: NeuronViewProps) {
             transform={`translate(${u.x} ${u.y})`}
             data-testid={`unit-${u.node}-${u.index}`}
             data-kind={u.kind}
-            data-role={u.kind === 'sum' || u.kind === 'act' ? undefined : roleOfNode(node)}
+            data-role={roleOfNode(node, graph)}
             data-locked={lockedSet.has(u.node)}
             data-selected={selected}
             data-error={p.errorNodes.has(u.node)}
@@ -418,7 +418,7 @@ export function NeuronView(p: NeuronViewProps) {
 const UNIT_COLUMN_NAME: Partial<Record<Node['type'], string>> = {
   input: 'Input',
   linear: 'Linear',
-  output: 'Output',
+  link: 'Link',
   target: 'Target',
 };
 
