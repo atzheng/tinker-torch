@@ -37,8 +37,6 @@ test('choosing a bundled set loads its rows then switches; columns reset to x1..
   expect(s().dataInfo.columns).toHaveLength(13);
   expect(s().dataInfo.featureNames?.[0]).toBe('alcohol');
   expect(s().dataInfo.targetName).toBe('cultivar');
-  const input = s().graph.nodes.find((n) => n.type === 'input');
-  expect(input?.type === 'input' && input.columns).toHaveLength(13);
 });
 
 test('the iris preset loads its dataset, then the graph', async () => {

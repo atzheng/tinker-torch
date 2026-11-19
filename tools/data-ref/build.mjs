@@ -1,3 +1,4 @@
+/* global fetch, console */
 // Opt-in: downloads the classic teaching datasets and writes the cleaned JSON assets bundled in
 // packages/core/src/data/real/. Network is used here only, never by tests or the app.
 // Run: pnpm data-ref   (Node >= 20.19). Sources and licences: docs/datasets.md.

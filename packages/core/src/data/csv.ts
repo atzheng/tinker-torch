@@ -97,7 +97,7 @@ function pickDelimiter(text: string): string {
 
 /** Parses CSV text (first row is the header; delimiter comma, semicolon or tab) and describes its columns. */
 export function parseCsv(input: string): { ok: true; csv: Csv } | Fail {
-  const text = input.replace(/^﻿/, '');
+  const text = input.replace(/^\uFEFF/, '');
   if (text.trim() === '') return { ok: false, error: 'The file is empty.' };
   let cells: string[][];
   try {
