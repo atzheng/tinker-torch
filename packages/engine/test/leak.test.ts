@@ -172,3 +172,67 @@ test('steps with a weight penalty leave the live buffer count flat', async () =>
   expect(samples).toEqual(samples.map(() => baseline));
   engine.dispose(state);
 }, 60_000);
+
+test.each([
+  'loss_log_loss',
+  'prim_log_loss_sigmoid',
+  'loss_cross_entropy',
+  'prim_cross_entropy_softmax',
+])(
+  'compiling %s repeatedly leaves no constants behind',
+  async (name) => {
+    const engine = await createEngine();
+    const { fx, graph, data } = loadFixture(name);
+    const batch = toBatch(fx);
+    const cycle = () => {
+      const model = engine.compile(graph, data);
+      let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 1);
+      state = engine.step(model, state, batch).state;
+      predict0(engine, model, state.params, batch.x, batch.n);
+      engine.evaluate(model, state.params, batch);
+      engine.dispose(state);
+    };
+    for (let i = 0; i < 5; i++) cycle();
+    const baseline = engine.liveArrays();
+    for (let i = 0; i < 200; i++) cycle();
+    expect(engine.liveArrays()).toBe(baseline);
+  },
+  120_000,
+);
+
+test('a softmax link shared with another consumer (non-fused cross-entropy) leaves no constants behind', async () => {
+  const engine = await createEngine();
+  const a = loadFixture('prim_cross_entropy_softmax');
+  const shared = loadFixture('prim_link_shared');
+  const graph = structuredClone(a.graph);
+  const extra = (id: string) => shared.graph.nodes.find((n) => n.id === id)!;
+  graph.nodes = [
+    ...graph.nodes.filter((n) => n.id !== 'loss'),
+    extra('m1'),
+    extra('sq'),
+    extra('m2'),
+    extra('sc'),
+    extra('loss'),
+  ].map((n) => structuredClone(n));
+  graph.edges = [
+    ...a.graph.edges.filter((e) => !String(e[0]).startsWith('err') && e[1] !== 'loss'),
+    ['err', 'm1'],
+    ['p', 'sq'],
+    ['sq', 'm2'],
+    ['m2', 'sc'],
+    ['m1', 'loss.a'],
+    ['sc', 'loss.b'],
+  ] as typeof graph.edges;
+  const batch = toBatch(a.fx);
+  const cycle = () => {
+    const model = engine.compile(graph, a.data);
+    let state = engine.startTraining(model, engine.init(model, 1), 1);
+    state = engine.step(model, state, batch).state;
+    engine.evaluate(model, state.params, batch);
+    engine.dispose(state);
+  };
+  for (let i = 0; i < 5; i++) cycle();
+  const baseline = engine.liveArrays();
+  for (let i = 0; i < 200; i++) cycle();
+  expect(engine.liveArrays()).toBe(baseline);
+}, 120_000);

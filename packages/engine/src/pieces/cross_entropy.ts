@@ -1,5 +1,6 @@
-import { nn, numpy as np } from '@jax-js/jax';
+import { numpy as np } from '@jax-js/jax';
 import type { NodeOf } from '@tinker/core';
+import { logSoftmax } from './softmax.js';
 import type { EnginePiece } from './types.js';
 
 /**
@@ -15,9 +16,16 @@ export const cross_entropy: EnginePiece<NodeOf<'cross_entropy'>> = {
     const pred = inputs['pred'];
     const y = inputs['target'];
     if (!pred || !y) throw new Error('The cross-entropy is missing its prediction or target.');
-    const k = pred.shape[1] ?? 1;
-    const logp = ctx.fused(node.id) ? nn.logSoftmax(pred, -1) : np.log(np.clip(pred, 1e-7, 1));
-    const onehot = np.arange(k).reshape([1, k]).equal(y).astype(logp.dtype);
-    return logp.mul(onehot).sum(1, { keepdims: true }).neg();
+    const logp = ctx.fused(node.id) ? logSoftmax(pred) : np.log(np.clip(pred, 1e-7, 1));
+    // Pick logp[class] with one static slice per class and a scalar comparison. np.arange, cumsum, astype of a comparison and
+    // gather all capture array constants in the trace, and jax-js never frees those.
+    const k = logp.shape[1] ?? 1;
+    let picked: typeof logp | undefined;
+    for (let j = 0; j < k; j++) {
+      const col = (j < k - 1 ? logp.ref : logp).slice([], [j, j + 1]);
+      const term = np.where((j < k - 1 ? y.ref : y).equal(j), col, 0);
+      picked = picked ? picked.add(term) : term;
+    }
+    return (picked as NonNullable<typeof picked>).neg();
   },
 };
