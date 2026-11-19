@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Graph } from '@tinker/core';
 import { getEngine, useEngine } from '../engine.js';
-import { SPEEDS } from '../state/trainSlice.js';
+import { SPEEDS, isMiniBatch } from '../state/trainSlice.js';
 import { useStore } from '../state/store.js';
 import styles from './TrainingBar.module.css';
 
@@ -71,7 +71,10 @@ export function TrainingBar() {
     best: useStore((x) => x.best),
     analysis: useStore((x) => x.analysis),
     optimizer: useStore((x) => x.graph.train.optimizer),
-    batch: useStore((x) => x.graph.train.batch),
+    // A stored size at or above nTrain (after a data change) behaves as, and shows as, full batch.
+    batch: useStore((x) =>
+      isMiniBatch(x.graph.train.batch, x.dataset.nTrain) ? x.graph.train.batch : 'full',
+    ),
     nTrain: useStore((x) => x.dataset.nTrain),
     setOptimizer: useStore((x) => x.setOptimizer),
     setBatch: useStore((x) => x.setBatch),
@@ -149,7 +152,7 @@ export function TrainingBar() {
             data-testid="optimizer"
           >
             <option value="sgd">SGD</option>
-            <option value="momentum">SGD with momentum</option>
+            <option value="momentum">Momentum</option>
             <option value="adam">Adam</option>
           </select>
         </label>

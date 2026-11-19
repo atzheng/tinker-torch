@@ -3,6 +3,7 @@ import { decimatePath, linearScale, logScale, logTicks, niceTicks } from '../plo
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { MARGINS, drawAxes, drawLegend } from '../plot/draw.js';
 import { lossRange } from '../plot/loss.js';
+import { isMiniBatch } from '../state/trainSlice.js';
 import { useStore } from '../state/store.js';
 import styles from './Results.module.css';
 
@@ -12,7 +13,7 @@ export function LossCurves() {
   const best = useStore((s) => s.best);
   const restoreBest = useStore((s) => s.restoreBest);
   const canRestore = useStore((s) => s.canTrain);
-  const miniBatch = useStore((s) => s.graph.train.batch !== 'full');
+  const miniBatch = useStore((s) => isMiniBatch(s.graph.train.batch, s.dataset.nTrain));
   const [log, setLog] = useState(false);
 
   const draw: DrawFn = (ctx, w, h, c) => {
@@ -24,7 +25,7 @@ export function LossCurves() {
     drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(0, r.stepMax, 4), yTicks, 'step', 'loss');
     drawLegend(ctx, c, m, [
       { label: 'train', color: c.train, kind: 'line' },
-      ...(miniBatch ? [{ label: 'batch', color: c.train, kind: 'line' as const }] : []),
+      ...(miniBatch ? [{ label: 'batch', color: c.train, kind: 'line' as const, alpha: 0.3 }] : []),
       { label: 'val', color: c.val, kind: 'line' },
       ...(best ? [{ label: 'best', color: c.val, kind: 'ring' as const }] : []),
     ]);

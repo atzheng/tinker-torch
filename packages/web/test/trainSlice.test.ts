@@ -1,6 +1,7 @@
 import { beforeEach, expect, test } from 'vitest';
 import { setLinearOut } from '@tinker/core';
 import { initialGraph } from '../src/state/graphSlice.js';
+import { isMiniBatch } from '../src/state/trainSlice.js';
 import { useStore } from '../src/state/store.js';
 
 const s = () => useStore.getState();
@@ -34,6 +35,17 @@ test('optimizer and batch are graph.train changes with one undo step each', () =
   expect(s().graph.train.optimizer).toBe('sgd');
   s().redo();
   expect(s().graph.train.optimizer).toBe('adam');
+});
+
+test('a batch size at or above nTrain counts as full batch', () => {
+  expect(isMiniBatch('full', 28)).toBe(false);
+  expect(isMiniBatch(28, 28)).toBe(false);
+  expect(isMiniBatch(16, 28)).toBe(true);
+  s().setBatch(64);
+  s().setData({ n: 100, val: 0.3 }); // nTrain 70
+  expect(isMiniBatch(s().graph.train.batch, s().dataset.nTrain)).toBe(true);
+  s().setData({ n: 40, val: 0.3 }); // nTrain 28
+  expect(isMiniBatch(s().graph.train.batch, s().dataset.nTrain)).toBe(false);
 });
 
 test('an invalid graph clears host and disables training', () => {

@@ -34,6 +34,11 @@ import type { Store } from './store.js';
  *   fixing the graph brings the model back.
  */
 
+/** A batch size at or above nTrain (after a data change) is the same as full batch. */
+export function isMiniBatch(batch: 'full' | number, nTrain: number): boolean {
+  return batch !== 'full' && batch < nTrain;
+}
+
 export type HistoryPoint = {
   step: number;
   /** Loss of the batch used for this update, before the update. */
@@ -307,7 +312,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       if (Number.isFinite(v)) {
         val = v;
         rt.valLoss = v;
-        if (rt.trainBatch && get().graph.train.batch !== 'full') {
+        if (rt.trainBatch && isMiniBatch(get().graph.train.batch, rt.trainBatch.n)) {
           const t = engine.evaluate(model, r.state.params, rt.trainBatch);
           if (Number.isFinite(t)) trainFull = t;
         }
