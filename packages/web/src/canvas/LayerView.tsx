@@ -355,11 +355,19 @@ export function LayerView(p: LayerViewProps) {
             {p.analysis.inert.includes(node.id) && (
               <>
                 <title>Not connected: wire it into the model or the loss to use it.</title>
+                {/* Inside the box, in the secondary lines' place (the widths mean nothing until it is wired). */}
+                <rect
+                  className="tk-inert-cover"
+                  x={2}
+                  y={box.h - 26}
+                  width={box.w - 4}
+                  height={22}
+                />
                 <text
                   className="tk-inert-note"
                   data-testid={`inert-${node.id}`}
-                  x={0}
-                  y={box.h + 14}
+                  x={12}
+                  y={box.h - 12}
                 >
                   not connected
                 </text>

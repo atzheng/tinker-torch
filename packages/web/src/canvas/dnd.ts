@@ -254,10 +254,18 @@ function placeFree(
   at: readonly [number, number] | undefined,
   boxes: Readonly<Record<NodeId, { x: number; y: number }>> | undefined,
 ): EditResult {
-  const dx = at ? Math.max(0, LAYOUT.pad - at[0]) : 0;
-  const dy = at ? Math.max(0, LAYOUT.pad - at[1]) : 0;
-  const placed = Object.keys(graph.positions ?? {}).filter((id) => boxes?.[id] !== undefined);
-  if (!at || !boxes || (dx === 0 && dy === 0) || placed.length === 0) return add(graph, at);
+  if (!at || !boxes) return add(graph, at);
+  const dx = Math.max(0, LAYOUT.pad - at[0]);
+  const dy = Math.max(0, LAYOUT.pad - at[1]);
+  const placed = new Set(
+    Object.keys(graph.positions ?? {}).filter((id) => boxes[id] !== undefined),
+  );
+  const shift = placed.size > 0 && (dx > 0 || dy > 0);
+  const where: [number, number][] = Object.entries(boxes).map(([id, b]) =>
+    shift && placed.has(id) ? [b.x + dx, b.y + dy] : [b.x, b.y],
+  );
+  const slot = freeSlot([at[0] + dx, at[1] + dy], where);
+  if (!shift) return add(graph, slot);
   const moves: Record<NodeId, [number, number]> = {};
   for (const id of placed) {
     const b = boxes[id];
@@ -265,7 +273,51 @@ function placeFree(
   }
   const moved = moveNodes(graph, moves);
   if (!moved.ok) return moved;
-  return add(moved.graph, [at[0] + dx, at[1] + dy]);
+  return add(moved.graph, slot);
+}
+
+/**
+ * The spot nearest `at` (on the 8-unit grid, inside the margin) where a box does not overlap any of
+ * the existing boxes (top-left corners in `others`, a gap of one grid step kept), so a piece dropped
+ * on an occupied spot does not stack on the piece under it.
+ */
+export function freeSlot(
+  at: readonly [number, number],
+  others: readonly (readonly [number, number])[],
+): [number, number] {
+  const gap = 8;
+  const free = (x: number, y: number) =>
+    others.every(
+      ([ox, oy]) =>
+        x + LAYOUT.boxW + gap <= ox ||
+        ox + LAYOUT.boxW + gap <= x ||
+        y + LAYOUT.boxH + gap <= oy ||
+        oy + LAYOUT.boxH + gap <= y,
+    );
+  if (free(at[0], at[1])) return [at[0], at[1]];
+  const snap = (v: number) => Math.round(v / 8) * 8;
+  let best: [number, number] | null = null;
+  let bestD = Infinity;
+  for (let ring = 1; ring <= 80 && best === null; ring++) {
+    for (let i = -ring; i <= ring; i++) {
+      for (const [sx, sy] of [
+        [i, -ring],
+        [i, ring],
+        [-ring, i],
+        [ring, i],
+      ] as const) {
+        const x = snap(at[0]) + sx * 8;
+        const y = snap(at[1]) + sy * 8;
+        if (x < LAYOUT.pad || y < LAYOUT.pad || !free(x, y)) continue;
+        const d = (x - at[0]) ** 2 + (y - at[1]) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = [x, y];
+        }
+      }
+    }
+  }
+  return best ?? [at[0], at[1]];
 }
 
 /** The pure edit a drop stands for, or null when the pair makes no edit. */

@@ -179,7 +179,8 @@ test('dropping a Column on empty canvas is one edit: a new unconnected node at t
   );
   if (!left?.ok) throw new Error('no edit');
   expect(Object.keys(left.graph.positions ?? {}).sort()).toEqual(['sum2', 'x3']);
-  expect(left.graph.positions?.['sum2']).toEqual([LAYOUT.pad, LAYOUT.pad]);
+  // (LAYOUT.pad, LAYOUT.pad) is where the shifted pieces now sit, so the new piece is nudged one box right
+  expect(left.graph.positions?.['sum2']).toEqual([LAYOUT.pad + LAYOUT.boxW + 8, LAYOUT.pad]);
   expect(left.graph.positions?.['x3']).toEqual([324, 216]);
 });
 

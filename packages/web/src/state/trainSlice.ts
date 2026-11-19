@@ -274,7 +274,11 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     rt.lastDataset = dataset;
 
     // 1. Take the parameters out of the live state, then free it.
-    if (rt.state && engine) rt.host = engine.toHost(rt.state.params);
+    if (rt.state && engine) {
+      // The engine holds only live owners; inert owners' weights stay frozen in the old host (reconcileParams).
+      const live = engine.toHost(rt.state.params);
+      rt.host = Object.assign(Object.create(null) as HostParams, rt.host ?? {}, live);
+    }
     disposeState();
     if (rt.model && engine) engine.disposeModel(rt.model); // frees its jitted functions
     rt.model = null;

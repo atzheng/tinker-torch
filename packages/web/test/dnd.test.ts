@@ -1,5 +1,12 @@
 import { expect, test } from 'vitest';
-import { PALETTE, analyse, layoutLayers, type Graph, type PaletteEntry } from '@tinker/core';
+import {
+  LAYOUT,
+  PALETTE,
+  analyse,
+  layoutLayers,
+  type Graph,
+  type PaletteEntry,
+} from '@tinker/core';
 import {
   dnd,
   dropCandidates,
@@ -231,4 +238,45 @@ test('dropCandidates: wires for insertable pieces and groups, same-family pieces
   expect(pen.edges.size).toBe(g.edges.length);
   expect(pen.nodes.size).toBe(0);
   expect(dropCandidates(entry('input'), g).edges.size).toBe(0);
+});
+
+test('a piece dropped on an occupied spot is nudged to the nearest free grid slot', async () => {
+  const { freeSlot } = await import('../src/canvas/dnd.js');
+  expect(freeSlot([200, 100], [])).toEqual([200, 100]);
+  const others: [number, number][] = [[200, 100]];
+  const s = freeSlot([200, 100], others);
+  expect(s).not.toEqual([200, 100]);
+  expect(s[0] % 8).toBe(0);
+  expect(s[1] % 8).toBe(0);
+  const overlap = Math.abs(s[0] - 200) < LAYOUT.boxW + 8 && Math.abs(s[1] - 100) < LAYOUT.boxH + 8;
+  expect(overlap).toBe(false);
+  // Several pieces in a row: still free of all of them.
+  const row: [number, number][] = [
+    [200, 100],
+    [320, 100],
+    [80, 100],
+  ];
+  const r = freeSlot([200, 100], row);
+  for (const [ox, oy] of row) {
+    expect(Math.abs(r[0] - ox) >= LAYOUT.boxW + 8 || Math.abs(r[1] - oy) >= LAYOUT.boxH + 8).toBe(
+      true,
+    );
+  }
+  // Via editForDrop: a Column dropped on top of an existing piece does not share its position.
+  const g = initialGraph();
+  const a = analyse(g, { columns: ['x1'], kind: 'regression', numClasses: 1 });
+  const layout = layoutLayers(g, a);
+  const b = layout.nodes['lin1'];
+  if (!b) throw new Error('no box');
+  const r2 = editForDrop(
+    g,
+    { kind: 'palette', entry: PALETTE.find((e) => e.key === 'column') as PaletteEntry },
+    { kind: 'free', at: [b.x, b.y] },
+    { boxes: layout.nodes },
+  );
+  if (!r2?.ok) throw new Error('no edit');
+  const id = r2.select ?? '';
+  const p = r2.graph.positions?.[id];
+  expect(p).toBeDefined();
+  expect(p?.[0] !== b.x || p?.[1] !== b.y).toBe(true);
 });
