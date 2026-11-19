@@ -95,3 +95,26 @@ export function neuronBaseView(
   if (!coarse || fit.scale >= floor) return fit;
   return clampView({ scale: floor, tx: 8, ty: fit.ty }, size, view, top);
 }
+
+/** Name size in abstract units (`NAME_PX` of NodeShell) and the on-screen size layer view aims for. */
+const LAYER_NAME_UNITS = 15;
+export const LAYER_NAME_PX = 11;
+
+/** Smallest scale at which a piece name is `LAYER_NAME_PX` on screen (tinker-mg9). */
+export const LAYER_MIN_SCALE = LAYER_NAME_PX / LAYER_NAME_UNITS;
+
+/**
+ * Where the layer view starts: the fit, but never below `LAYER_MIN_SCALE`, so names stay about 11 px
+ * on any graph. A drawing wider or taller than the view then overflows: it is left- (top-) aligned
+ * with a small margin and the user pans; the Fit control shows everything. On an axis that fits it
+ * stays centred.
+ */
+export function layerBaseView(fit: Transform, size: Size, view: Box, top: number): Transform {
+  if (fit.scale >= LAYER_MIN_SCALE) return fit;
+  const px = (n: number, avail: number) => n * LAYER_MIN_SCALE + 2 * 24 <= avail;
+  const tx = px(size[0], view.w) ? (view.w - size[0] * LAYER_MIN_SCALE) / 2 : 24;
+  const ty = px(size[1], view.h - top)
+    ? top + (view.h - top - size[1] * LAYER_MIN_SCALE) / 2
+    : top + 24;
+  return { scale: LAYER_MIN_SCALE, tx, ty };
+}

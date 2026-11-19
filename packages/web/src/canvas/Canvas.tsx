@@ -26,7 +26,7 @@ import { Toast } from './Toast.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
 import { useViewGestures } from './useViewGestures.js';
-import { clampView, neuronBaseView, NEURON_MAX_SCALE } from './viewport.js';
+import { clampView, layerBaseView, neuronBaseView, NEURON_MAX_SCALE } from './viewport.js';
 import {
   edgeIndexOf,
   errorNodes,
@@ -154,24 +154,29 @@ export function Canvas() {
   // wheel or a background drag moves `userView` away from it, `Reset view` clears it.
   const base: Transform = useMemo(
     () =>
-      isNeuron ? neuronBaseView(fit, layout.size, view, HEADER_H, coarse, LAYOUT.unitPitch) : fit,
+      isNeuron
+        ? neuronBaseView(fit, layout.size, view, HEADER_H, coarse, LAYOUT.unitPitch)
+        : layerBaseView(fit, layout.size, view, HEADER_H),
     [isNeuron, fit, layout.size, view, coarse],
   );
-  const [userView, setUserView] = useState<Transform | null>(null);
+  // null: the start view (`base`); 'fit': the whole drawing; a Transform: moved by the user.
+  const [userView, setUserViewRaw] = useState<Transform | 'fit' | null>(null);
+  const setUserView = (v: Transform | 'fit' | null) => setUserViewRaw(v);
   const loadEpoch = useStore((st) => st.loadEpoch);
-  useEffect(() => setUserView(null), [grain, loadEpoch]);
+  useEffect(() => setUserViewRaw(null), [grain, loadEpoch]);
   useEffect(() => dnd.arm(null), [graph, grain, loadEpoch, userView]);
   const clampT = (x: Transform) => clampView(x, layout.size, view, HEADER_H);
   const t: Transform = useMemo(
-    () => (isNeuron && userView ? clampView(userView, layout.size, view, HEADER_H) : base),
-    [isNeuron, userView, base, layout.size, view],
+    () =>
+      userView === 'fit' ? fit : userView ? clampView(userView, layout.size, view, HEADER_H) : base,
+    [userView, fit, base, layout.size, view],
   );
   const tRef = useRef(t);
   tRef.current = t;
   const clampRef = useRef(clampT);
   clampRef.current = clampT;
   useViewGestures(ref, {
-    enabled: isNeuron,
+    enabled: true,
     current: () => tRef.current,
     min: Math.min(fit.scale, base.scale),
     max: Math.max(NEURON_MAX_SCALE, base.scale),
@@ -202,7 +207,6 @@ export function Canvas() {
     startDrag(e, { onTap: (p) => dnd.tapAt(p.x, p.y), onCancel: () => dnd.arm(null) });
   };
   const onBackgroundDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!isNeuron) return select(null);
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const t0 = tRef.current;
     startDrag(e, {
@@ -322,6 +326,18 @@ export function Canvas() {
       >
         Neurons
       </button>
+      {!isNeuron &&
+        Math.abs(t.scale - fit.scale) + Math.abs(t.tx - fit.tx) + Math.abs(t.ty - fit.ty) > 1 && (
+          <button
+            type="button"
+            className="tk-grain tk-resetview"
+            data-testid="fit-view"
+            title="Fit the whole graph in view"
+            onClick={() => setUserView('fit')}
+          >
+            Fit
+          </button>
+        )}
       {isNeuron && userView && (
         <button
           type="button"
