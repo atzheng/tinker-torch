@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { CORE_PIECES } from './registry.js';
 import { parseGraph as parseGraphV1 } from './legacy/graph.js';
-import { migrateV1 } from './migrate.js';
+import { migrateV1WithMap, type IdMap } from './migrate.js';
 import {
   ACTIVATION_FNS,
   DATASET_NAMES,
@@ -282,10 +282,20 @@ function describeIssue(issue: z.core.$ZodIssue, json: unknown): string {
  * (CONTRACTS.md section 2). Fills defaults, rejects unknown fields, gives one plain sentence on failure.
  */
 export function parseGraph(json: unknown): ParseResult {
+  const r = parseGraphWithMap(json);
+  return r.ok ? { ok: true, graph: r.graph } : r;
+}
+
+/** Like `parseGraph`, plus `idMap` (old id -> new ids) when a version 1 graph was migrated; null for version 2. */
+export function parseGraphWithMap(
+  json: unknown,
+): { ok: true; graph: Graph; idMap: IdMap | null } | { ok: false; error: string } {
   if (!isRecord(json)) return { ok: false, error: 'The graph must be a JSON object.' };
   if (json['version'] === 1) {
     const v1 = parseGraphV1(json);
-    return v1.ok ? { ok: true, graph: migrateV1(v1.graph) } : v1;
+    if (!v1.ok) return v1;
+    const m = migrateV1WithMap(v1.graph);
+    return { ok: true, graph: m.graph, idMap: m.idMap };
   }
   // Node types are checked first so that an unknown type gets a clear sentence.
   if (Array.isArray(json['nodes'])) {
@@ -352,6 +362,7 @@ export function parseGraph(json: unknown): ParseResult {
   }
   return {
     ok: true,
+    idMap: null,
     graph: {
       version: GRAPH_VERSION,
       nodes,

@@ -1,4 +1,4 @@
-import { parseGraph, serializeGraph, type Graph, type NodeId } from './graph.js';
+import { parseGraphWithMap, serializeGraph, type Graph, type NodeId } from './graph.js';
 
 export type SaveFile = {
   kind: 'tinker';
@@ -31,7 +31,7 @@ export function parseFile(json: unknown): ParseFileResult {
     );
   }
   if (!('graph' in json)) return fail('This Tinker file has no graph.');
-  const g = parseGraph(json['graph']);
+  const g = parseGraphWithMap(json['graph']);
   if (!g.ok) return fail(g.error);
 
   const params = json['params'];
@@ -57,7 +57,12 @@ export function parseFile(json: unknown): ParseFileResult {
     }
     const preset: Preset = { ...file, title };
     if (prompt !== undefined) preset.prompt = prompt;
-    if (locked !== undefined) preset.locked = locked as string[];
+    if (locked !== undefined) {
+      const ids = locked as string[];
+      const map = g.idMap;
+      // A migrated graph: a locked v1 id covers every node it became (none if it was spliced out).
+      preset.locked = map ? [...new Set(ids.flatMap((id) => map[id] ?? []))] : ids;
+    }
     return { ok: true, file: preset };
   }
   return { ok: true, file };

@@ -20,7 +20,14 @@ import { lossSubgraph, weightPenaltySubgraph, type Namer, type Subgraph } from '
 type OutputNode = Extract<NodeV1, { type: 'output' }>;
 type LossNode = Extract<NodeV1, { type: 'loss' }>;
 
+/** Where each version 1 node id went: spliced identity Outputs map to none, a Loss to its whole group. */
+export type IdMap = Record<NodeId, NodeId[]>;
+
 export function migrateV1(g: GraphV1): Graph {
+  return migrateV1WithMap(g).graph;
+}
+
+export function migrateV1WithMap(g: GraphV1): { graph: Graph; idMap: IdMap } {
   const used = new Set<string>(g.nodes.map((n) => n.id));
   const fresh = (base: string): string => {
     let id = base;
@@ -145,13 +152,21 @@ export function migrateV1(g: GraphV1): Graph {
     if (!predictions.some((p) => parsePort(p).node === node)) predictions.push(ref);
   }
 
+  const idMap: IdMap = Object.create(null) as IdMap;
+  for (const n of g.nodes) {
+    if (n.type === 'loss') idMap[n.id] = (groups.get(n.id) as Subgraph).nodes.map((m) => m.id);
+    else idMap[n.id] = n.type === 'output' && n.link === 'identity' ? [] : [n.id];
+  }
   return {
-    version: 2,
-    nodes,
-    edges: out,
-    predictions,
-    loss: first ? first.id : null,
-    data: g.data,
-    train: g.train,
+    graph: {
+      version: 2,
+      nodes,
+      edges: out,
+      predictions,
+      loss: first ? first.id : null,
+      data: g.data,
+      train: g.train,
+    },
+    idMap,
   };
 }

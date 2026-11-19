@@ -481,3 +481,24 @@ describe('shape rules', () => {
     expect(weightPenaltySubgraph({ kind: 'l1', lambda: 1, linears: [], name }).out).toBeNull();
   });
 });
+
+describe('locked ids through migration', () => {
+  test('a locked Loss covers its whole group; a spliced identity Output covers nothing', () => {
+    const r = parseFile({
+      kind: 'tinker',
+      version: 1,
+      title: 't',
+      graph: example,
+      locked: ['lin1', 'yhat', 'loss'],
+    });
+    if (!r.ok) throw new Error(r.error);
+    const locked = 'locked' in r.file ? r.file.locked : undefined;
+    expect(locked).toContain('lin1');
+    expect(locked).not.toContain('yhat');
+    for (const id of ['loss', 'loss_diff', 'loss_err', 'loss_mean', 'loss_pen', 'loss_w_lin1']) {
+      expect(locked).toContain(id);
+    }
+    const g = r.file.graph;
+    for (const id of locked ?? []) expect(g.nodes.some((n) => n.id === id)).toBe(true);
+  });
+});
