@@ -1,5 +1,5 @@
 import { LOSS_FNS, type LossFn } from '@tinker/core';
-import { legibleAt } from '../pure.js';
+import { NodeShell } from './NodeShell.js';
 import { NumberField, SelectField, editPenalty, editSetting } from './fields.js';
 import type { WebPiece } from './types.js';
 
@@ -11,72 +11,31 @@ export const LOSS_LABEL: Record<LossFn, string> = {
   cross_entropy: 'Cross-entropy',
 };
 
-const LOSS_LINES: Record<LossFn, string[]> = {
-  squared_error: ['Squared', 'error'],
-  absolute_error: ['Absolute', 'error'],
-  huber: ['Huber'],
-  log_loss: ['Log', 'loss'],
-  cross_entropy: ['Cross-', 'entropy'],
-};
-
-/** Layer drawing: a loss circle with the loss name (two short lines when it has two words). */
+/** Layer drawing: the shared node in the loss role, badge L; the loss name (and delta) is its secondary info, a penalty its tag. */
 export const lossPiece: WebPiece<'loss'> = {
   Layer: ({ node, w, h, scale }) => {
-    const showDelta = node.fn === 'huber' && legibleAt(scale, 12.5);
-    const showTag = node.penalty !== undefined && legibleAt(scale, 9);
-    const lines = LOSS_LINES[node.fn];
+    const lines = [LOSS_LABEL[node.fn]];
+    const extra = [
+      node.fn === 'huber' ? `δ=${node.delta ?? 1}` : '',
+      node.penalty ? `${node.penalty.kind.toUpperCase()} ${node.penalty.lambda}` : '',
+    ].filter(Boolean);
+    if (extra.length) lines.push(extra.join(' · '));
     return (
-      <g data-piece="loss">
-        <circle className="tk-shape" cx={w / 2} cy={h / 2} r={Math.min(w, h) / 2 - 2} />
-        {showDelta && (
-          <text
-            className="tk-text tk-small tk-muted"
-            x={w / 2}
-            y={h / 2 + 13}
-            textAnchor="middle"
-            dominantBaseline="middle"
-          >
-            {`δ=${node.delta ?? 1}`}
-          </text>
-        )}
-        {node.penalty && showTag && (
-          <g data-testid={`penalty-tag-${node.id}`}>
-            <rect className="tk-shape" x={w - 34} y={h / 2 - 17} width={34} height={34} rx={5} />
-            <text
-              className="tk-text"
-              x={w - 17}
-              y={h / 2 - 5}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              style={{ fontSize: 11 }}
-            >
-              {node.penalty.kind.toUpperCase()}
-            </text>
-            <text
-              className="tk-text tk-muted"
-              x={w - 17}
-              y={h / 2 + 8}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              style={{ fontSize: 9 }}
-            >
-              {String(node.penalty.lambda)}
-            </text>
-          </g>
-        )}
-        {lines.map((t, i) => (
-          <text
-            key={t}
-            className="tk-text tk-small"
-            x={w / 2}
-            y={h / 2 + (i - (lines.length - 1) / 2) * 13 - (showDelta ? 7 : 0)}
-            textAnchor="middle"
-            dominantBaseline="middle"
-          >
-            {t}
-          </text>
-        ))}
-      </g>
+      <NodeShell
+        piece="loss"
+        role="loss"
+        badge
+        w={w}
+        h={h}
+        scale={scale}
+        name="Loss"
+        glyph="L"
+        secondary={lines}
+        inPorts={2}
+        outPort={false}
+      >
+        {node.penalty && <g data-testid={`penalty-tag-${node.id}`} />}
+      </NodeShell>
     );
   },
   Neuron: () => <g data-placeholder="loss-neuron" />,

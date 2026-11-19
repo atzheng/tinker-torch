@@ -18,8 +18,12 @@
 }
 
 .title {
-  font-weight: 600;
   margin-right: auto;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--header-fg);
 }
 
 .toggle {

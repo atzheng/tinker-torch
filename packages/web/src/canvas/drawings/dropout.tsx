@@ -1,27 +1,20 @@
+import { NodeShell } from './NodeShell.js';
 import { NumberField, editSetting } from './fields.js';
 import type { WebPiece } from './types.js';
 
-/** Layer drawing: a dashed circle with p. (Minimal: the swapping epic may refine it.) */
+/** Layer drawing: the shared node with the drop probability as its glyph. */
 export const dropoutPiece: WebPiece<'dropout'> = {
-  Layer: ({ node, w, h }) => (
-    <g data-piece="dropout">
-      <circle
-        className="tk-shape"
-        strokeDasharray="4 3"
-        cx={w / 2}
-        cy={h / 2}
-        r={Math.min(w, h) / 2 - 4}
-      />
-      <text
-        className="tk-text tk-small"
-        x={w / 2}
-        y={h / 2}
-        textAnchor="middle"
-        dominantBaseline="middle"
-      >
-        p={node.p}
-      </text>
-    </g>
+  Layer: ({ node, w, h, scale }) => (
+    <NodeShell
+      piece="dropout"
+      w={w}
+      h={h}
+      scale={scale}
+      name="Dropout"
+      glyph={`p=${node.p}`}
+      inPorts={1}
+      outPort
+    />
   ),
   Neuron: () => <g data-placeholder="dropout-neuron" />,
   Fields: ({ node }) => (

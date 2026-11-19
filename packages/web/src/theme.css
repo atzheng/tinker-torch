@@ -39,6 +39,43 @@
   --seq-2: #fde725;
   --point-halo: #ffffff;
 
+  /* Graph nodes (CONTRACTS.md section 10, "Visual language"): one style for every ordinary piece. */
+  --node-fill: var(--surface);
+  --node-fill-hover: #f0f4fc;
+  --node-fill-press: #e3eaf8;
+  --node-border: #68717f;
+  --node-name: var(--text);
+  --node-secondary: var(--text-muted);
+  /* The three special roles: data entering (x, target y), the prediction, the loss. Hue, lightness
+     and the badge glyph all differ, so none relies on colour alone. */
+  --role-input: #0b6e7a;
+  --role-input-fill: #e0f2f3;
+  --role-pred: #6d3fc0;
+  --role-pred-fill: #eee8fa;
+  --role-loss: #8a5a00;
+  --role-loss-fill: #faeed3;
+  --on-role: #ffffff;
+  /* Diagnostics (wire widths, later tinker-t6o): quiet, monospace, never the node style. */
+  --diag-fg: var(--text-muted);
+  --diag-bg: var(--surface-2);
+  --diag-border: var(--border);
+  /* Typography: one UI stack and one mono stack, no network fonts; one size scale. */
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-xl: 16px;
+  /* Spacing grid (4 px) and elevation. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --shadow-1: 0 1px 2px rgb(16 24 40 / 0.08);
+  --shadow-2: 0 4px 14px rgb(16 24 40 / 0.18);
+  /* Region headers (palette groups, results panels). */
+  --header-fg: var(--text-muted);
+
   --radius: 6px;
   --gap: 8px;
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -77,6 +114,20 @@
     --seq-1: #21918c;
     --seq-2: #fde725;
     --point-halo: #0f1218;
+
+    --node-fill: #232833;
+    --node-fill-hover: #2c3342;
+    --node-fill-press: #2f384a;
+    --node-border: #8b94a3;
+    --role-input: #5fd0dc;
+    --role-input-fill: #143a40;
+    --role-pred: #b9a0ff;
+    --role-pred-fill: #2b2146;
+    --role-loss: #f0b84a;
+    --role-loss-fill: #40300f;
+    --on-role: #14171c;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 4px 14px rgb(0 0 0 / 0.5);
   }
 }
 
@@ -113,11 +164,32 @@ select {
   color: inherit;
 }
 
+/* Controls share one look (diagnostic readouts do not: see --diag-* and tinker-t6o). */
+button:not(:disabled),
+select:not(:disabled) {
+  cursor: pointer;
+}
+button:not(:disabled):hover,
+select:not(:disabled):hover {
+  border-color: var(--text-muted);
+}
+button:not(:disabled):active {
+  background: var(--border);
+}
+.tk-panel-title,
+.tk-region-title {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--header-fg);
+}
+
 /* Touch: hit targets of at least 32 px (CONTRACTS.md section 10). */
 @media (pointer: coarse) {
   button,
   select,
-  input:not([type='range']),
+  input:not([type='range']):not([type='checkbox']),
   [role='button'] {
     min-height: 32px;
     min-width: 32px;

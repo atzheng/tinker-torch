@@ -1,45 +1,111 @@
 .tk-palette {
   height: 100%;
   overflow-y: auto;
-  padding: 6px 8px;
+  padding: 0 12px 8px;
   font-size: 12px;
 }
 .tk-palette-group h3 {
-  margin: 6px 0 2px;
-  font-size: 11px;
+  margin: 8px 0 3px;
+  font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--header-fg);
 }
+/* A palette entry previews the node it creates: same body, border, ports and role tint. */
 .tk-palette-entry {
-  display: block;
+  --chip-stroke: var(--role, var(--node-border));
+  --chip-fill: var(--role-fill, var(--node-fill));
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   width: 100%;
-  min-height: 28px;
-  margin: 0 0 2px;
-  padding: 3px 8px;
+  min-height: 26px;
+  margin: 0 0 3px;
+  padding: 2px 10px;
   text-align: left;
-  font: inherit;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  font: 600 12.5px var(--font);
+  color: var(--node-name);
+  background: var(--chip-fill);
+  border: 1.5px solid var(--chip-stroke);
+  border-radius: 8px;
   cursor: grab;
   touch-action: pan-y; /* a vertical swipe scrolls the palette; a horizontal one starts a drag */
   user-select: none;
   -webkit-user-select: none;
 }
+.tk-palette-entry[data-role='input'] {
+  --role: var(--role-input);
+  --role-fill: var(--role-input-fill);
+}
+.tk-palette-entry[data-role='pred'] {
+  --role: var(--role-pred);
+  --role-fill: var(--role-pred-fill);
+}
+.tk-palette-entry[data-role='loss'] {
+  --role: var(--role-loss);
+  --role-fill: var(--role-loss-fill);
+}
+.tk-palette-entry[data-family='penalties'] {
+  border-style: dashed;
+}
+/* Ports: an input dot on the left edge, an output dot on the right, as on the node. */
+.tk-palette-entry::before,
+.tk-palette-entry::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--node-fill);
+  border: 1.5px solid var(--node-border);
+}
+.tk-palette-entry::before {
+  left: -5px;
+}
+.tk-palette-entry::after {
+  right: -5px;
+}
+.tk-palette-entry[data-family='inputs']::before,
+.tk-palette-entry[data-family='losses']::after,
+.tk-palette-entry[data-family='penalties']::before,
+.tk-palette-entry[data-family='penalties']::after,
+.tk-palette-entry[data-testid='palette-target']::before {
+  display: none;
+}
+.tk-chip-glyph {
+  font-weight: 500;
+  color: var(--node-secondary);
+}
+.tk-palette-entry[data-role] .tk-chip-glyph {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--role);
+  color: var(--on-role);
+  font-weight: 600;
+  font-size: 12px;
+}
+@media (hover: hover) {
+  .tk-palette-entry:hover {
+    background: var(--node-fill-hover);
+  }
+}
 .tk-palette-entry:hover,
 .tk-palette-entry[data-dragging='true'] {
   border-color: var(--accent);
 }
+.tk-palette-entry:active {
+  background: var(--node-fill-press);
+}
 .tk-palette-entry:focus-visible {
   outline: 2px solid var(--focus-ring);
-}
-@media (pointer: coarse) {
-  .tk-palette-entry {
-    min-height: 32px;
-  }
 }
 .tk-palette-ghost {
   position: fixed;
@@ -56,4 +122,9 @@
 }
 .tk-palette-ghost[data-target]:not([data-target='none']) {
   opacity: 1;
+}
+@media (pointer: coarse) {
+  .tk-palette-entry {
+    min-height: 32px;
+  }
 }
