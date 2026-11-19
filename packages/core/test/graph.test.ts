@@ -120,7 +120,7 @@ describe('parseGraph', () => {
     [
       'negative lambda',
       (g) => (g['nodes'][6].penalty.lambda = -1),
-      /penalty\.lambda" must be a number of at least 0/,
+      /penalty\.lambda" must be a number from 0 to 100/,
     ],
     [
       'bad activation',

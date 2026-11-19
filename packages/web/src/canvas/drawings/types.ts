@@ -16,6 +16,8 @@ export type LayerProps<T extends PieceType> = {
   inWidth?: number;
   /** Width leaving the piece, when analysis knows it. */
   outWidth?: number;
+  /** Screen px per abstract unit; drawings hide secondary text that would be unreadably small. */
+  scale?: number;
   /** Parameter count of this piece (0 for most). */
   paramCount: number;
   /** Weights to draw as a heat map (Linear only); read only, never write into the arrays. */

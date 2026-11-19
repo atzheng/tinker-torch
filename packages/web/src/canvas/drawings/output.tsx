@@ -13,10 +13,24 @@ export const outputPiece: WebPiece<'output'> = {
   Layer: ({ node, w, h }) => (
     <g data-piece="output">
       <circle className="tk-dot" cx={w * 0.3} cy={h / 2} r={8} />
-      <text className="tk-text" x={w * 0.3 + 16} y={h / 2} dominantBaseline="middle">
-        {'ŷ'}
-        {node.link === 'identity' ? '' : ` (${node.link})`}
+      <text
+        className="tk-text"
+        x={w * 0.3 + 16}
+        y={node.link === 'identity' ? h / 2 : h / 2 - 8}
+        dominantBaseline="middle"
+      >
+        {'ŷ'}
       </text>
+      {node.link !== 'identity' && (
+        <text
+          className="tk-text tk-small tk-muted"
+          x={w * 0.3 + 16}
+          y={h / 2 + 10}
+          dominantBaseline="middle"
+        >
+          {node.link}
+        </text>
+      )}
     </g>
   ),
   Neuron: () => <g data-placeholder="output-neuron" />,

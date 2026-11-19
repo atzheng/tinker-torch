@@ -1,31 +1,59 @@
+import { legibleAt } from '../pure.js';
+import { useAnalysis } from '../../state/derived.js';
 import { CheckField, NumberField, editSetting } from './fields.js';
-import type { WebPiece } from './types.js';
+import type { NodeOf, WebPiece } from './types.js';
 
 /** Layer drawing: a small box with a short formula. (Minimal: the swapping epic may refine it.) */
 export const featurePiece: WebPiece<'feature'> = {
-  Layer: ({ node, w, h }) => {
-    const parts = [`x^1..${node.degree}`];
-    if (node.sin) parts.push('sin');
-    if (node.cos) parts.push('cos');
-    if (node.products) parts.push('xy');
+  Layer: ({ node, w, h, outWidth, scale }) => {
+    const detail = legibleAt(scale, 12.5);
+    const extra = [node.sin ? 'sin' : '', node.cos ? 'cos' : '', node.products ? 'xy' : '']
+      .filter(Boolean)
+      .join(' ');
     return (
       <g data-piece="feature">
-        <rect className="tk-shape" x={0} y={h * 0.2} width={w} height={h * 0.6} rx={4} />
+        <rect className="tk-shape" x={0} y={0} width={w} height={h} rx={4} />
         <text
-          className="tk-text tk-small"
+          className={detail ? 'tk-text tk-small' : 'tk-text'}
           x={w / 2}
-          y={h / 2}
+          y={detail ? h * 0.3 : h / 2}
+          dominantBaseline={detail ? undefined : 'middle'}
           textAnchor="middle"
-          dominantBaseline="middle"
         >
-          {parts.join(', ')}
+          {node.degree === 1 ? 'x' : `x to x^${node.degree}`}
         </text>
+        {detail && (
+          <>
+            <text
+              className="tk-text tk-small tk-muted"
+              x={w / 2}
+              y={h * 0.55}
+              textAnchor="middle"
+              data-testid={`feature-extra-${node.id}`}
+            >
+              {extra}
+            </text>
+            <text className="tk-text tk-small" x={w / 2} y={h * 0.84} textAnchor="middle">
+              {outWidth === undefined ? '? columns' : `${outWidth} columns`}
+            </text>
+          </>
+        )}
       </g>
     );
   },
   Neuron: () => <g data-placeholder="feature-neuron" />,
-  Fields: ({ node }) => (
+  Fields: ({ node }) => <FeatureFields node={node} />,
+};
+
+function FeatureFields({ node }: { node: NodeOf<'feature'> }) {
+  const out = useAnalysis().outWidth[node.id];
+  return (
     <>
+      <p className="tk-muted" data-testid="feature-width">
+        {out === undefined
+          ? 'Columns produced: unknown until the input is connected.'
+          : `Produces ${out} columns`}
+      </p>
       <NumberField
         label="Highest power"
         testid="field-degree"
@@ -54,5 +82,5 @@ export const featurePiece: WebPiece<'feature'> = {
         onChange={(v) => editSetting(node.id, 'products', v)}
       />
     </>
-  ),
-};
+  );
+}
