@@ -91,10 +91,38 @@ export function cellText(v: number): string {
   return s.replace('-', '−');
 }
 
+/** TeX of a name: a name already in `$..$` is unwrapped, `x2` is `x_{2}`, any other is set upright. */
+function texOf(name: string): string {
+  if (name.startsWith('$') && name.endsWith('$')) return name.slice(1, -1);
+  const m = /^x(\d+)$/.exec(name);
+  return m ? `x_{${m[1]}}` : `\\mathrm{${name.replace(/_/g, '\\_')}}`;
+}
+
+/** Names of the columns a Feature expands, in the engine's order: powers, sin, cos, products. */
+function featureNames(
+  f: { degree: number; sin: boolean; cos: boolean; products: boolean },
+  base: readonly string[],
+): string[] {
+  const t = base.map(texOf);
+  const out: string[] = [];
+  for (let p = 1; p <= f.degree; p++) {
+    for (const x of t) out.push(p === 1 ? `$${x}$` : `$(${x})^{${p}}$`);
+  }
+  if (f.sin) for (const x of t) out.push(`$\\sin ${x}$`);
+  if (f.cos) for (const x of t) out.push(`$\\cos ${x}$`);
+  if (f.products) {
+    for (let i = 0; i < t.length; i++) {
+      for (let j = i + 1; j < t.length; j++) out.push(`$${t[i]}\\,${t[j]}$`);
+    }
+  }
+  return out;
+}
+
 /**
  * Names for the rows (inputs) of a Linear: the columns of the Input that feeds it, followed
- * upstream through pieces that keep the width (Activation, Dropout, Link), or the Column's name.
- * Falls back to `input i` when the names are not known or do not match the width.
+ * upstream through pieces that keep the width (Activation, Dropout, Link), the Column's name, or a
+ * Feature's expanded columns (TeX names in `$..$`: render with `TexText`). Falls back to
+ * `input i` when the names are not known or do not match the width.
  */
 export function rowNames(
   graph: Graph,
@@ -102,23 +130,24 @@ export function rowNames(
   inWidth: number,
   columns: readonly string[],
 ): string[] {
-  const fallback = Array.from({ length: inWidth }, (_, i) => `input ${i}`);
-  let at = node;
-  for (let hops = 0; hops < 32; hops++) {
+  const known = (at: string, depth: number): string[] | null => {
+    if (depth > 32) return null;
     const e = graph.edges.find((x) => parsePort(x[1]).node === at);
-    if (!e) return fallback;
-    const from = graph.nodes.find((n) => n.id === parsePort(e[0]).node);
-    if (!from) return fallback;
-    if (from.type === 'input') {
-      const names = from.columns.length > 0 ? from.columns : [...columns];
-      return names.length === inWidth ? names : fallback;
-    }
-    if (from.type === 'column') return inWidth === 1 ? [from.name] : fallback;
+    const from = e && graph.nodes.find((n) => n.id === parsePort(e[0]).node);
+    if (!from) return null;
+    if (from.type === 'input') return from.columns.length > 0 ? from.columns : [...columns];
+    if (from.type === 'column') return [from.name];
     if (from.type === 'activation' || from.type === 'dropout' || from.type === 'link') {
-      at = from.id;
-      continue;
+      return known(from.id, depth + 1);
     }
-    return fallback;
-  }
-  return fallback;
+    if (from.type === 'feature') {
+      const base = known(from.id, depth + 1);
+      return base && featureNames(from, base);
+    }
+    return null;
+  };
+  const names = known(node, 0);
+  return names && names.length === inWidth
+    ? names
+    : Array.from({ length: inWidth }, (_, i) => `input ${i}`);
 }

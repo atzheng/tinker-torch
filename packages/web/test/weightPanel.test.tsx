@@ -93,6 +93,14 @@ test('the panel closes when its piece does not exist', () => {
   expect(s().weightsOf).toBeNull();
 });
 
+test('Escape closes the panel', () => {
+  act(() => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+  expect(q('weights-panel')).toBeNull();
+  expect(s().weightsOf).toBeNull();
+});
+
 test('a paused step shows at once', () => {
   const r0 = weightStats.renders;
   act(() => s().stepOnce());

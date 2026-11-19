@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { HostParams, Node } from '@tinker/core';
+import { TexText, plainOf } from '../tex/Tex.js';
 import { useAnalysis, useWeights } from '../state/derived.js';
 import { hostShape } from '../state/hostShape.js';
 import { useStore } from '../state/store.js';
@@ -209,6 +210,18 @@ const Panel = memo(function Panel({ node }: { node: Node }) {
         : [],
     [graph, node, inW, info.columns],
   );
+  // Escape closes the panel and hands focus back to the button that opened it (when still there).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if ((e.target as Element | null)?.closest?.('input, select, textarea')) return;
+      e.stopPropagation(); // this Escape only closes the panel; the piece stays selected
+      document.querySelector<HTMLElement>('[data-testid="inspector-open-weights"]')?.focus();
+      close(null);
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [close]);
   const [sel, setSel] = useState<Cell | null>(null);
   const [hover, setHover] = useState<Cell | null>(null);
   const [rowPage, setRowPage] = useState(0);
@@ -241,7 +254,7 @@ const Panel = memo(function Panel({ node }: { node: Node }) {
     if (node.type !== 'linear')
       return node.type === 'scalew' ? `Weight ${node.id}` : `Bias ${node.id}`;
     return c.kind === 'W'
-      ? `${names[c.i] ?? `input ${c.i}`} to unit ${c.j}`
+      ? `${plainOf(names[c.i] ?? `input ${c.i}`)} to unit ${c.j}`
       : `bias of unit ${c.j}`;
   };
   const shown = hover ?? sel;
@@ -298,8 +311,8 @@ const Panel = memo(function Panel({ node }: { node: Node }) {
                 const i = rowW.from + r;
                 return (
                   <div className="tk-wrow" role="row" key={i}>
-                    <span className="tk-wlabel tk-wrowname" title={names[i] ?? ''}>
-                      {node.type === 'linear' ? (names[i] ?? `input ${i}`) : 'w'}
+                    <span className="tk-wlabel tk-wrowname" title={plainOf(names[i] ?? '')}>
+                      {node.type === 'linear' ? <TexText>{names[i] ?? `input ${i}`}</TexText> : 'w'}
                     </span>
                     {Array.from({ length: cols }, (_, k) => {
                       const j = colW.from + k;

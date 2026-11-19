@@ -44,3 +44,33 @@ test('gridOf refuses shapes that do not fit; rows are named after the Input colu
   expect(gridOf(undefined, lin, 2, undefined)).toBeNull();
   expect(rowNames(g, lin.id, 1, ['age', 'bp'])).toHaveLength(1);
 });
+
+test('rowNames through a Feature gives the expanded names', () => {
+  const r = parseFile(mlp);
+  if (!r.ok) throw new Error(r.error);
+  const g = r.file.graph;
+  const lin = g.nodes.find((n) => n.type === 'linear');
+  if (!lin) throw new Error('no linear');
+  const feat = {
+    id: 'f1',
+    type: 'feature' as const,
+    degree: 2,
+    sin: true,
+    cos: false,
+    products: false,
+  };
+  const edges: [string, string][] = [
+    ['x', 'f1'],
+    ['f1', lin.id],
+  ];
+  const g2 = {
+    ...g,
+    nodes: [
+      ...g.nodes.filter((n) => n.id !== 'x'),
+      feat,
+      { id: 'x', type: 'input' as const, columns: ['x1'] },
+    ],
+    edges,
+  };
+  expect(rowNames(g2, lin.id, 3, [])).toEqual(['$x_{1}$', '$(x_{1})^{2}$', '$\\sin x_{1}$']);
+});

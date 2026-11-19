@@ -708,7 +708,7 @@ path.tk-hit {
   position: absolute;
   z-index: 3;
   right: 8px;
-  top: 8px;
+  bottom: 8px;
   max-width: min(640px, calc(100% - 16px));
   max-height: calc(100% - 16px);
   display: flex;
