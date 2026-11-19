@@ -5,6 +5,13 @@ import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { MARGINS, drawAxes, drawLegend, type LegendItem } from '../plot/draw.js';
 import { useStore } from '../state/store.js';
 import { FitPlot2D } from './FitPlot2D.js';
+import {
+  ResampleButton,
+  ResampleReadout,
+  drawOverlay1D,
+  overlayLegend,
+  useOverlay1D,
+} from './ResampleOverlay.js';
 import styles from './Results.module.css';
 
 /** Number of grid points for the model curve. Fixed: every new n makes the engine retrace. */
@@ -22,6 +29,7 @@ function FitPlot1D() {
   const host = useStore((s) => s.host);
   const predictGrid = useStore((s) => s.predictGrid);
   const [showTruth, setShowTruth] = useState(false);
+  const overlay = useOverlay1D();
 
   // Per dataset: raw-unit points, the grid and the true function on it.
   const fixed = useMemo(() => {
@@ -57,6 +65,7 @@ function FitPlot1D() {
     for (let i = 0; i < dataset.nTrain; i++) see(dataset.yTrain[i] ?? Number.NaN);
     for (let i = 0; i < dataset.nVal; i++) see(dataset.yVal[i] ?? Number.NaN);
     if (showTruth) for (let i = 0; i < fixed.f.length; i++) see(fixed.f[i] ?? Number.NaN);
+    if (overlay) for (let i = 0; i < overlay.mean.length; i++) see(overlay.mean[i] ?? Number.NaN);
     if (!(hi >= lo)) [lo, hi] = [-1, 1];
     const [ylo, yhi] = fitYRange(lo, hi, curve);
     const xs = linearScale(xlo, xhi, m.l, w - m.r);
@@ -68,6 +77,7 @@ function FitPlot1D() {
       { label: 'model', color: c.text, kind: 'line' },
     ];
     if (showTruth) legend.push({ label: 'truth', color: c.truth, kind: 'dash' });
+    if (overlay) legend.push(...overlayLegend(c));
     drawLegend(ctx, c, m, legend);
 
     ctx.save();
@@ -123,10 +133,12 @@ function FitPlot1D() {
       ctx.arc(px, py, 3.5, 0, Math.PI * 2);
     }
     ctx.fill();
+    // over the points: at large n they would hide the copies
+    if (overlay) drawOverlay1D(ctx, c, overlay, fixed.grid.xRaw, xs, ys);
     ctx.restore();
   };
 
-  const ref = usePlotCanvas(draw, [dataset, fixed, curve, showTruth]);
+  const ref = usePlotCanvas(draw, [dataset, fixed, curve, showTruth, overlay]);
   return (
     <div className={styles.panel} data-testid="fit-plot">
       <div className={styles.head}>
@@ -140,7 +152,9 @@ function FitPlot1D() {
           />
           True function
         </label>
+        <ResampleButton />
       </div>
+      <ResampleReadout />
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Fit plot" />
       </div>

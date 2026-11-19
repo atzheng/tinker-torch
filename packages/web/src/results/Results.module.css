@@ -82,3 +82,12 @@
   row-gap: 2px;
   overflow: visible;
 }
+
+/* One-line result of the resampling overlay under the header; wraps when narrow. */
+.readout {
+  flex: none;
+  padding: 0 8px 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
