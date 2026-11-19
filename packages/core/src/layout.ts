@@ -3,14 +3,24 @@
  * node set (not `analysis.order`), so invalid graphs lay out too: every node gets a position.
  */
 import type { Graph, Node, NodeId } from './graph.js';
-import { inputPortsOf, isVariadicPort, resolveEdge } from './graph.js';
+import { collapsedWeights, inputPortsOf, isVariadicPort, resolveEdge } from './graph.js';
 import type { Analysis } from './analyse.js';
 
 export type Box = { x: number; y: number; w: number; h: number };
 export type LayerLayout = {
   nodes: Record<NodeId, Box & { col: number }>;
   /** `labelAt`: where the width label sits, the midpoint of the longest horizontal segment (first on ties). */
-  wires: { edge: number; points: [number, number][]; labelAt: [number, number] }[];
+  wires: {
+    edge: number;
+    points: [number, number][];
+    labelAt: [number, number];
+    /**
+     * Layer view only: this wire stands for `from -> weightNode -> to` (a collapsed Weight, see
+     * `collapsedWeights`). `edge` is then the wire out of the Weight and `viaEdge` the one into it.
+     */
+    weightNode?: NodeId;
+    viaEdge?: number;
+  }[];
   size: [number, number];
 };
 export type NeuronUnitKind = 'in' | 'sum' | 'act' | 'out' | 'target';
@@ -65,21 +75,45 @@ function nullRecord<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>;
 }
 
-/** Nodes with duplicates dropped (first wins) and the resolved, endpoint-valid edges. */
-function prepare(g: Graph) {
+type LayoutEdge = {
+  index: number;
+  from: NodeId;
+  to: NodeId;
+  port: string;
+  weight?: NodeId;
+  via?: number;
+};
+
+/**
+ * Nodes with duplicates dropped (first wins) and the resolved, endpoint-valid edges. With
+ * `collapse` (layer view) a Weight with one wire in and one out is not a node here: its two wires
+ * become one, `from -> to`, carrying `weight` and the index `via` of the wire into the Weight.
+ */
+function prepare(g: Graph, collapse: boolean) {
   const nodes: Node[] = [];
   const byId = nullRecord<Node>();
+  const gone = collapse ? collapsedWeights(g) : new Set<NodeId>();
   for (const n of g.nodes) {
     if (byId[n.id] === undefined) {
       byId[n.id] = n;
-      nodes.push(n);
+      if (!gone.has(n.id)) nodes.push(n);
     }
   }
-  const edges: { index: number; from: NodeId; to: NodeId; port: string }[] = [];
+  const all: { index: number; from: NodeId; to: NodeId; port: string }[] = [];
   g.edges.forEach((e, index) => {
-    const r = resolveEdge(nodes, e);
-    if (r.ok) edges.push({ index, from: r.from.node, to: r.to.node, port: r.to.port });
+    const r = resolveEdge(g.nodes, e);
+    if (r.ok) all.push({ index, from: r.from.node, to: r.to.node, port: r.to.port });
   });
+  const into = new Map<NodeId, { index: number; from: NodeId }>();
+  for (const e of all) if (gone.has(e.to)) into.set(e.to, { index: e.index, from: e.from });
+  const edges: LayoutEdge[] = [];
+  for (const e of all) {
+    if (gone.has(e.to)) continue;
+    const feed = gone.has(e.from) ? into.get(e.from) : undefined;
+    if (gone.has(e.from)) {
+      if (feed) edges.push({ ...e, from: feed.from, weight: e.from, via: feed.index });
+    } else edges.push(e);
+  }
   return { nodes, byId, edges };
 }
 
@@ -168,7 +202,7 @@ function assignColumns(
 function assignRows(
   nodes: Node[],
   byId: Record<string, Node>,
-  edges: { index: number; from: NodeId; to: NodeId; port: string }[],
+  edges: LayoutEdge[],
   col: Record<NodeId, number>,
 ): Record<NodeId, number> {
   const row = nullRecord<number>();
@@ -287,9 +321,10 @@ function layoutCore(
   g: Graph,
   plan: (n: Node) => Plan,
   gap: number,
+  collapse: boolean,
   fixed?: Record<NodeId, [number, number]>,
 ): Core {
-  const { nodes, byId, edges } = prepare(g);
+  const { nodes, byId, edges } = prepare(g, collapse);
   const col = assignColumns(nodes, byId, edges);
   const row = assignRows(nodes, byId, edges, col);
   const plans = nullRecord<Plan>();
@@ -432,7 +467,14 @@ function layoutCore(
       const laneY = top - LAYOUT.lane * (1 + (laneOf.get(e.index) ?? 0));
       points.push([x0, y0], [gapR, y0], [gapR, laneY], [gapL, laneY], [gapL, y1], [x1, y1]);
     }
-    wires.push({ edge: e.index, points, labelAt: labelAnchor(points) });
+    wires.push({
+      edge: e.index,
+      points,
+      labelAt: labelAnchor(points),
+      ...(e.weight !== undefined && e.via !== undefined
+        ? { weightNode: e.weight, viaEdge: e.via }
+        : {}),
+    });
   }
   if (manual.size === 0) return { boxes, wires, size: [width, height] };
   // With manual positions the drawing is as large as what is actually there (pieces and routes).
@@ -469,13 +511,13 @@ const boxPlan = (): Plan => ({ w: LAYOUT.boxW, h: LAYOUT.boxH, unit: null, count
 
 /** Columns by longest path; the target sits beside the prediction, below it; skip wires run above everything. */
 export function layoutLayers(g: Graph, _a: Analysis): LayerLayout {
-  const core = layoutCore(g, boxPlan, LAYOUT.layerGap, g.positions);
+  const core = layoutCore(g, boxPlan, LAYOUT.layerGap, true, g.positions);
   return { nodes: core.boxes, wires: core.wires, size: core.size };
 }
 
 /** Same columns as layer view; a Linear with at most 8 units on each side opens into circles and one edge per weight. */
 export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
-  const { nodes, byId, edges } = prepare(g);
+  const { nodes, byId, edges } = prepare(g, false);
   const firstSource = (id: NodeId): NodeId | undefined => edges.find((e) => e.to === id)?.from;
   const expanded = nullRecord<boolean>();
   const expandable = (n: Node): boolean => {
@@ -519,7 +561,7 @@ export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
     }
   };
 
-  const core = layoutCore(g, plan, LAYOUT.neuronGap);
+  const core = layoutCore(g, plan, LAYOUT.neuronGap, false);
   const units: NeuronLayout['units'] = [];
   const unitsOf = nullRecord<[number, number][]>();
   for (const n of nodes) {

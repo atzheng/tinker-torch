@@ -272,6 +272,37 @@ export function resolvePin(nodes: readonly Node[], ref: PortRef): ResolvedPin {
   return { ok: true, at: { node, port: 'out' } };
 }
 
+/**
+ * The Weight pieces (`scalew`) drawn as a labelled wire rather than a box in layer view
+ * (CONTRACTS.md section 9, "Weight wires"): a Weight with exactly one wire in, from a piece that is
+ * not itself a Weight, and at least one wire out. Such a piece has no box, so it has no position.
+ * Resolved edges only; the first node of a duplicate id wins.
+ */
+export function collapsedWeights(g: Pick<Graph, 'nodes' | 'edges'>): Set<NodeId> {
+  const first = new Map<NodeId, Node>();
+  for (const n of g.nodes) if (!first.has(n.id)) first.set(n.id, n);
+  const feeders = new Map<NodeId, NodeId[]>();
+  const consumers = new Map<NodeId, number>();
+  for (const e of g.edges) {
+    const r = resolveEdge(g.nodes, e);
+    if (!r.ok) continue;
+    const into = feeders.get(r.to.node);
+    if (into) into.push(r.from.node);
+    else feeders.set(r.to.node, [r.from.node]);
+    consumers.set(r.from.node, (consumers.get(r.from.node) ?? 0) + 1);
+  }
+  const out = new Set<NodeId>();
+  for (const n of first.values()) {
+    if (n.type !== 'scalew') continue;
+    const from = feeders.get(n.id);
+    const src = from?.length === 1 ? first.get(from[0] as NodeId) : undefined;
+    if (src && src.type !== 'scalew' && src.id !== n.id && (consumers.get(n.id) ?? 0) > 0) {
+      out.add(n.id);
+    }
+  }
+  return out;
+}
+
 /** The entries of `positions` that name a node in `ids`, as a prototype-free record; undefined when none are left. */
 function prunePositions(
   positions: Record<string, [number, number]> | undefined,
@@ -458,8 +489,9 @@ function pick(obj: object, keys: string[]): Record<string, unknown> {
 /** `positions` in node order (so the text is stable), for pieces that exist; nothing when none. */
 function positionsOut(graph: Graph): { positions?: Record<string, [number, number]> } {
   const out: Record<string, [number, number]> = {};
+  const collapsed = collapsedWeights(graph);
   for (const n of graph.nodes) {
-    const xy = graph.positions?.[n.id];
+    const xy = collapsed.has(n.id) ? undefined : graph.positions?.[n.id];
     if (xy) out[n.id] = [xy[0], xy[1]];
   }
   return Object.keys(out).length > 0 ? { positions: out } : {};

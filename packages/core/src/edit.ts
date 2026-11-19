@@ -17,6 +17,7 @@ import {
   resolvePin,
   resolveEdge,
   inputPortsOf,
+  collapsedWeights,
   isVariadicPort,
   variadicPortsOf,
   type Edge,
@@ -667,8 +668,10 @@ export function moveNodes(
   const maxX = LAYOUT.pad + spare * (LAYOUT.boxW + LAYOUT.layerGap);
   const maxY = LAYOUT.pad + spare * (LAYOUT.boxH + LAYOUT.rowGap);
   const positions: Record<NodeId, [number, number]> = { ...g.positions };
+  const collapsed = collapsedWeights(g);
   for (const [id, xy] of Object.entries(moves)) {
     if (!findNode(g, id)) return noNode(id);
+    if (collapsed.has(id)) return fail('A weight drawn on its wire has no box: it follows its wire.');
     if (!Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) {
       return fail('A piece can only be moved to a position given as numbers.');
     }
