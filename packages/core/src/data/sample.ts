@@ -1,4 +1,4 @@
-import type { DataConfig, DataInfo, DatasetName } from '../graph.js';
+import type { DataConfig, DataInfo, DatasetName } from '../common.js';
 import { makeRng } from '../rng.js';
 import { SETS, generate } from './sets.js';
 

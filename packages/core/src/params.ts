@@ -1,7 +1,7 @@
 /** Host-side parameters (CONTRACTS.md section 5): plain Float32Arrays, no jax-js. */
 import type { Analysis } from './analyse.js';
-import type { Graph, Node, NodeId } from './graph.js';
-import { CORE_PIECES } from './registry.js';
+import type { Graph, Node, NodeId } from './legacy/graph.js';
+import { CORE_PIECES } from './legacy/registry.js';
 import { makeRng } from './rng.js';
 
 /** W row-major [in, out]; b [out]. Only linear nodes on `analysis.order` have an entry. */

@@ -1,7 +1,7 @@
 /** Analysis (CONTRACTS.md section 4): order, widths, parameter counts and the issues that disable Train. */
-import type { DataInfo, Graph, LossFn, Node, NodeId } from './graph.js';
-import { resolveEdge } from './graph.js';
-import { CORE_PIECES } from './registry.js';
+import type { DataInfo, Graph, LossFn, Node, NodeId } from './legacy/graph.js';
+import { resolveEdge } from './legacy/graph.js';
+import { CORE_PIECES } from './legacy/registry.js';
 
 export type Issue = { at: { node?: NodeId; edge?: number }; message: string };
 export type Analysis = {
