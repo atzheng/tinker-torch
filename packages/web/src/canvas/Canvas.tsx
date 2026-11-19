@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
+  LAYOUT,
   inputPortsOf as inputPortsOfType,
   layoutLayers,
   layoutNeurons,
@@ -20,6 +21,9 @@ import { Inspector } from './Inspector.js';
 import { LayerView } from './LayerView.js';
 import { NeuronView, UNIT_BTN_ROOM } from './NeuronView.js';
 import { Toast } from './Toast.js';
+import { startDrag } from '../gestures/drag.js';
+import { useViewGestures } from './useViewGestures.js';
+import { clampView, neuronBaseView, NEURON_MAX_SCALE } from './viewport.js';
 import {
   edgeIndexOf,
   errorNodes,
@@ -129,10 +133,46 @@ export function Canvas() {
     [neuronLayout, layerLayout],
   );
   // A header strip above the drawing holds the grain toggle, so it never covers a piece or wire.
-  const t: Transform = useMemo(() => {
+  const isNeuron = neuronLayout !== null;
+  const fit: Transform = useMemo(() => {
     const f = fitTransform(layout.size, { w: view.w, h: Math.max(1, view.h - HEADER_H) });
     return { ...f, ty: f.ty + HEADER_H };
   }, [layout.size, view]);
+  // Neuron view only: the base is the fit (never below 32 px unit cells on touch); a pinch, the
+  // wheel or a background drag moves `userView` away from it, `Reset view` clears it.
+  const base: Transform = useMemo(
+    () =>
+      isNeuron ? neuronBaseView(fit, layout.size, view, HEADER_H, coarse, LAYOUT.unitPitch) : fit,
+    [isNeuron, fit, layout.size, view, coarse],
+  );
+  const [userView, setUserView] = useState<Transform | null>(null);
+  useEffect(() => setUserView(null), [grain]);
+  const clampT = (x: Transform) => clampView(x, layout.size, view, HEADER_H);
+  const t: Transform = useMemo(
+    () => (isNeuron && userView ? clampView(userView, layout.size, view, HEADER_H) : base),
+    [isNeuron, userView, base, layout.size, view],
+  );
+  const tRef = useRef(t);
+  tRef.current = t;
+  const clampRef = useRef(clampT);
+  clampRef.current = clampT;
+  useViewGestures(ref, {
+    enabled: isNeuron,
+    current: () => tRef.current,
+    min: Math.min(fit.scale, base.scale),
+    max: Math.max(NEURON_MAX_SCALE, base.scale),
+    clamp: (x) => clampRef.current(x),
+    set: setUserView,
+  });
+  const onBackgroundDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isNeuron) return select(null);
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const t0 = tRef.current;
+    startDrag(e, {
+      onTap: () => select(null),
+      onMove: (p) => setUserView(clampT({ ...t0, tx: t0.tx + p.dx, ty: t0.ty + p.dy })),
+    });
+  };
   const placed = useMemo(
     () =>
       placeIssues(
@@ -245,12 +285,23 @@ export function Canvas() {
       >
         Neurons
       </button>
+      {isNeuron && userView && (
+        <button
+          type="button"
+          className="tk-grain tk-resetview"
+          data-testid="reset-view"
+          title="Reset pan and zoom"
+          onClick={() => setUserView(null)}
+        >
+          Reset view
+        </button>
+      )}
       <svg
         className="tk-svg"
         width={view.w}
         height={view.h}
         data-testid="canvas-svg"
-        onPointerDown={() => select(null)}
+        onPointerDown={onBackgroundDown}
       >
         <g transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}>
           {neuronLayout ? (

@@ -1,0 +1,51 @@
+## 1-8-8-1 1024x768 light coarse=true
+no horizontal scroll: true
+units: 36
+unit hit cells min 32.0 x 32.0 px; tapped+selected 36/36
+pinch zoom-in:  translate(-341.80523681640625 176.824) scale(0.728) -> translate(-2209.049072265625 -285.70399999999995) scale(2.912) reset button: true
+reset button 99.671875 x 32
+after reset: translate(8 176.824) scale(0.728) button gone: true
+edge drag lin1 W: {"0":-0.1216219887137413,"1":0.2373696118593216,"2":-0.32549718022346497,"3":-0.2200581133365631} -> {"0":0.5983780026435852,"1":0.2373696118593216,"2":-0.32549718022346497,"3":-0.2200581133365631} | stroke 1.0135147616267204 -> 2.6344852089881896 | selection {"kind":"edge","node":"lin1","i":0,"j":0}
+unit buttons: out 8 -> 9 -> 8; hit 32.0x32.0
+layer view: true reset button hidden: true translate(24 320.39217886740335) scale(0.35443283839779005)
+page errors: none
+## 2-8-8-8-1 1180x820 dark coarse=true
+no horizontal scroll: true
+units: 53
+unit hit cells min 32.0 x 32.0 px; tapped+selected 53/53
+pinch zoom-in:  translate(-526.8399658203125 202.824) scale(0.728) -> translate(-3077.85986328125 -259.70399999999995) scale(2.912) reset button: true
+reset button 99.671875 x 32
+after reset: translate(8 202.824) scale(0.728) button gone: true
+edge drag lin1 W: {"0":-0.1216219887137413,"1":0.2373696118593216,"2":-0.32549718022346497,"3":-0.2200581133365631} -> {"0":0.5983780026435852,"1":0.2373696118593216,"2":-0.32549718022346497,"3":-0.2200581133365631} | stroke 1.0135147616267204 -> 2.6344852089881896 | selection {"kind":"edge","node":"lin1","i":0,"j":0}
+unit buttons: out 8 -> 9 -> 8; hit 32.0x32.0
+layer view: true reset button hidden: true translate(24 348.6541850220264) scale(0.32984581497797355)
+page errors: none
+## 2-8-8-8-1 1024x768 dark coarse=true
+no horizontal scroll: true
+units: 53
+unit hit cells min 32.0 x 32.0 px; tapped+selected 53/53
+pinch zoom-in:  translate(-612.6212158203125 176.824) scale(0.728) -> translate(-3292.31298828125 -285.70399999999995) scale(2.912) reset button: true
+reset button 99.671875 x 32
+after reset: translate(8 176.824) scale(0.728) button gone: true
+edge drag lin1 W: {"0":-0.1216219887137413,"1":0.2373696118593216,"2":-0.32549718022346497,"3":-0.2200581133365631} -> {"0":0.5983780026435852,"1":0.2373696118593216,"2":-0.32549718022346497,"3":-0.2200581133365631} | stroke 1.0135147616267204 -> 2.6344852089881896 | selection {"kind":"edge","node":"lin1","i":0,"j":0}
+unit buttons: out 8 -> 9 -> 8; hit 32.0x32.0
+layer view: true reset button hidden: true translate(24 326.99993116740086) scale(0.2826094438325991)
+page errors: none
+## 1-8-8-1 1180x820 light coarse=true
+no horizontal scroll: true
+units: 36
+unit hit cells min 32.0 x 32.0 px; tapped+selected 36/36
+pinch zoom-in:  translate(-256.02398681640625 202.824) scale(0.728) -> translate(-1994.595947265625 -259.70399999999995) scale(2.912) reset button: true
+reset button 99.671875 x 32
+after reset: translate(8 202.824) scale(0.728) button gone: true
+edge drag lin1 W: {"0":-0.1216219887137413,"1":0.2373696118593216,"2":-0.32549718022346497,"3":-0.2200581133365631} -> {"0":0.5983780026435852,"1":0.2373696118593216,"2":-0.32549718022346497,"3":-0.2200581133365631} | stroke 1.0135147616267204 -> 2.6344852089881896 | selection {"kind":"edge","node":"lin1","i":0,"j":0}
+unit buttons: out 8 -> 9 -> 8; hit 32.0x32.0
+layer view: true reset button hidden: true translate(24 340.94198895027625) scale(0.4136740331491713)
+page errors: none
+## laptop 1280x800 mouse coarse= false
+scroll ok: true
+fit: translate(24 260.7455540355677) scale(0.4473324213406293)
+ctrl+wheel: translate(-1842 -231.45871559633042) scale(3) reset: true
+wheel pan: translate(-2042 -231.45871559633042) scale(3)
+reset: translate(24 260.7455540355677) scale(0.4473324213406293)
+bg drag: translate(-712.1284403669724 68) scale(3) -> translate(-612.1284403669724 68) scale(3)
