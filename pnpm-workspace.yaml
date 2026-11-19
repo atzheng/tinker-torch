@@ -2,3 +2,5 @@ packages:
   - packages/*
 allowBuilds:
   esbuild: true
+patchedDependencies:
+  '@jax-js/jax@0.1.27': patches/@jax-js__jax@0.1.27.patch

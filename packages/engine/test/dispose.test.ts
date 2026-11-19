@@ -1,11 +1,30 @@
 // disposeModel (CONTRACTS.md section 7, tinker-klv): frees the jitted functions, throws on later use.
 import { installProbe } from '../src/probe.js';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { describe, expect, test } from 'vitest';
 import { loadFixture, toBatch, toHostParams } from './util.js';
 
 installProbe();
 const { createEngine } = await import('../src/index.js');
 const engine = await createEngine();
+
+// Heap bound for 1000 cycles, measured with heapUsed after a forced gc. With the jax-js patch
+// (patches/, tinker-d7c; see docs/jax-js-upstream-issue.md) the growth is a few MB; unpatched it
+// was 320 MB+ per 1000 cycles (global jaxpr caches that were never freed). The measurement yields
+// to the event loop first: V8 keeps WeakRef targets alive until the end of the current job.
+const MAX_HEAP_GROWTH_MB_PER_1000_CYCLES = 100;
+// Lighter always-on run; the full 1000 cycles is behind TINKER_BENCH.
+const CYCLES = process.env['TINKER_BENCH'] ? 1000 : 300;
+
+setFlagsFromString('--expose-gc');
+const gc = runInNewContext('gc') as () => void;
+async function heapMb(): Promise<number> {
+  await new Promise((r) => setTimeout(r, 10));
+  gc();
+  gc();
+  return process.memoryUsage().heapUsed / 1e6;
+}
 
 const SENTENCE = 'This model was disposed.';
 
@@ -43,24 +62,24 @@ function cycle(s: ReturnType<typeof setup>): void {
 
 describe('disposeModel', () => {
   test.each(['mlp_tanh_adam_5steps', 'dropout_p0.5'])(
-    '1000 compile -> use -> dispose cycles keep liveArrays flat and memory bounded (%s)',
-    (name) => {
+    'compile -> use -> dispose cycles keep liveArrays flat and heapUsed bounded (%s)',
+    async (name) => {
       const s = setup(name);
       for (let i = 0; i < 20; i++) cycle(s); // warm up
       const baseline = engine.liveArrays();
       expect(baseline).toBeGreaterThanOrEqual(0);
-      const rss0 = process.memoryUsage().rss;
-      for (let i = 0; i < 1000; i++) {
+      const heap0 = await heapMb();
+      for (let i = 0; i < CYCLES; i++) {
         cycle(s);
         if (i % 250 === 0) expect(engine.liveArrays()).toBe(baseline);
       }
       expect(engine.liveArrays()).toBe(baseline);
-      const grewMb = (process.memoryUsage().rss - rss0) / 1e6;
-      // Disposing does not change this number: jax-js's partialEvalFlat pushes a trace onto its
-      // global traceStack without ever popping it, so each valueAndGrad trace (one per compiled
-      // step) keeps its trace objects (about 0.3 MB of JS heap) alive. Upstream bug; bounded here
-      // only so a regression that leaks buffers (tens of MB per model) fails.
-      expect(grewMb).toBeLessThan(1500);
+      const grewMb = (await heapMb()) - heap0;
+      if (process.env['TINKER_BENCH'])
+        console.log(`heap growth over ${CYCLES} cycles (${name}): ${grewMb.toFixed(1)} MB`);
+      // Regression guard for the jax-js leaks: unpatched, each compile retained ~0.3 MB (step) to
+      // ~1 MB (with trainMany), far over this bound.
+      expect(grewMb).toBeLessThan((MAX_HEAP_GROWTH_MB_PER_1000_CYCLES * CYCLES) / 1000);
     },
     300_000,
   );
