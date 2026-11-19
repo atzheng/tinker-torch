@@ -1,0 +1,31 @@
+import type { StateCreator } from 'zustand';
+import type { NodeId } from '@tinker/core';
+
+/** What a loaded preset leaves in the store (CONTRACTS.md section 12). */
+export type ActivePreset = {
+  title: string;
+  prompt?: string;
+  /** Locked piece ids that exist in the loaded graph (unknown ids in the file are ignored). */
+  locked: NodeId[];
+};
+
+export type PresetSlice = {
+  /**
+   * The preset of the current graph, or null. Its `locked` list is what every edit refuses to
+   * change. It travels with the graph in the undo history (`graphSlice`): a file load sets it
+   * together with the graph (`apply(edit, preset)`), undo and redo restore it, a plain file or
+   * `loadGraph` (new graph) clears it.
+   */
+  preset: ActivePreset | null;
+  /** True once the person dismissed the prompt line of the current preset. */
+  promptDismissed: boolean;
+  setPreset: (preset: ActivePreset | null) => void;
+  dismissPrompt: () => void;
+};
+
+export const createPresetSlice: StateCreator<PresetSlice, [], [], PresetSlice> = (set) => ({
+  preset: null,
+  promptDismissed: false,
+  setPreset: (preset) => set({ preset, promptDismissed: false }),
+  dismissPrompt: () => set({ promptDismissed: true }),
+});
