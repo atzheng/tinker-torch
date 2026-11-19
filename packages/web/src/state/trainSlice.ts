@@ -16,6 +16,7 @@ import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engin
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
 import type { Store } from './store.js';
+import { bumpWeightGeneration } from './weightHistory.js';
 
 /**
  * Train slice (tinker-27m.2).
@@ -104,6 +105,13 @@ export type TrainSlice = {
     a: Float32Array,
     b: Float32Array,
   ) => Float32Array | null;
+  /**
+   * Hand-set weights (tinker-ran.2): overwrite the W and/or b of one Linear in the live model
+   * through `engine.write` (the optimizer state is kept) and republish `host`. Does not touch the
+   * graph, the history or the step counter. False when there is no live model or the values do
+   * not fit (nothing changes then). Callers refuse while running and for locked pieces.
+   */
+  writeParams: (node: string, values: { W?: Float32Array; b?: Float32Array }) => boolean;
   setSpeed: (n: number) => void;
   /** Commit a learning rate (one undo step). Committed on release or blur by the UI. */
   setLearningRate: (lr: number) => void;
@@ -233,6 +241,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     // A diverged run leaves huge (finite) weights behind, so no lr, optimizer, batch or data
     // change could recover from them: the edit that follows a divergence starts from fresh weights.
     const fresh = freshArg || get().diverged;
+    if (fresh) bumpWeightGeneration(); // hand-edit undo records no longer fit these weights
     const engine = rt.engine;
     const structural =
       fresh || !rt.lastGraph || structuralKey(graph) !== structuralKey(rt.lastGraph);
@@ -441,6 +450,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const { engine, model, best } = rt;
       if (!engine || !model || !best) return;
       stopLoop();
+      bumpWeightGeneration();
       let params: Params | null = null;
       try {
         params = engine.fromHost(model, best.params);
@@ -463,6 +473,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const { analysis, graph } = get();
       if (!analysis.trainable || !rt.host) return false;
       const merged = Object.assign(Object.create(null) as HostParams, rt.host, loaded);
+      bumpWeightGeneration();
       stopLoop();
       disposeState();
       rt.host = merged;
@@ -508,6 +519,17 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       } catch {
         return null;
       }
+    },
+    writeParams: (node, values) => {
+      const { engine, state } = rt;
+      if (!engine || !state) return false;
+      try {
+        state.params = engine.write(state.params, node, values); // consumes the old params
+      } catch {
+        return false; // the engine leaves the params valid when it throws
+      }
+      publish();
+      return true;
     },
     setSpeed: (n) => set({ speed: Math.max(1, Math.round(n)) }),
     setLearningRate: (lr) => {
