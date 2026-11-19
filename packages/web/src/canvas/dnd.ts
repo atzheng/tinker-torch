@@ -12,6 +12,7 @@ import {
   connect,
   inputPortsOf,
   insertOnWire,
+  rewireEdge,
   setPenalty,
   swapPiece,
   type EditResult,
@@ -23,7 +24,16 @@ import {
 } from '@tinker/core';
 import { hitAt, layerHitShapes, HIT_MIN_PX, type HitShape } from './pure.js';
 
-export type DragPayload = { kind: 'palette'; entry: PaletteEntry } | { kind: 'wire'; from: NodeId };
+export type DragPayload =
+  | { kind: 'palette'; entry: PaletteEntry }
+  | { kind: 'wire'; from: NodeId }
+  /** An existing wire's destination end dragged to another input port (one undo step). */
+  | { kind: 'rewire'; edge: number; from: NodeId; to: PortRef };
+
+/** The piece a wire-like drag starts from (a new wire or a rewired one), else undefined. */
+export function wireSource(p: DragPayload): NodeId | undefined {
+  return p.kind === 'palette' ? undefined : p.from;
+}
 
 export type DropTarget =
   | { kind: 'wire'; edge: number }
@@ -66,7 +76,7 @@ function distToSegment(px: number, py: number, a: readonly number[], b: readonly
 }
 
 /** Whether a palette entry can go onto a wire (needs an input and an output). */
-function insertable(entry: PaletteEntry): boolean {
+export function insertable(entry: PaletteEntry): boolean {
   if (entry.family === 'penalties') return false;
   const body = entry.make();
   return 'type' in body && body.type !== 'input' && body.type !== 'target' && body.type !== 'loss';
@@ -92,7 +102,7 @@ export function resolveDrop(
   const nodeOf = (s: HitShape | undefined): NodeId | undefined =>
     s?.kind === 'node' ? s.id : s?.kind === 'port' ? s.node : undefined;
 
-  if (payload.kind === 'wire') {
+  if (payload.kind === 'wire' || payload.kind === 'rewire') {
     const id = nodeOf(
       hitAt(
         shapes.filter((s) => s.kind !== 'wire'),
@@ -115,9 +125,11 @@ export function resolveDrop(
       }
     });
     const port = ports[best];
-    return port === undefined
-      ? null
-      : { kind: 'port', node: node.id, port: portRefOf(node.id, ports, port) };
+    if (port === undefined) return null;
+    const ref = portRefOf(node.id, ports, port);
+    // Dropping a rewired wire back on the port it already ends at changes nothing.
+    if (payload.kind === 'rewire' && ref === payload.to) return null;
+    return { kind: 'port', node: node.id, port: ref };
   }
 
   const entry = payload.entry;
@@ -158,6 +170,9 @@ export function editForDrop(
   if (payload.kind === 'wire') {
     return target.kind === 'port' ? connect(graph, payload.from, target.port, opts) : null;
   }
+  if (payload.kind === 'rewire') {
+    return target.kind === 'port' ? rewireEdge(graph, payload.edge, 'to', target.port, opts) : null;
+  }
   const made = payload.entry.make();
   if (!('type' in made)) {
     return target.kind === 'node' ? setPenalty(graph, target.id, made, opts) : null;
@@ -185,6 +200,8 @@ export type DndHandler = {
 };
 
 let state: DndState | null = null;
+/** The palette entry picked for tap-to-add: the next tap on a valid wire or piece applies it. */
+let armed: PaletteEntry | null = null;
 let handler: DndHandler | null = null;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
@@ -201,6 +218,23 @@ export const dnd = {
     return () => {
       if (handler === h) handler = null;
     };
+  },
+  armed: (): PaletteEntry | null => armed,
+  /** Pick (or with null, drop) the palette entry for tap-to-add; picking the same one again drops it. */
+  arm(entry: PaletteEntry | null) {
+    armed = entry && armed?.key === entry.key ? null : entry;
+    emit();
+  },
+  /** Apply the armed entry at a client point. Returns whether an edit was attempted; disarms either way. */
+  tapAt(x: number, y: number): boolean {
+    const entry = armed;
+    armed = null;
+    emit();
+    if (!entry || !handler) return false;
+    const payload: DragPayload = { kind: 'palette', entry };
+    const target = handler.resolve(payload, x, y);
+    if (target) handler.commit(payload, target);
+    return target !== null;
   },
   begin(payload: DragPayload, x: number, y: number) {
     state = { payload, x, y, target: handler?.resolve(payload, x, y) ?? null };
@@ -226,3 +260,25 @@ export const dnd = {
     emit();
   },
 };
+
+/**
+ * Every wire and piece a palette entry could be dropped on or tapped onto, for the highlights
+ * shown while an entry is dragged or armed. Mirrors `resolveDrop`: wires for pieces that have an
+ * input and an output, pieces of the same family (the loss for a penalty).
+ */
+export function dropCandidates(
+  entry: PaletteEntry,
+  graph: Graph,
+): { edges: ReadonlySet<number>; nodes: ReadonlySet<NodeId> } {
+  const edges = new Set<number>();
+  const nodes = new Set<NodeId>();
+  if (insertable(entry)) graph.edges.forEach((_, i) => edges.add(i));
+  for (const n of graph.nodes) {
+    if (
+      entry.family === 'penalties' ? n.type === 'loss' : CORE_PIECES[n.type].family === entry.family
+    ) {
+      nodes.add(n.id);
+    }
+  }
+  return { edges, nodes };
+}

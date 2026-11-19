@@ -12,6 +12,10 @@ export type WireProps = {
   selected: boolean;
   /** The wire a dragged piece would be inserted on. */
   drop?: boolean;
+  /** A palette entry being dragged or armed could be placed on this wire. */
+  valid?: boolean;
+  /** This wire's end is being dragged elsewhere (rewire): drawn faint. */
+  lifted?: boolean;
   /** Screen pixels per abstract unit: labels and the hit stroke are sized in pixels. */
   scale: number;
   /** Width in screen pixels of the transparent stroke that receives presses. */
@@ -28,12 +32,14 @@ export function Wire(p: WireProps) {
       data-error={p.error}
       data-selected={p.selected}
       data-drop={p.drop === true}
+      data-valid={p.valid === true}
+      data-lifted={p.lifted === true}
       data-width={p.width ?? ''}
       className="tk-wire"
       onPointerDown={pointerDownWith({ onTap: p.onSelect })}
     >
       <path d={d} className="tk-hit" strokeWidth={p.hitPx / p.scale} />
-      {(p.selected || p.drop) && <path d={d} className="tk-wire-halo" strokeWidth={7} />}
+      {(p.selected || p.drop || p.valid) && <path d={d} className="tk-wire-halo" strokeWidth={7} />}
       <path
         d={d}
         className="tk-wire-line"
@@ -58,6 +64,7 @@ export function WireLabel(p: WireProps & { hit: { x: number; y: number; w: numbe
       data-error={p.error}
       data-selected={p.selected}
       data-drop={p.drop === true}
+      data-lifted={p.lifted === true}
       className="tk-wire tk-wire-label"
       onPointerDown={pointerDownWith({ onTap: p.onSelect })}
     >

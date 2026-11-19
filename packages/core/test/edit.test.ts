@@ -6,6 +6,7 @@ import {
   deleteNode,
   insertOnWire,
   parseGraph,
+  rewireEdge,
   serializeGraph,
   setColumns,
   setLinearOut,
@@ -272,6 +273,52 @@ describe('connect', () => {
   test('an output may fan out', () => {
     const g = ok(connect(base(), 'lin1', 'lin2'));
     expect(g.edges.filter(([f]) => f === 'lin1')).toHaveLength(2);
+  });
+});
+
+describe('rewireEdge', () => {
+  test('moves the destination end: x -> lin1 becomes x -> act1', () => {
+    const g0 = base();
+    const g = ok(rewireEdge(g0, 0, 'to', 'act1'));
+    expect(g.edges).toContainEqual(['x', 'act1']);
+    expect(g.edges).not.toContainEqual(['x', 'lin1']);
+    expect(g.edges).not.toContainEqual(['lin1', 'act1']); // act1 had one feeder: replaced
+    expect(g.edges).toHaveLength(g0.edges.length - 1);
+  });
+
+  test('moves the source end', () => {
+    const g = ok(rewireEdge(base(), 1, 'from', 'x')); // lin1 -> act1 becomes x -> act1
+    expect(g.edges).toContainEqual(['x', 'act1']);
+    expect(g.edges).not.toContainEqual(['lin1', 'act1']);
+  });
+
+  test('keeps the other wires', () => {
+    const g = ok(rewireEdge(base(), 0, 'to', 'act1'));
+    expect(g.edges).toContainEqual(['act1', 'lin2']);
+  });
+
+  test('refuses cycles, bad ports and unknown wires', () => {
+    err(rewireEdge(base(), 2, 'to', 'lin1')); // act1 -> lin2 becomes act1 -> lin1: a loop
+    err(rewireEdge(base(), 1, 'to', 'lin1')); // lin1 -> lin1
+    err(rewireEdge(base(), 2, 'to', 'nope'));
+    err(rewireEdge(base(), 99, 'to', 'act1'));
+  });
+
+  test('refuses when the old or the new destination is locked', () => {
+    expect(err(rewireEdge(base(), 0, 'to', 'act1', { locked: ['lin1'] }))).toBe(
+      'This piece is locked.',
+    );
+    expect(err(rewireEdge(base(), 0, 'to', 'act1', { locked: ['act1'] }))).toBe(
+      'This piece is locked.',
+    );
+    ok(rewireEdge(base(), 0, 'to', 'act1', { locked: ['x', 'lin2'] }));
+  });
+
+  test('does not mutate its input', () => {
+    const g = base();
+    const before = serializeGraph(g);
+    rewireEdge(g, 0, 'to', 'act1');
+    expect(serializeGraph(g)).toBe(before);
   });
 });
 

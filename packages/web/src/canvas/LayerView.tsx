@@ -2,9 +2,9 @@ import type { ComponentType } from 'react';
 import type { Analysis, Graph, HostParams, LayerLayout, Node } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
-import { dnd, hasOutputPort, inputPortAt, outputPortAt, type DndState } from './dnd.js';
+import { dnd, hasOutputPort, inputPortAt, outputPortAt, wireSource, type DndState } from './dnd.js';
 import { edgeIndexOf, layerHitShapes } from './pure.js';
-import { inputPortsOf } from '@tinker/core';
+import { inputPortsOf, resolveEdge } from '@tinker/core';
 import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
@@ -28,6 +28,8 @@ export type LayerViewProps = {
   coarse: boolean;
   /** The palette or wire drag in progress, for drop highlights and port handles. */
   drag?: DndState | null;
+  /** Wires and pieces a dragged or armed palette entry (or a wire drag) could land on. */
+  candidates?: { edges: ReadonlySet<number>; nodes: ReadonlySet<string> } | null;
 };
 
 /** Props for a piece's layer drawing, from the analysis and the weights. */
@@ -69,6 +71,9 @@ export function LayerView(p: LayerViewProps) {
   const dropNode = target?.kind === 'node' ? target.id : target?.kind === 'port' ? target.node : '';
   const lockedList = useStore((s) => s.preset?.locked);
   const locked = new Set(lockedList ?? []);
+  const cand = p.candidates;
+  const src = p.drag ? wireSource(p.drag.payload) : undefined;
+  const lifted = p.drag?.payload.kind === 'rewire' ? p.drag.payload.edge : -1;
   const sel = p.selection;
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
   return (
@@ -101,6 +106,8 @@ export function LayerView(p: LayerViewProps) {
             error={p.errorEdges.has(w.edge)}
             selected={selectedEdge === w.edge}
             drop={dropEdge === w.edge}
+            valid={cand?.edges.has(w.edge)}
+            lifted={lifted === w.edge}
             scale={scale}
             hitPx={hitPx}
             onSelect={() => p.select({ kind: 'wire', from: edge[0], to: edge[1] })}
@@ -125,6 +132,7 @@ export function LayerView(p: LayerViewProps) {
             data-selected={selected}
             data-error={p.errorNodes.has(node.id)}
             data-drop={dropNode === node.id}
+            data-valid={cand?.nodes.has(node.id) === true}
             className="tk-node"
             role="button"
             tabIndex={0}
@@ -179,13 +187,56 @@ export function LayerView(p: LayerViewProps) {
           >
             <rect className="tk-hit" x={shape.x} y={shape.y} width={shape.w} height={shape.h} />
             <circle className="tk-port-dot" cx={at[0]} cy={at[1]} r={PORT_R} />
+            <title>Drag to another piece to connect</title>
           </g>
         );
       })}
-      {p.drag?.payload.kind === 'wire' &&
+      {layout.wires.map((w) => {
+        // The destination end of a wire is a handle: drag it to another input port to rewire.
+        const edge = graph.edges[w.edge];
+        const end = w.points[w.points.length - 1];
+        const r = edge ? resolveEdge(graph.nodes, edge) : undefined;
+        const toNode = r?.ok ? graph.nodes.find((n) => n.id === r.to.node) : undefined;
+        const box = toNode ? layout.nodes[toNode.id] : undefined;
+        if (!edge || !end || !r?.ok || !toNode || !box) return null;
+        const n = inputPortsOf(toNode.type).length;
+        const hh = Math.min(hitPx / scale, box.h / (n + 1));
+        const selectedHere = selectedEdge === w.edge;
+        return (
+          <g
+            key={`end-${w.edge}`}
+            data-testid={`wire-end-${w.edge}`}
+            data-selected={selectedHere}
+            className="tk-wire-end"
+            onPointerDown={pointerDownWith({
+              onTap: () => p.select({ kind: 'wire', from: edge[0], to: edge[1] }),
+              onStart: (pt) =>
+                dnd.begin(
+                  { kind: 'rewire', edge: w.edge, from: r.from.node, to: edge[1] },
+                  pt.x,
+                  pt.y,
+                ),
+              onMove: (pt) => dnd.move(pt.x, pt.y),
+              onEnd: (pt) => dnd.end(pt.x, pt.y),
+              onCancel: () => dnd.cancel(),
+            })}
+          >
+            <rect
+              className="tk-hit"
+              x={end[0]}
+              y={end[1] - hh / 2}
+              width={(hitPx * 0.6) / scale}
+              height={hh}
+            />
+            <circle className="tk-wire-end-dot" cx={end[0]} cy={end[1]} r={PORT_R + 2} />
+            <title>Drag to another input to rewire</title>
+          </g>
+        );
+      })}
+      {src !== undefined &&
         graph.nodes.map((node) => {
           const ports = inputPortsOf(node.type);
-          if (node.id === (p.drag?.payload.kind === 'wire' ? p.drag.payload.from : '')) return null;
+          if (node.id === src) return null;
           return ports.map((port, k) => {
             const at = inputPortAt(layout, node.id, k, ports.length);
             if (!at) return null;
@@ -220,6 +271,8 @@ export function LayerView(p: LayerViewProps) {
             error={p.errorEdges.has(w.edge)}
             selected={selectedEdge === w.edge}
             drop={dropEdge === w.edge}
+            valid={cand?.edges.has(w.edge)}
+            lifted={lifted === w.edge}
             scale={scale}
             hitPx={hitPx}
             hit={hit}
