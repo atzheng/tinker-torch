@@ -17,7 +17,7 @@ import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
 import { plotIndex } from './plotPrediction.js';
 import type { Store } from './store.js';
-import { bumpWeightGeneration } from './weightHistory.js';
+import { bumpWeightGeneration, scalarHostFor, type ScalarCarry } from './weightHistory.js';
 
 /**
  * Train slice (tinker-27m.2).
@@ -73,6 +73,11 @@ export type TrainSlice = {
   speed: number;
   /** Immutable snapshot of the current parameters, published at most once per frame. */
   host: HostParams | null;
+  /**
+   * The exact parameters right now, read from the engine (`host` is at most one frame old while a
+   * run is going). Null when there is no TrainState.
+   */
+  currentHost: () => HostParams | null;
   stepOnce: () => void;
   run: () => void;
   pause: () => void;
@@ -251,15 +256,19 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
    * Brings model, TrainState and params in line with the current graph and dataset. `fresh`
    * discards the parameters (Reset).
    */
-  function resync(freshArg = false): void {
+  function resync(freshArg = false, carried: ScalarCarry | null = null): void {
     const { graph, dataset, dataInfo } = get();
     // A diverged run leaves huge (finite) weights behind, so no lr, optimizer, batch or data
     // change could recover from them: the edit that follows a divergence starts from fresh weights.
     const fresh = freshArg || get().diverged;
     if (fresh) bumpWeightGeneration(); // hand-edit undo records no longer fit these weights
     const engine = rt.engine;
+    // Group / expand (and their undo and redo): the same function under new nodes. The weights
+    // are carried over exactly and the run (history, step, loss) goes on; only the optimizer's
+    // own state (momentum, Adam moments) restarts, as it does for any recompile.
+    const carry = fresh ? null : carried;
     const structural =
-      fresh || !rt.lastGraph || structuralKey(graph) !== structuralKey(rt.lastGraph);
+      !carry && (fresh || !rt.lastGraph || structuralKey(graph) !== structuralKey(rt.lastGraph));
     const wasRunning = get().running;
     rt.lastGraph = graph;
     rt.lastDataset = dataset;
@@ -294,13 +303,14 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     }
 
     // 3. Weights: keep what still fits, draw the rest.
-    rt.host =
-      rt.host && rt.hostGraph && rt.hostAnalysis
+    rt.host = carry
+      ? carry.host
+      : rt.host && rt.hostGraph && rt.hostAnalysis
         ? reconcileParams(rt.host, rt.hostAnalysis, analysis, rt.seed)
         : initParams(analysis, rt.seed);
     rt.hostGraph = graph;
     rt.hostAnalysis = analysis;
-    if (structural) {
+    if (structural || carry) {
       rt.best = null; // old best params do not fit a changed architecture
     }
     rt.batches = batchSchedule(dataset.nTrain, graph.train.batch, rt.seed);
@@ -319,7 +329,25 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
         params = engine.fromHost(model, rt.host);
         rt.state = engine.startTraining(model, params, rt.seed);
         rt.model = model;
+        if (carry && carry.step !== rt.step) {
+          // Undo / redo went back to the weights of an earlier step: the run's numbers go back with
+          // them, and the losses are measured on these weights (full train set, validation set).
+          rt.step = carry.step;
+          rt.history = rt.history.filter((h) => h.step <= carry.step);
+          const { trainBatch, valBatch } = rt;
+          const t =
+            trainBatch && trainBatch.n > 0
+              ? engine.evaluate(model, rt.state.params, trainBatch)
+              : NaN;
+          const v =
+            valBatch && valBatch.n > 0 ? engine.evaluate(model, rt.state.params, valBatch) : NaN;
+          rt.trainLoss = Number.isFinite(t) ? t : null;
+          rt.valLoss = Number.isFinite(v) ? v : null;
+        }
         if (structural) evaluateInitial();
+        else if (carry && rt.valLoss !== null && Number.isFinite(rt.valLoss)) {
+          rt.best = { step: rt.step, val: rt.valLoss, params: carry.host }; // the carried weights
+        }
       } catch (e) {
         if (params && rt.state === null) engine.dispose(params); // startTraining throws before consuming
         if (model && rt.model !== model) engine.disposeModel(model); // compiled but never used
@@ -327,7 +355,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       }
     }
     const canTrain = rt.state !== null;
-    const keepRunning = !structural && wasRunning && canTrain;
+    const keepRunning = !structural && wasRunning && canTrain; // a group / expand keeps running
     // One store update, so a reader never sees the new analysis with the old host.
     publish({ analysis, trainIssue: issue, canTrain, running: false, diverged: false });
     if (keepRunning) startLoop();
@@ -412,7 +440,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     rt.raf = requestAnimationFrame(frame);
   }
 
-  resyncRef = () => resync();
+  resyncRef = (carried) => resync(false, carried ?? null);
 
   // Engine loading: compile as soon as it is ready.
   onEngineReady((e) => {
@@ -438,6 +466,10 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     best: null,
     speed: DEFAULT_SPEED,
     host: null,
+    currentHost: () => {
+      const { engine, state } = rt;
+      return engine && state ? engine.toHost(state.params) : null;
+    },
     stepOnce: () => {
       const s = get();
       if (!s.canTrain || s.running || s.diverged) return;
@@ -581,10 +613,10 @@ export function attachTrainLoop(store: StoreApi<Store>): void {
         rt.lastGraph = s.graph;
         return;
       }
-      resyncRef?.();
+      resyncRef?.(rt.lastGraph ? scalarHostFor(rt.lastGraph, s.graph) : null);
     }
   });
   resyncRef?.();
 }
 
-let resyncRef: (() => void) | null = null;
+let resyncRef: ((carried?: ScalarCarry | null) => void) | null = null;

@@ -61,6 +61,12 @@ export type ViewSlice = {
   panelWeights: PanelWeights;
   setPanelOrder: (order: PanelId[]) => void;
   setPanelWeights: (weights: PanelWeights) => void;
+  /**
+   * Pieces that a Group / Expand just created: they fade in for 300 ms (tinker-9io.7). Cleared by
+   * a timer; empty with prefers-reduced-motion. Not part of the graph or its history.
+   */
+  fresh: ReadonlySet<NodeId>;
+  setFresh: (ids: ReadonlySet<NodeId>) => void;
 };
 
 export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set) => ({
@@ -93,4 +99,6 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
   panelWeights: { ...DEFAULT_WEIGHTS },
   setPanelOrder: (panelOrder) => set({ panelOrder }),
   setPanelWeights: (panelWeights) => set({ panelWeights }),
+  fresh: new Set(),
+  setFresh: (fresh) => set({ fresh }),
 });

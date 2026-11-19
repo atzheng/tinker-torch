@@ -30,6 +30,8 @@ import { PinDisc } from './PinMark.js';
 import { LayerView } from './LayerView.js';
 import { NeuronView, UNIT_BTN_ROOM } from './NeuronView.js';
 import { Toast } from './Toast.js';
+import { ScalarBar } from './ScalarBar.js';
+import { linearGroups, pickGroup } from '../state/scalarActions.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
 import { useViewGestures } from './useViewGestures.js';
@@ -145,6 +147,8 @@ export function Canvas() {
   const drag = useSyncExternalStore(dnd.subscribe, dnd.get, () => null);
   const armed = useSyncExternalStore(dnd.subscribe, dnd.armed, () => null);
   const canUndo = useStore((s) => s.canUndo);
+  const fresh = useStore((s) => s.fresh);
+  const [previewGroup, setPreviewGroup] = useState(false);
   useEditShortcuts();
   useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no preview
   useEffect(() => () => dnd.arm(null), []);
@@ -276,7 +280,23 @@ export function Canvas() {
       };
     }
     const src = drag ? wireSource(drag.payload) : undefined;
-    if (src === undefined) return null;
+    if (src === undefined) {
+      // No drag: outline the pieces Group into Linear would replace, while its button is hovered
+      // or focused, or while one of them is selected (tinker-9io.7).
+      if (drag || isNeuron) return null;
+      const ids = pickGroup(linearGroups(graph, analysis), selection);
+      const inside = selection?.kind === 'node' && ids?.includes(selection.id) === true;
+      if (!ids || !(previewGroup || inside)) return null;
+      const set = new Set(ids);
+      return {
+        edges: new Set(
+          graph.edges.flatMap((e, i) =>
+            set.has(parsePort(e[0]).node) || set.has(parsePort(e[1]).node) ? [i] : [],
+          ),
+        ),
+        nodes: set as ReadonlySet<string>,
+      };
+    }
     return {
       edges: new Set<number>(),
       nodes: new Set(
@@ -285,7 +305,7 @@ export function Canvas() {
           .map((n) => n.id),
       ),
     };
-  }, [drag?.payload, armed, graph]);
+  }, [drag?.payload, armed, graph, analysis, selection, previewGroup, isNeuron]);
   // Tap-to-add: while an entry is armed, a tap on the drawing places it (or cancels when nothing fits).
   const onArmedDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!dnd.armed()) return;
@@ -530,6 +550,14 @@ export function Canvas() {
           Tidy
         </button>
       )}
+      {!isNeuron && (
+        <ScalarBar
+          graph={graph}
+          analysis={analysis}
+          selection={selection}
+          onPreview={setPreviewGroup}
+        />
+      )}
       {isNeuron && userView && (
         <button
           type="button"
@@ -592,6 +620,7 @@ export function Canvas() {
               coarse={coarse}
               drag={drag}
               candidates={candidates}
+              fresh={fresh}
               mover={mover}
               moving={moving?.id ?? null}
             />
