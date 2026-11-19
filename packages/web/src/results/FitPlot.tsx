@@ -30,6 +30,7 @@ function FitPlot1D() {
   const predictGrid = useStore((s) => s.predictGrid);
   const [showTruth, setShowTruth] = useState(false);
   const overlay = useOverlay1D();
+  const pins = useStore((s) => s.pins);
 
   // Per dataset: raw-unit points, the grid and the true function on it.
   const fixed = useMemo(() => {
@@ -107,6 +108,27 @@ function FitPlot1D() {
       line(fixed.f);
       ctx.setLineDash([]);
     }
+    // Pinned fits (tinker-iej.2) under the live curve, in the pin's colour.
+    for (const p of pins) {
+      if (!p.fit) continue;
+      ctx.strokeStyle = c.pins[p.slot] ?? c.accent;
+      ctx.lineWidth = 1.25;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      let started = false;
+      for (let i = 0; i < p.fit.y.length; i++) {
+        const v = p.fit.y[i];
+        if (v === undefined || !Number.isFinite(v)) {
+          started = false;
+          continue;
+        }
+        const px = xs.px(p.fit.x[i] ?? 0);
+        if (started) ctx.lineTo(px, ys.px(v));
+        else ctx.moveTo(px, ys.px(v));
+        started = true;
+      }
+      ctx.stroke();
+    }
     if (curve) {
       ctx.strokeStyle = c.text;
       ctx.lineWidth = 2;
@@ -138,7 +160,7 @@ function FitPlot1D() {
     ctx.restore();
   };
 
-  const ref = usePlotCanvas(draw, [dataset, fixed, curve, showTruth, overlay]);
+  const ref = usePlotCanvas(draw, [dataset, fixed, curve, showTruth, overlay, pins]);
   return (
     <div className={styles.panel} data-testid="fit-plot">
       <div className={styles.head}>

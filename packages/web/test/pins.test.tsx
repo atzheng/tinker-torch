@@ -69,6 +69,18 @@ test('a fourth pin is refused: the button is disabled', () => {
   expect(s().pins.length).toBe(PIN_LIMIT);
 });
 
+test('a 1-D pin stores a copy of the model curve on the fixed grid', () => {
+  runSome();
+  click(q('pin-add')[0]);
+  const fit = s().pins[0]?.fit;
+  expect(fit?.x.length).toBe(200);
+  expect(fit?.y.length).toBe(200);
+  expect(Array.from(fit?.y ?? []).every(Number.isFinite)).toBe(true);
+  const y0 = fit?.y[100];
+  act(() => s().stepOnce());
+  expect(s().pins[0]?.fit?.y[100]).toBe(y0);
+});
+
 test('the x removes a pin and frees its slot', () => {
   runSome();
   click(q('pin-add')[0]);

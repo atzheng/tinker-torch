@@ -19,6 +19,8 @@ export type Pin = {
   /** The weights at the time of the pin: loading the pin restores the fit from them. */
   host: HostParams;
   history: PinPoint[];
+  /** The 1-D model curve at pin time (raw x and y on the fit plot's fixed grid), or null for 2-D data. */
+  fit: { x: Float32Array; y: Float32Array } | null;
   /** Last validation loss (or training loss when there is no validation set), for the chip. */
   finalLoss: number | null;
 };
@@ -85,6 +87,7 @@ export function makePin(
   host: HostParams,
   history: readonly HistoryPoint[],
   pins: readonly Pin[],
+  fit: Pin['fit'] = null,
 ): Pin | null {
   const slot = freeSlot(pins);
   if (slot === null || history.length === 0) return null;
@@ -105,8 +108,25 @@ export function makePin(
     graph,
     host,
     history: pts,
+    fit,
     finalLoss,
   };
+}
+
+/**
+ * The model curve on a 1-D grid for a pin: `predict(xStd, n)` is the store's `predictGrid` (output
+ * [n, width], first output used). Null when there is no prediction. Copies, so the pin owns its data.
+ */
+export function snapshotFit(
+  grid: { xRaw: Float32Array; xStd: Float32Array; n: number },
+  predict: (x: Float32Array, n: number) => Float32Array | null,
+): Pin['fit'] {
+  const out = predict(grid.xStd, grid.n);
+  if (!out) return null;
+  const width = Math.max(1, Math.round(out.length / grid.n));
+  const y = new Float32Array(grid.n);
+  for (let i = 0; i < y.length; i++) y[i] = out[i * width] ?? Number.NaN;
+  return { x: Float32Array.from(grid.xRaw), y };
 }
 
 export type LossBounds = { stepMax: number; lo: number; hi: number };

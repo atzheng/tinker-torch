@@ -1,6 +1,8 @@
+import { grid1d } from '@tinker/core';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { useStore } from '../state/store.js';
-import { PIN_LIMIT, makePin, type Pin } from './pinsModel.js';
+import { GRID_N } from './FitPlot.js';
+import { PIN_LIMIT, makePin, snapshotFit, type Pin } from './pinsModel.js';
 import styles from './Pins.module.css';
 
 /** A small picture of a pinned run's loss curve (validation when there is one, else training). */
@@ -52,7 +54,12 @@ export function Pins() {
   const pin = () => {
     const s = useStore.getState();
     if (!s.host) return;
-    const p = makePin(s.graph, s.host, s.history, s.pins);
+    const d = s.dataset;
+    const fit =
+      d.info.columns.length === 1
+        ? snapshotFit(grid1d(d.domain, GRID_N, d.standardization), s.predictGrid)
+        : null;
+    const p = makePin(s.graph, s.host, s.history, s.pins, fit);
     if (p) addPin(p);
   };
   const load = (p: Pin) => {
