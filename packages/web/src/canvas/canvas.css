@@ -328,3 +328,58 @@ path.tk-hit {
     right: 44px;
   }
 }
+
+/* Neuron view: one line per weight, coloured by sign (the line's data-sign is set by NeuronView). */
+.tk-edge {
+  cursor: pointer;
+}
+.tk-edge-line {
+  stroke: var(--wire);
+  stroke-linecap: round;
+  stroke-opacity: 0.8;
+  pointer-events: none;
+}
+.tk-edge-line[data-sign='pos'] {
+  stroke: var(--weight-pos);
+}
+.tk-edge-line[data-sign='neg'] {
+  stroke: var(--weight-neg);
+}
+.tk-edge-halo {
+  stroke: var(--accent);
+  stroke-opacity: 0.4;
+  stroke-width: 9;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.tk-link {
+  fill: none;
+  stroke: var(--wire);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+.tk-link[data-error='true'] {
+  stroke: var(--error);
+}
+
+/* Grain toggle: a small view control in the header strip above the drawing. */
+.tk-grain {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  z-index: 3;
+  min-height: 32px;
+  min-width: 88px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: 14px var(--font);
+  cursor: pointer;
+}
+.tk-grain[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}

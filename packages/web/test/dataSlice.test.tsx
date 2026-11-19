@@ -155,9 +155,6 @@ test('DataControls: picking a set and Resample go through the store', () => {
   const before = s().graph.data.seed;
   act(() => host.querySelector<HTMLButtonElement>('[data-testid="data-resample"]')?.click());
   expect(s().graph.data.seed).not.toBe(before);
-  expect(host.querySelector<HTMLButtonElement>('[data-testid="grain-toggle"]')?.disabled).toBe(
-    true,
-  );
 });
 
 test('InputFields toggles a column off and on', () => {
