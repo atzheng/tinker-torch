@@ -10,10 +10,12 @@ import './canvas.css';
 import { useEditShortcuts } from './actions.js';
 import {
   dnd,
+  dropCandidates,
   editForDrop,
   inputPortAt,
   outputPortAt,
   resolveDrop,
+  wireSource,
   type DragPayload,
 } from './dnd.js';
 import { lockedIds } from '../state/locks.js';
@@ -21,6 +23,7 @@ import { Inspector } from './Inspector.js';
 import { LayerView } from './LayerView.js';
 import { NeuronView, UNIT_BTN_ROOM } from './NeuronView.js';
 import { Toast } from './Toast.js';
+import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
 import { useViewGestures } from './useViewGestures.js';
 import { clampView, neuronBaseView, NEURON_MAX_SCALE } from './viewport.js';
@@ -110,8 +113,17 @@ export function Canvas() {
   const apply = useStore((s) => s.apply);
   const selectNode = useStore((s) => s.selectNode);
   const drag = useSyncExternalStore(dnd.subscribe, dnd.get, () => null);
+  const armed = useSyncExternalStore(dnd.subscribe, dnd.armed, () => null);
+  const canUndo = useStore((s) => s.canUndo);
   useEditShortcuts();
   useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no preview
+  useEffect(() => () => dnd.arm(null), []);
+  // Tap-to-add ends when the ground moves under it: any graph change (edit, undo, redo, preset or
+  // file load), a grain switch, or a pan or zoom (`userView`).
+  const [edited, setEdited] = useState(false);
+  useEffect(() => {
+    if (canUndo) setEdited(true);
+  }, [canUndo]);
 
   const layerLayout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
   const neuronLayout = useMemo(
@@ -148,6 +160,7 @@ export function Canvas() {
   const [userView, setUserView] = useState<Transform | null>(null);
   const loadEpoch = useStore((st) => st.loadEpoch);
   useEffect(() => setUserView(null), [grain, loadEpoch]);
+  useEffect(() => dnd.arm(null), [graph, grain, loadEpoch, userView]);
   const clampT = (x: Transform) => clampView(x, layout.size, view, HEADER_H);
   const t: Transform = useMemo(
     () => (isNeuron && userView ? clampView(userView, layout.size, view, HEADER_H) : base),
@@ -165,6 +178,29 @@ export function Canvas() {
     clamp: (x) => clampRef.current(x),
     set: setUserView,
   });
+  // Wires and pieces a dragged or armed palette entry could land on; for a wire drag, the pieces
+  // that have an input to connect to.
+  const candidates = useMemo(() => {
+    const entry = drag?.payload.kind === 'palette' ? drag.payload.entry : armed;
+    if (entry) return dropCandidates(entry, graph);
+    const src = drag ? wireSource(drag.payload) : undefined;
+    if (src === undefined) return null;
+    return {
+      edges: new Set<number>(),
+      nodes: new Set(
+        graph.nodes
+          .filter((n) => n.id !== src && inputPortsOfType(n.type).length > 0)
+          .map((n) => n.id),
+      ),
+    };
+  }, [drag?.payload, armed, graph]);
+  // Tap-to-add: while an entry is armed, a tap on the drawing places it (or cancels when nothing fits).
+  const onArmedDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!dnd.armed()) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.stopPropagation();
+    startDrag(e, { onTap: (p) => dnd.tapAt(p.x, p.y), onCancel: () => dnd.arm(null) });
+  };
   const onBackgroundDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!isNeuron) return select(null);
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -303,6 +339,7 @@ export function Canvas() {
         height={view.h}
         data-testid="canvas-svg"
         onPointerDown={onBackgroundDown}
+        onPointerDownCapture={onArmedDown}
       >
         <g transform={`translate(${t.tx} ${t.ty}) scale(${t.scale})`}>
           {neuronLayout ? (
@@ -332,12 +369,14 @@ export function Canvas() {
               scale={t.scale}
               coarse={coarse}
               drag={drag}
+              candidates={candidates}
             />
           )}
         </g>
-        {drag?.payload.kind === 'wire' &&
+        {drag &&
+          wireSource(drag.payload) !== undefined &&
           (() => {
-            const from = outputPortAt(layout, drag.payload.from);
+            const from = outputPortAt(layout, wireSource(drag.payload) ?? '');
             const box = ref.current?.getBoundingClientRect();
             if (!from || !box) return null;
             const tg = drag.target;
@@ -365,6 +404,24 @@ export function Canvas() {
             );
           })()}
       </svg>
+      {armed && (
+        <div className="tk-armed" data-testid="armed-hint" role="status">
+          {`Tap a highlighted wire or piece to place ${armed.label}.`}
+        </div>
+      )}
+      {graph.nodes.length === 0 ? (
+        <div className="tk-empty" data-testid="empty-hint">
+          {HINTS.empty}
+        </div>
+      ) : (
+        !edited && (
+          <div className="tk-hints" data-testid="canvas-hints">
+            <p>{HINTS.insert}</p>
+            {!isNeuron && <p>{HINTS.connect}</p>}
+            {!isNeuron && <p>{HINTS.rewire}</p>}
+          </div>
+        )
+      )}
       <Toast />
       {placed.global.length > 0 && (
         <div className="tk-global-issues" data-testid="issue-global" role="status">
