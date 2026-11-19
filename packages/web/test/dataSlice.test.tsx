@@ -3,7 +3,7 @@ import { beforeEach, expect, test } from 'vitest';
 import { act, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { analyse, sample, setColumns } from '@tinker/core';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 import { DataControls } from '../src/topbar/DataControls.js';
 import { InputFields } from '../src/canvas/drawings/InputFields.js';

@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { analyse, layoutNeurons, LAYOUT, sample } from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { editSetting } from '../src/canvas/drawings/fields.js';
 import { useStore } from '../src/state/store.js';
 import { ACTIVATION_LABEL } from '../src/canvas/drawings/activation.js';

@@ -1,0 +1,36 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Linear regression, one number at a time",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "x1", "type": "column", "name": "x1" },
+      { "id": "x2", "type": "column", "name": "x2" },
+      { "id": "w1", "type": "scalew" },
+      { "id": "w2", "type": "scalew" },
+      { "id": "sum", "type": "sum" },
+      { "id": "bias", "type": "bias" },
+      { "id": "y", "type": "target" },
+      { "id": "diff", "type": "subtract" },
+      { "id": "err", "type": "square" },
+      { "id": "loss", "type": "mean" }
+    ],
+    "edges": [
+      ["x1", "w1"],
+      ["x2", "w2"],
+      ["w1", "sum"],
+      ["w2", "sum"],
+      ["sum", "bias"],
+      ["bias", "diff.a"],
+      ["y", "diff.b"],
+      ["diff", "err"],
+      ["err", "loss"]
+    ],
+    "positions": { "y": [272, 150], "diff": [456, 150], "err": [624, 150], "loss": [792, 150] },
+    "predictions": ["bias"],
+    "loss": "loss",
+    "data": { "set": "plane", "n": 40, "noise": 0.1, "val": 0.3, "seed": 7, "standardize": false },
+    "train": { "optimizer": "sgd", "lr": 0.05, "batch": "full", "seed": 11 }
+  }
+}

@@ -2,7 +2,7 @@
 import { beforeAll, beforeEach, expect, test } from 'vitest';
 import { beginWeightEdit, DIVERGED_FIRST, PAUSE_FIRST } from '../src/canvas/weightEdit.js';
 import { getEngine, loadEngine } from '../src/engine.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 
 const s = () => useStore.getState();

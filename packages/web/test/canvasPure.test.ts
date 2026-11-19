@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { analyse, layoutLayers, parseGraph, sample, type Graph } from '@tinker/core';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import {
   edgeIndexOf,
   errorNodes,

@@ -4,6 +4,8 @@ import logistic from './logistic.json';
 import sine from './sine.json';
 import xor from './xor.json';
 import skip from './skip.json';
+import scalar from './scalar.json';
+import mlp from './mlp.json';
 import softmax from './softmax.json';
 import iris from './iris.json';
 
@@ -15,6 +17,8 @@ export const PRESET_SOURCES: Record<string, unknown> = {
   xor,
   skip,
   softmax,
+  scalar,
+  mlp,
   iris,
 };
 

@@ -651,3 +651,54 @@ path.tk-hit {
 .tk-wpill[data-error='true'] .tk-wpill-tex {
   color: var(--error);
 }
+
+/* Group into Linear / Expand to scalars (tinker-9io.7): corner bar, equivalence caption, fade-in */
+.tk-scalarbar {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+  pointer-events: none;
+}
+.tk-scalarbar > * {
+  pointer-events: auto;
+}
+.tk-scalarbtns {
+  justify-content: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tk-scalarbtn {
+  min-height: 36px;
+  padding: 0 12px;
+  font: 14px var(--font);
+}
+.tk-equiv {
+  padding: 2px 8px;
+  font-size: 14px;
+  color: var(--diag-fg);
+  background: var(--diag-bg);
+  border-radius: 6px;
+}
+@keyframes tk-fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.tk-fadein {
+  animation: tk-fadein 300ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tk-fadein {
+    animation: none;
+  }
+}

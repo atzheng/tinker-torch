@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeAll, beforeEach, expect, test } from 'vitest';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { loadEngine } from '../src/engine.js';
 import { useStore } from '../src/state/store.js';
 

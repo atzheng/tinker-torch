@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from 'vitest';
 import { setLinearOut } from '@tinker/core';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 import { useOverlay, type OverlayResult } from '../src/results/resampleStore.js';
 

@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Graph } from '@tinker/core';
 import { App } from '../src/App.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 import { PRESET_NAMES, bundledPreset } from '../src/presets/index.js';
 

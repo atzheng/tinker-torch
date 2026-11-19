@@ -52,6 +52,8 @@ export type LayerViewProps = {
   drag?: DndState | null;
   /** Wires and pieces a dragged or armed palette entry (or a wire drag) could land on. */
   candidates?: { edges: ReadonlySet<number>; nodes: ReadonlySet<string> } | null;
+  /** Pieces a Group / Expand just made: they and their wires fade in (CONTRACTS.md section 10). */
+  fresh?: ReadonlySet<string>;
   /**
    * Moving a piece (CONTRACTS.md section 10, "Moving pieces"): a press on a piece body that goes
    * past the slop is a move, not a tap. `start` at the slop, `move` with the pointer's movement
@@ -222,6 +224,9 @@ export function LayerView(p: LayerViewProps) {
     if (w.weightNode !== undefined) p.select({ kind: 'node', id: w.weightNode });
     else if (edge) p.select({ kind: 'wire', from: edge[0], to: edge[1] });
   };
+  const isFresh = (edge: readonly [string, string]): boolean =>
+    p.fresh !== undefined &&
+    (p.fresh.has(parsePort(edge[0]).node) || p.fresh.has(parsePort(edge[1]).node));
   const weightValue = (id: string): number | undefined => {
     const v = p.weights?.[id]?.['W'];
     return v?.length === 1 ? v[0] : undefined;
@@ -267,23 +272,24 @@ export function LayerView(p: LayerViewProps) {
         const edge = graph.edges[w.edge];
         if (!edge) return null;
         return (
-          <Wire
-            key={w.edge}
-            edge={w.edge}
-            points={w.points}
-            labelAt={w.labelAt}
-            width={analysis.edgeWidth[w.edge] ?? null}
-            error={p.errorEdges.has(w.edge)}
-            selected={wireSelected(w)}
-            drop={dropEdge === w.edge}
-            valid={cand?.edges.has(w.edge)}
-            lifted={lifted === w.edge}
-            replace={replaced === w.edge}
-            onHover={hoverWire}
-            scale={scale}
-            hitPx={hitPx}
-            onSelect={() => selectWire(w)}
-          />
+          <g key={w.edge} className={isFresh(edge) ? 'tk-fadein' : undefined}>
+            <Wire
+              edge={w.edge}
+              points={w.points}
+              labelAt={w.labelAt}
+              width={analysis.edgeWidth[w.edge] ?? null}
+              error={p.errorEdges.has(w.edge)}
+              selected={wireSelected(w)}
+              drop={dropEdge === w.edge}
+              valid={cand?.edges.has(w.edge)}
+              lifted={lifted === w.edge}
+              replace={replaced === w.edge}
+              onHover={hoverWire}
+              scale={scale}
+              hitPx={hitPx}
+              onSelect={() => selectWire(w)}
+            />
+          </g>
         );
       })}
       {graph.nodes.map((node) => {
@@ -305,7 +311,7 @@ export function LayerView(p: LayerViewProps) {
             data-error={p.errorNodes.has(node.id)}
             data-drop={dropNode === node.id}
             data-valid={cand?.nodes.has(node.id) === true}
-            className="tk-node"
+            className={p.fresh?.has(node.id) ? 'tk-node tk-fadein' : 'tk-node'}
             role="button"
             tabIndex={0}
             aria-label={`${node.type} ${node.id}`}
@@ -452,23 +458,24 @@ export function LayerView(p: LayerViewProps) {
         if (!edge || !hit) return null;
         if (w.weightNode !== undefined) {
           return (
-            <WeightPill
-              key={w.edge}
-              node={w.weightNode}
-              edge={w.edge}
-              at={w.labelAt}
-              value={weightValue(w.weightNode)}
-              selected={wireSelected(w)}
-              error={p.errorEdges.has(w.edge)}
-              drop={dropEdge === w.edge}
-              valid={cand?.edges.has(w.edge)}
-              replace={replaced === w.edge}
-              scale={scale}
-              hit={hit}
-              sizing={pills.get(w.edge) ?? w.weightNode}
-              onSelect={() => selectWire(w)}
-              onHover={hoverWire}
-            />
+            <g key={w.edge} className={isFresh(edge) ? 'tk-fadein' : undefined}>
+              <WeightPill
+                node={w.weightNode}
+                edge={w.edge}
+                at={w.labelAt}
+                value={weightValue(w.weightNode)}
+                selected={wireSelected(w)}
+                error={p.errorEdges.has(w.edge)}
+                drop={dropEdge === w.edge}
+                valid={cand?.edges.has(w.edge)}
+                replace={replaced === w.edge}
+                scale={scale}
+                hit={hit}
+                sizing={pills.get(w.edge) ?? w.weightNode}
+                onSelect={() => selectWire(w)}
+                onHover={hoverWire}
+              />
+            </g>
           );
         }
         return (
