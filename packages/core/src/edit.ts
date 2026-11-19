@@ -17,6 +17,8 @@ import {
   resolvePin,
   resolveEdge,
   inputPortsOf,
+  isVariadicPort,
+  variadicPortsOf,
   type Edge,
   type Endpoint,
   type Graph,
@@ -25,7 +27,7 @@ import {
   type NodeId,
   type PortRef,
 } from './graph.js';
-import { CORE_PIECES, PALETTE, type Shape } from './registry.js';
+import { CORE_PIECES, PALETTE, sameShape } from './registry.js';
 import type { Namer } from './macros.js';
 
 export type EditResult = { ok: true; graph: Graph; select?: NodeId } | { ok: false; error: string };
@@ -171,7 +173,9 @@ export function swapPiece(
   }
   // A swap keeps the wiring, so the two pieces must take the same input ports (and Input and
   // Target, which both have none, are different data and never swap).
-  const same = inputPortsOf(old.type).join() === inputPortsOf(piece.type).join();
+  const same =
+    inputPortsOf(old.type).join() === inputPortsOf(piece.type).join() &&
+    variadicPortsOf(old.type).join() === variadicPortsOf(piece.type).join();
   if (!same || (old.type !== piece.type && family === 'inputs')) {
     return fail(
       `A ${piece.type} cannot replace the ${old.type}; they are different kinds of piece.`,
@@ -221,8 +225,9 @@ export function swapPiece(
 }
 
 /**
- * Adds the wire `from -> to`, replacing whatever fed that input port. The wire is stored in the
- * short form (`x`, `loss.pred`). Refused for a bad port, a cycle (including a node into itself),
+ * Adds the wire `from -> to`, replacing whatever fed that input port, except on a variadic port
+ * (CONTRACTS.md section 3), which takes many wires: there the wire is appended after the others and
+ * nothing is replaced. The wire is stored in the short form (`x`, `loss.pred`). Refused for a bad port, a cycle (including a node into itself),
  * a wire that already exists, and a locked destination. Does not enforce shape or role rules;
  * `analyse` reports those.
  */
@@ -239,9 +244,16 @@ export function connect(g: Graph, from: PortRef, to: PortRef, opts?: EditOptions
   if (feeders.length === 1 && only && only.from.node === r.from.node) {
     return fail('Those two are already connected.');
   }
-  const edges = g.edges.filter(
-    (_, i) => !(resolved[i]?.to.node === r.to.node && resolved[i]?.to.port === r.to.port),
-  );
+  const toNode = findNode(g, r.to.node);
+  const variadic = toNode !== undefined && isVariadicPort(toNode.type, r.to.port);
+  if (variadic && feeders.some((x) => x?.from.node === r.from.node)) {
+    return fail('Those two are already connected.');
+  }
+  const edges = variadic
+    ? g.edges.slice()
+    : g.edges.filter(
+        (_, i) => !(resolved[i]?.to.node === r.to.node && resolved[i]?.to.port === r.to.port),
+      );
   edges.push([r.from.node, toRef(g, r.to.node, r.to.port)]);
   return finish(g, g.nodes, edges);
 }
@@ -250,6 +262,9 @@ export function connect(g: Graph, from: PortRef, to: PortRef, opts?: EditOptions
  * Moves one end of an existing wire: `end: 'to'` points it at another input port (`ref`),
  * `end: 'from'` makes another piece feed the same input. One edit, so one undo step. The old wire
  * is removed first, so whatever already fed the new input port is replaced, as in `connect`.
+ * On a variadic input port (CONTRACTS.md section 3) nothing is replaced: `end: 'to'` onto one appends
+ * the wire there, and moving a wire off one removes just that wire; `end: 'from'` on a wire into a
+ * variadic port keeps the wire's place in the edge list (so the input order is unchanged).
  * Refused when the wire does not exist, for a bad port, a cycle, and when the wire's old
  * destination or the new destination is locked.
  */
@@ -264,15 +279,25 @@ export function rewireEdge(
   const e = g.edges[edgeIndex];
   if (!old || !e) return fail('That wire does not exist.');
   if (lockedAmong(opts, [old.to.node])) return fail(LOCKED_MESSAGE);
+  if (end === 'to') {
+    // Dropping a wire back on its own port changes nothing (and must not move it in the fold order).
+    const dest = resolveEdge(g.nodes, [e[0], ref]);
+    if (dest.ok && dest.to.node === old.to.node && dest.to.port === old.to.port) {
+      return { ok: true, graph: g };
+    }
+  }
   const rest: Graph = { ...g, edges: g.edges.filter((_, i) => i !== edgeIndex) };
-  return end === 'to' ? connect(rest, e[0], ref, opts) : connect(rest, ref, e[1], opts);
-}
-
-function sameShape(a: Shape, b: Shape): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === 'example') return a.width === (b as typeof a).width;
-  if (a.kind === 'param') return a.rows === (b as typeof a).rows && a.cols === (b as typeof a).cols;
-  return true;
+  if (end === 'to') return connect(rest, e[0], ref, opts);
+  const res = connect(rest, ref, e[1], opts);
+  const dest = findNode(g, old.to.node);
+  if (res.ok && dest !== undefined && isVariadicPort(dest.type, old.to.port)) {
+    // connect appended the new wire; put it back where the old one was.
+    const edges = res.graph.edges.slice();
+    const moved = edges.pop();
+    if (moved !== undefined) edges.splice(edgeIndex, 0, moved);
+    return finish(g, res.graph.nodes, edges);
+  }
+  return res;
 }
 
 /** Analysis for shape questions only: the dataset kind and class count do not change shapes. */
@@ -335,12 +360,32 @@ export function deleteNode(g: Graph, nodeId: NodeId, opts?: EditOptions): EditRe
     const down = a.shape[nodeId];
     if (up && down && !sameShape(up, down)) close = false;
   }
+  // A closed gap must not duplicate a wire the upstream piece already has into a variadic port.
+  const keyOf = (from: NodeId, r: Resolved) => `${from}>${r?.to.node}.${r?.to.port}`;
+  const kept = new Set<string>();
+  g.edges.forEach((_, i) => {
+    const r = resolved[i];
+    if (
+      r &&
+      !ins.includes(i) &&
+      !outs.includes(i) &&
+      !gone.has(r.from.node) &&
+      !gone.has(r.to.node)
+    )
+      kept.add(keyOf(r.from.node, r));
+  });
   const edges: Edge[] = [];
   g.edges.forEach((e, i) => {
     const r = resolved[i];
     if (ins.includes(i)) return;
     if (outs.includes(i)) {
-      if (close && inEdge !== undefined) edges.push([inEdge[0], e[1]]);
+      if (close && inEdge !== undefined && inRes != null && r) {
+        const dest = findNode(g, r.to.node);
+        const key = keyOf(inRes.from.node, r);
+        if (dest && isVariadicPort(dest.type, r.to.port) && kept.has(key)) return;
+        kept.add(key);
+        edges.push([inEdge[0], e[1]]);
+      }
       return;
     }
     if (r && (gone.has(r.from.node) || gone.has(r.to.node))) return;

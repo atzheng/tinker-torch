@@ -3,11 +3,12 @@
  * the issues that disable Train. Pure; no DOM.
  */
 import type { DataInfo, Graph, Node, NodeId } from './graph.js';
-import { resolveEdge, resolvePin } from './graph.js';
+import { isVariadicPort, resolveEdge, resolvePin } from './graph.js';
 import {
   CORE_PIECES,
   describeShape,
   ownsParams,
+  sameShape,
   type ParamInit,
   type ParamShapes,
   type ShapeCtx,
@@ -31,6 +32,12 @@ export type Analysis = {
   inWidth: Record<NodeId, number>;
   /** Example width leaving each node; absent for scalars, parameter matrices and unknowns. */
   outWidth: Record<NodeId, number>;
+  /**
+   * Per node, per input port: the wires that feed it, as `graph.edges` indices with their source, in
+   * edge order. A plain port has at most one entry; a variadic port (CONTRACTS.md section 3) has
+   * all its wires, which the engine folds in this order. Only wires that resolved are listed.
+   */
+  inputs: Record<NodeId, Record<string, { edge: number; from: NodeId }[]>>;
   /** Per graph.edges index: the shape the wire carries, null where unknown. */
   edgeShape: (Shape | null)[];
   /** Per graph.edges index: the example width, null for scalars, matrices and unknowns. */
@@ -93,9 +100,10 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   }
   const byId = new Map<NodeId, Node>(nodes.map((n) => [n.id, n]));
 
-  // ---- resolve edges; each input port keeps its first wire
+  // ---- resolve edges; a plain input port keeps its first wire, a variadic port keeps all of them
   type Used = { index: number; from: NodeId };
-  const inEdges = new Map<NodeId, Map<string, Used>>();
+  const inEdges = new Map<NodeId, Map<string, Used[]>>();
+  const wireOf = (id: NodeId, port: string): Used | undefined => inEdges.get(id)?.get(port)?.[0];
   const used: { index: number; from: NodeId; to: NodeId; port: string }[] = [];
   graph.edges.forEach((edge, index) => {
     const r = resolveEdge(nodes, edge);
@@ -105,14 +113,25 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     }
     let ports = inEdges.get(r.to.node);
     if (!ports) inEdges.set(r.to.node, (ports = new Map()));
-    if (ports.has(r.to.port)) {
+    const list = ports.get(r.to.port);
+    const toType = byId.get(r.to.node)?.type;
+    if (list && !(toType !== undefined && isVariadicPort(toType, r.to.port))) {
       issues.push({
         at: { edge: index, node: r.to.node },
         message: `"${r.to.node}" has two wires into its ${r.to.port} input; each input takes only one.`,
       });
       return;
     }
-    ports.set(r.to.port, { index, from: r.from.node });
+    if (list?.some((x) => x.from === r.from.node)) {
+      issues.push({
+        at: { edge: index, node: r.to.node },
+        message: `"${r.from.node}" is wired into the ${r.to.port} input of "${r.to.node}" twice; remove one of the two wires.`,
+      });
+      return;
+    }
+    const w = { index, from: r.from.node };
+    if (list) list.push(w);
+    else ports.set(r.to.port, [w]);
     used.push({ index, from: r.from.node, to: r.to.node, port: r.to.port });
   });
 
@@ -170,7 +189,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     weightShape: (linearId) => {
       const lin = byId.get(linearId);
       if (lin?.type !== 'linear') return undefined;
-      const src = inEdges.get(linearId)?.get('in');
+      const src = wireOf(linearId, 'in');
       const s = src ? shapeOf(src.from) : undefined;
       return s?.kind === 'example' ? [s.width, lin.out] : undefined;
     },
@@ -208,15 +227,29 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     const inS: Record<string, Shape> = {};
     let unknownUpstream = false;
     let missing = false;
+    let mismatch: { edge: number; message: string } | undefined;
     for (const port of ports) {
-      const edge = inEdges.get(id)?.get(port);
-      if (!edge) {
+      const wires = inEdges.get(id)?.get(port) ?? [];
+      if (wires.length === 0) {
         missing = true;
         continue;
       }
-      const s = shapeOf(edge.from);
-      if (s === undefined) unknownUpstream = true;
-      else inS[port] = s;
+      const shapes = wires.map((w) => shapeOf(w.from));
+      const s = shapes[0];
+      if (shapes.some((x) => x === undefined) || s === undefined) unknownUpstream = true;
+      else {
+        inS[port] = s;
+        if (isVariadicPort(node.type, port)) {
+          shapes.forEach((x, k) => {
+            if (k > 0 && x !== undefined && !sameShape(s, x)) {
+              mismatch ??= {
+                edge: (wires[k] as Used).index,
+                message: `"${id}" needs every wire into its ${port} input to carry the same kind of value: the first is ${describeShape(s)}, but this one is ${describeShape(x)}.`,
+              };
+            }
+          });
+        }
+      }
     }
     if (node.type === 'input') {
       const dup = node.columns.filter((c, i) => node.columns.indexOf(c) !== i);
@@ -272,10 +305,14 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
       return;
     }
     if (unknownUpstream) return;
+    if (mismatch) {
+      issues.push({ at: { node: id, edge: mismatch.edge }, message: mismatch.message });
+      return;
+    }
     if ('error' in r) {
       const at: Issue['at'] = { node: id };
       if (node.type === 'add' || node.type === 'subtract') {
-        const b = inEdges.get(id)?.get('b');
+        const b = wireOf(id, 'b');
         if (b) at.edge = b.index;
       }
       issues.push({ at, message: r.error });
@@ -310,10 +347,12 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     while (stack.length > 0) {
       const cur = stack.pop();
       if (cur === undefined) break;
-      for (const u of inEdges.get(cur)?.values() ?? []) {
-        if (!keep.has(u.from)) {
-          keep.add(u.from);
-          stack.push(u.from);
+      for (const list of inEdges.get(cur)?.values() ?? []) {
+        for (const u of list) {
+          if (!keep.has(u.from)) {
+            keep.add(u.from);
+            stack.push(u.from);
+          }
         }
       }
     }
@@ -456,7 +495,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
         message: `${label} needs a dataset with two classes, but this dataset is regression.`,
       });
     }
-    const pred = inEdges.get(id)?.get('pred');
+    const pred = wireOf(id, 'pred');
     if (!pred) continue;
     const src = byId.get(pred.from);
     const wantFn = n.type === 'log_loss' ? 'sigmoid' : 'softmax';
@@ -510,8 +549,17 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     edgeWidth[e.index] = outWidth[e.from] ?? null;
   }
 
+  const inputs: Analysis['inputs'] = record();
+  for (const [id, ports] of inEdges) {
+    const byPort: Record<string, { edge: number; from: NodeId }[]> = {};
+    for (const [port, list] of ports)
+      byPort[port] = list.map((w) => ({ edge: w.index, from: w.from }));
+    inputs[id] = byPort;
+  }
+
   return {
     order,
+    inputs,
     shape,
     inWidth,
     outWidth,

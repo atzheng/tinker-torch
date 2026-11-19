@@ -3,7 +3,7 @@
  * node set (not `analysis.order`), so invalid graphs lay out too: every node gets a position.
  */
 import type { Graph, Node, NodeId } from './graph.js';
-import { inputPortsOf, resolveEdge } from './graph.js';
+import { inputPortsOf, isVariadicPort, resolveEdge } from './graph.js';
 import type { Analysis } from './analyse.js';
 
 export type Box = { x: number; y: number; w: number; h: number };
@@ -286,6 +286,24 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
     };
   }
 
+  // Wires into a variadic port enter at different heights along that port's band, ordered by where
+  // they come from (top source first, ties by edge index), so k wires neither overlap nor cross.
+  const slotOf = new Map<number, [slot: number, count: number]>();
+  const groups = new Map<string, typeof edges>();
+  for (const e of edges) {
+    const dest = byId[e.to];
+    if (!dest || !isVariadicPort(dest.type, e.port) || !boxes[e.from] || !boxes[e.to]) continue;
+    const key = `${e.to}\0${e.port}`;
+    const list = groups.get(key);
+    if (list) list.push(e);
+    else groups.set(key, [e]);
+  }
+  for (const list of groups.values()) {
+    const cy = (id: NodeId) => (boxes[id]?.y ?? 0) + (boxes[id]?.h ?? 0) / 2;
+    list.sort((p, q) => cy(p.from) - cy(q.from) || p.index - q.index);
+    list.forEach((e, j) => slotOf.set(e.index, [j, list.length]));
+  }
+
   const wires: LayerLayout['wires'] = [];
   for (const e of edges) {
     const a = boxes[e.from];
@@ -297,7 +315,10 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
     const x0 = a.x + a.w;
     const y0 = a.y + a.h / 2;
     const x1 = b.x;
-    const y1 = b.y + (b.h * (k + 1)) / (ports.length + 1);
+    // One slot per port; a variadic port's slot is a band (half a slot either side of its centre)
+    // shared by its wires, and a lone wire sits at the centre as on any other port.
+    const slot = slotOf.get(e.index);
+    const y1 = variadicSlotY(b, k, ports.length, slot?.[0] ?? 0, slot?.[1] ?? 1);
     const ca = col[e.from] ?? 0;
     const cb = col[e.to] ?? 0;
     const gapR = (colX[ca] ?? 0) + (colW[ca] ?? 0) + gap / 2;
@@ -312,6 +333,20 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
     wires.push({ edge: e.index, points, labelAt: labelAnchor(points) });
   }
   return { boxes, wires, size: [width, height] };
+}
+
+/**
+ * Height at which wire `slot` (0-based, in wire order) of `count` wires enters input port `k` of
+ * `ports` on `box`. One wire (the default) enters at the port's centre, as on any port.
+ */
+export function variadicSlotY(
+  box: { y: number; h: number },
+  k: number,
+  ports: number,
+  slot = 0,
+  count = 1,
+): number {
+  return box.y + (box.h * (k + 0.5 + (slot + 1) / (count + 1))) / (ports + 1);
 }
 
 const boxPlan = (): Plan => ({ w: LAYOUT.boxW, h: LAYOUT.boxH, unit: null, count: 0 });
