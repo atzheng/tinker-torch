@@ -8,7 +8,7 @@
 import { jit, numpy as np, random, tree, vmap } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import type * as optax from '@jax-js/optax';
-import { initParams } from '@tinker/core';
+import { v2 } from '@tinker/core';
 import type { Batch, HostParams } from '@tinker/core';
 import { internals } from './compile.js';
 import type { Internals } from './compile.js';
@@ -129,7 +129,7 @@ export function trainMany(
   const n = data[0]?.n ?? 0;
   const d = m.dataColumns.length;
 
-  const inits = seeds.map((s) => initParams(m.graph, m.analysis, s));
+  const inits = seeds.map((s) => v2.initParams(m.analysis, s));
   let params: ParamTree = {};
   for (const [id, s] of m.shapes) {
     const layer: ParamTree[string] = {

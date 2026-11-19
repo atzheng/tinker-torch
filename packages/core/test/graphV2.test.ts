@@ -108,7 +108,8 @@ type V1Source = { name: string; json: unknown };
 function v1Sources(): V1Source[] {
   const out: V1Source[] = [];
   for (const f of readdirSync(fixturesDir).filter((x) => x.endsWith('.json'))) {
-    const fx = JSON.parse(readFileSync(fixturesDir + f, 'utf8')) as { graph: unknown };
+    const fx = JSON.parse(readFileSync(fixturesDir + f, 'utf8')) as { graph: { version?: number } };
+    if (fx.graph.version === 2) continue; // prim_* fixtures are already version 2
     out.push({ name: `fixture ${f}`, json: fx.graph });
   }
   for (const f of readdirSync(presetsDir).filter((x) => x.endsWith('.json'))) {

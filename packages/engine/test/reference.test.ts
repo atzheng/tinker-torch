@@ -40,6 +40,22 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   mlp_tanh_momentum_5steps: {},
   mlp_tanh_adam_5steps: {},
   mlp_tanh_adam_300steps: {},
+  // graph version 2 (primitives, Weights taps, pins; tinker-8xw.3)
+  prim_square_mean: {},
+  prim_abs_mean: {},
+  prim_huber_mean: {},
+  prim_scale_add: {},
+  prim_weights_norm_l2: {},
+  prim_weights_norm_l1: {},
+  prim_weights_tap_only: {},
+  prim_no_prediction: {},
+  prim_two_predictions: {},
+  prim_aux_objective: {},
+  prim_log_loss_sigmoid: {},
+  prim_cross_entropy_softmax: {},
+  prim_link_shared: {},
+  prim_dag_dropout_skip: {},
+  prim_penalty_adam_300steps: {},
 };
 
 /** Skipped until the named bead lands. */
@@ -88,7 +104,7 @@ describe('fixtures', () => {
         const cl = compare([on.loss], [fx.expect.loss], tol);
         const gotG = ids.flatMap((id) => [...(on.grads[id]?.W ?? []), ...(on.grads[id]?.b ?? [])]);
         const cg = compare(gotG, flat(fx.expect.grads, ids), tol);
-        const pe = engine.predict(model, params, batch.x, batch.n);
+        const pe = engine.predict(model, params, batch.x, batch.n)[0] ?? new Float32Array(0);
         const cpe = compare(pe, fx.expect.predEval ?? [], tol);
         const cle = compare(
           [engine.evaluate(model, params, batch)],
@@ -108,10 +124,16 @@ describe('fixtures', () => {
       }
 
       // pred and loss
-      const pred = engine.predict(model, params, batch.x, batch.n);
-      const cp = compare(pred, fx.expect.pred, tol);
-      report.push(`pred ${cp.maxAbs.toExponential(2)}`);
-      expect(cp.ok, `pred max abs error ${cp.maxAbs}`).toBe(true);
+      const preds = engine.predict(model, params, batch.x, batch.n);
+      const wantPreds = fx.expect.predictions ?? [fx.expect.pred];
+      expect(preds.length, 'number of prediction pins').toBe(wantPreds.length);
+      let predErr = 0;
+      preds.forEach((p, k) => {
+        const cp = compare(p, wantPreds[k] ?? [], tol);
+        predErr = Math.max(predErr, cp.maxAbs);
+        expect(cp.ok, `pred ${k} max abs error ${cp.maxAbs}`).toBe(true);
+      });
+      report.push(`pred ${predErr.toExponential(2)}`);
       const loss = engine.evaluate(model, params, batch);
       const cl = compare([loss], [fx.expect.loss], tol);
       report.push(`loss ${cl.maxAbs.toExponential(2)}`);

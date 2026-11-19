@@ -4,12 +4,13 @@ import { installProbe } from '@tinker/engine/probe';
 import { expect, test, vi } from 'vitest';
 import { analyse, biasVariance, grid1d, sample, truth, type Graph } from '@tinker/core';
 import sine from '../src/presets/sine.json';
+import { adaptEngine } from '../src/legacyEngine.js';
 import { runResample } from '../src/results/resampleRun.js';
 
 installProbe();
 vi.setConfig({ testTimeout: 120_000 });
 const { createEngine } = await import('@tinker/engine');
-const engine = await createEngine();
+const engine = adaptEngine(await createEngine()); // temporary v1 -> v2 adapter (tinker-8xw.4)
 
 const base = (sine as unknown as { graph: Graph }).graph;
 

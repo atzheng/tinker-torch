@@ -10,7 +10,7 @@ packages/core/src/            pure TypeScript, no DOM, no jax-js
   registry.ts     PieceType, CORE_PIECES, PALETTE (section 3)
   macros.ts       ready-made loss and penalty groups as primitive subgraphs (section 2)
   migrate.ts      version 1 -> 2 migration (section 2)
-  legacy/         version 1 graph, registry and file, used by analyse, edit, layout, params, engine, web until tinker-8xw.2-.5
+  legacy/         version 1 graph, registry and file, used by analyse, edit, layout, params, engine, web until tinker-8xw.2-.5 (the engine already uses version 2; the web reaches it through `web/src/legacyEngine.ts`, a temporary adapter that tinker-8xw.4 removes)
   common.ts       data/train schemas, ports and ids shared by both versions
   analyse.ts      analyse(graph, dataInfo) -> Analysis: widths, issues, param counts (section 4)
   rng.ts          seeded PRNG (section 5)
@@ -26,10 +26,8 @@ packages/core/src/            pure TypeScript, no DOM, no jax-js
   index.ts        re-exports everything above
 packages/engine/src/          the only package that imports @jax-js/*
   index.ts        createEngine(): Engine (section 7)
-  compile.ts      Graph + Analysis -> Model (predict / loss closures, jit)
-  pieces/<type>.ts  one file per PieceType; ENGINE_PIECES table in pieces/index.ts
-  losses.ts       loss functions incl. fused link+loss forms
-  penalty.ts      L1/L2 over Linear weights
+  compile.ts      Graph v2 + Analysis -> Model: predict and loss plans, stable fusion, jit (section 7)
+  pieces/<type>.ts  one file per PieceType (18); ENGINE_PIECES table in pieces/index.ts; log_loss.ts and cross_entropy.ts hold the fused forms
   optim.ts        sgd / momentum / adam via @jax-js/optax
   many.ts         trainMany (vmap)
   surface.ts      lossGrid for the loss-surface view
@@ -70,7 +68,7 @@ Libraries, fixed: pnpm, TypeScript strict, vitest, zod, `@jax-js/jax` 0.1.27 and
 
 The graph is an arbitrary DAG of operations. The user pins one or more outputs as predictions (ŷ) and exactly one as the loss (L). Training minimises L; `predict()` returns the ŷ ports. Roles are pins on output ports, never nodes. Model and objective regions are derived from the pins (ancestors of ŷ are the model; what L needs beyond that is the objective), never a fixed layout zone.
 
-**Migration status.** `core/graph.ts`, `core/registry.ts`, `core/macros.ts`, `core/migrate.ts` and `core/file.ts` are version 2 and are exported as the namespace `v2` from `@tinker/core`. Analyse, edit, layout, params, the engine and the web app still consume version 1 (`core/legacy/*`, exported under the old names) until beads tinker-8xw.2 to .5 move them; then `legacy/` is deleted and the `v2` namespace is flattened into the root exports. `core/analyseV2.ts` (section 4) is also version 2, as `v2.analyse`; sections 7 and 8 describe version 1 until their bead rewrites them. Version 1 documents are still readable: `v2.parseGraph` migrates them.
+**Migration status.** `core/graph.ts`, `core/registry.ts`, `core/macros.ts`, `core/migrate.ts` and `core/file.ts` are version 2 and are exported as the namespace `v2` from `@tinker/core`. Analyse, edit, layout, params, the engine and the web app still consume version 1 (`core/legacy/*`, exported under the old names) until beads tinker-8xw.2 to .5 move them; then `legacy/` is deleted and the `v2` namespace is flattened into the root exports. `core/analyseV2.ts` (section 4) is also version 2, as `v2.analyse`, and `core/paramsV2.ts` as `v2.initParams(analysis, seed)` (section 5: the same init as version 1 for the same ids, over `analysis.paramNodes`, so a Linear read only through a Weights tap gets parameters); the engine (section 7) is version 2 too; section 8 describes version 1 until its bead rewrites it. Version 1 documents are still readable: `v2.parseGraph` migrates them.
 
 ```ts
 type NodeId = string; // [a-z][a-z0-9_]*, unique
@@ -313,21 +311,21 @@ The SPEC interface, refined. All arrays crossing the interface are plain Float32
 
 ```ts
 type Batch = { x: Float32Array; y: Float32Array; n: number };      // x row-major [n, d], already standardised if on
-type Model = { readonly graph: Graph; readonly analysis: Analysis }; // plus private compiled closures
+type Model = { readonly graph: v2.Graph; readonly analysis: v2.Analysis }; // graph version 2; plus private compiled closures
 type Params = { readonly __brand: 'Params' };                        // opaque, owns jax arrays
 type TrainState = { params: Params; opt: unknown; step: number; key: unknown };
 type StepResult = { state: TrainState; loss: number; diverged: boolean }; // loss before the update; diverged if non-finite
 
 interface Engine {
-  compile(graph: Graph, data: DataInfo): Model;               // throws Error(message) when !analysis.trainable
-  init(model: Model, seed: number): Params;                   // = fromHost(initParams(...))
+  compile(graph: v2.Graph, data: DataInfo): Model;            // throws Error(first issue) when !analysis.trainable
+  init(model: Model, seed: number): Params;                   // = fromHost(v2.initParams(analysis, seed)); one entry per analysis.paramNodes
   fromHost(model: Model, host: HostParams): Params;
   toHost(params: Params): HostParams;                          // SPEC's read(); copies
   write(params: Params, nodeId: NodeId, values: { W?: Float32Array; b?: Float32Array }): Params; // consumes params
   startTraining(model: Model, params: Params, seed: number): TrainState; // consumes params; optimizer state from graph.train
   step(model: Model, state: TrainState, batch: Batch): StepResult;       // consumes state; dropout on
-  predict(model: Model, params: Params, x: Float32Array, n: number): Float32Array; // dropout off; output after the link; [n, width]
-  evaluate(model: Model, params: Params, batch: Batch): number;          // mean loss + penalty, dropout off
+  predict(model: Model, params: Params, x: Float32Array, n: number): Float32Array[]; // dropout off; one [n, width] array per ŷ pin, in pin order; [] with no ŷ pin
+  evaluate(model: Model, params: Params, batch: Batch): number;          // the L pin's value (a single number), dropout off
   lossGrid(model: Model, params: Params, batch: Batch, axes: [ParamAxis, ParamAxis], a: Float32Array, b: Float32Array): Float32Array; // [a.length, b.length]
   trainMany(model: Model, seeds: number[], data: Batch[], steps: number): ManyResult[]; // vmap over k copies
   disposeModel(model: Model): void;                            // frees the jitted functions; idempotent
@@ -341,8 +339,9 @@ function createEngine(): Promise<Engine>; // awaits jax init(); Wasm device; nev
 ```
 
 - "Consumes" means the caller must not use that value again; the engine disposes it or reuses its arrays. Everything else borrows. Callers that need to keep a Params (best-so-far, pins) take `clone` or `toHost`.
-- The objective is mean loss over the batch plus λ·R(w), with R summed over Linear `W` only: L2 = Σw², L1 = Σ|w|.
-- Fused forms: output sigmoid + log_loss is computed as BCE with logits on the pre-link value; output softmax + cross_entropy is computed as log-softmax. Other combinations apply the link and then the loss. `predict` always returns post-link values.
+- The objective is the value at the L pin, a single number: whatever the graph computes (Mean of an error, plus a Scale of Norms of Weights taps, ...). `step` minimises it; `evaluate` reads it with dropout off; `predict` returns the ŷ pins' values with dropout off (a link is applied, so they are probabilities). The engine knows no loss names and no "penalty": a Weights tap reads the Linear's `W` (never `b`), so gradients from the objective reach `W` through the tap as well as through the forward pass. Shapes: per-example values are `[n, width]`; `target` is `[n, 1]` (a class index as a float for classification); Mean and Norm give a scalar; log_loss and cross_entropy give `[n, 1]`.
+- Two plans are made at compile time. The predict plan is `analysis.modelOrder` (ancestors of the ŷ pins). The loss plan is `analysis.order` restricted to what the L pin reaches (a ŷ branch the loss does not use is not run, and its Linear is not read, in a loss pass). A Target in the predict plan reads zeros. Parameters come from `analysis.paramNodes` and `paramShapes`, not from `order`: a Linear read only through a Weights tap has parameters, is initialised and trained, and has no forward pass. A parameter a pass does not read is disposed by that pass; its gradient is zero.
+- Stable fusion, in the loss plan only (the graph and the predict plan stay semantic): for each pair in `analysis.fusable` the loss node reads the link's INPUT, the logits, instead of the probability. log_loss then computes `logsumexp([z, 0]) − z·y` and cross_entropy `−logSoftmax(z)[class]`; both are finite for any finite logit (checked at ±5,000 in the loss, the prediction and the gradient). The link is still computed in the loss pass when something else uses its output. A log_loss or cross_entropy whose `pred` is not a link (analyse refuses it, so not reachable when trainable) clips the probability to [1e-7, 1−1e-7] before the log. There is no log-sigmoid primitive, so the "log(sigmoid)" form beyond log_loss has nothing to fuse yet.
 - Huber follows `nn.HuberLoss(delta)`. Dropout follows `nn.Dropout` (inverted scaling 1/(1−p)).
 - Optimizers: sgd = `optax.sgd(lr)`; momentum = `optax.sgd(lr, { momentum: 0.9 })` (equal to torch SGD with momentum 0.9, dampening 0); adam = `optax.adam(lr)` with b1 0.9, b2 0.999, eps 1e-8 (torch defaults). Adam is plain and can spike periodically near convergence (`tinker-df1`): on a noise-free sine fit (n=40, 1-8-8-1 tanh MLP, full batch, seed 1, lr 0.01 or 0.05) the loss, once near 1e-4, jumps every ~100-200 steps by up to 69x (lr 0.01) or 770x (lr 0.05) its running minimum and decays within a few steps. PyTorch 2.15 float32 `Adam` on the same data and init does the same (58x); SGD does not. Owner decision: do not damp it. Measured mitigations: larger eps (1e-7 to 1e-3), smaller b2 (0.99, 0.95) and 1/(1+t/k) lr decay (k 1000, 500) did not reliably remove it or removed it only by killing the lr (k 500); torch `amsgrad=True` still spiked early; a running max of the bias-corrected second moment removed it but was 3x-7x slower to reach small losses on presets. The UI carries no explanatory text. `mlp_tanh_adam_300steps` checks a long plain-Adam run against PyTorch.
 - `step` never throws on divergence; it returns `diverged: true` and the state is unchanged.
@@ -354,8 +353,8 @@ function createEngine(): Promise<Engine>; // awaits jax init(); Wasm device; nev
   - `step` keeps a `.ref` of the pre-step state until the loss is read, so a diverged step can return the state unchanged; the leak test includes a diverged step.
   - `liveArrays()` counts the Wasm backend's live buffers through the test-only hook in `docs/spike.md` (it finds jax-js's private slot map by intercepting `Map.prototype.set` until the first allocation). It is tied to the pinned version and is never used by the app: the hook lives in `engine/src/probe.ts` and is off unless a test calls `installProbe()` and then loads the engine with a dynamic `import()` (see `test/leak.test.ts`); without it `liveArrays()` returns 0. It does not count arrays of fewer than 128 elements with all values equal (jax-js keeps those as symbolic constants without a buffer; no memory, so harmless). The package exports it as `@tinker/engine/probe` so a dev build of the app can do the same.
   - Engine structure fixed by `tinker-hj4.1` (later engine beads fill files and flags, they do not change these):
-    - `EnginePiece<N> = { implemented: boolean; forward(node, inputs: Record<port, JArray>, layer, ctx): JArray }` in `pieces/types.ts`; `forward` consumes its inputs and layer. `compile` walks `analysis.order`; a piece, loss (`losses.ts` `LOSSES`), penalty (`penalty.ts` `PENALTY_IMPLEMENTED`) or optimizer (`optim.ts` `OPTIMIZERS`) with `implemented: false` makes `compile` throw "The <thing> is not implemented yet."
-    - In loss mode the Output piece returns the pre-link value and the loss applies or fuses the link itself (`LossImpl.compute(node, z, y, link)`: z pre-link, y `[n]`, result the mean loss); in predict mode the Output applies the link. The penalty is added in `compile.ts` `walk` (hj4.2).
+    - `EnginePiece<N> = { forward(node, inputs: Record<port, JArray>, layer, ctx): JArray }` in `pieces/types.ts`; `forward` consumes its inputs and layer. `compile` walks the plan of each pass (above); an optimizer (`optim.ts` `OPTIMIZERS`) with `implemented: false` makes `compile` throw "The <name> optimizer is not implemented yet." `layer` is the node's own Linear's parameters, or for a Weights tap the parameters of the Linear it reads. `walk` hands out one reference per read (the Linear's forward pass and each tap) and `.ref`s a node's value for all but its last consumer.
+    - `PieceCtx.fused(nodeId)` tells a log_loss / cross_entropy piece that its `pred` input is the logits (the compiler rewired the edge, see above).
     - Batch x is `[n, dataColumns]` (all dataset columns, `DataInfo.columns`); the Input piece selects its own `columns`.
     - A consumed `Params` or `TrainState` throws "already consumed or disposed" instead of touching freed arrays; `dispose` is idempotent. `step` consumes the state and its `params`: after a successful step the old `state.params` is dead; after a diverged step the returned state reuses the same `Params` object.
     - `diverged` is true when the loss is non-finite or any updated parameter is non-finite (a non-finite update is never kept); `loss` is then the value read, which may be finite. A batch that does not fit the model throws before anything is consumed.
@@ -457,7 +456,8 @@ type Fixture = {
   params: Record<NodeId, { W: number[]; b?: number[] }>;   // HostParams layout [in, out], float64 written in full
   batch: { x: number[]; y: number[]; n: number };
   expect: {
-    pred: number[];                   // predict(), post-link, [n, width] row-major
+    pred: number[];                   // predict()[0], post-link, [n, width] row-major (empty when the graph has no ŷ pin)
+    predictions?: number[][];         // version 2 cases: every ŷ pin in order (`pred` is the first)
     loss: number;                     // evaluate()
     grads: Record<NodeId, { W: number[]; b?: number[] }>;  // d loss / d params
     after?: { steps: number; params: Record<NodeId, { W: number[]; b?: number[] }>; losses: number[] }; // optimizer cases
@@ -468,7 +468,7 @@ type Fixture = {
 };
 ```
 
-Details: in dropout cases `pred`, `loss` and `grads` are the dropout-ON training forward and backward with the given mask (how the engine test injects the mask is the engine's choice); `predEval` and `lossEval` are the dropout-off values that `predict` and `evaluate` must return. At-zero conventions are pinned by fixtures: the L1 penalty has subgradient sign(0) = 0 (`penalty_l1_zero_weight`) and relu'(0) = 0 (`act_relu_zero_preact`). `dropoutMask` is a 0/1 keep mask shaped [n][width of the dropout node]; the engine multiplies by mask/(1−p). The engine test injects it through the internal `debugTrainPass(model, params, batch, { [dropoutNodeId]: mask })` in `engine/src/compile.ts` (non-jitted dropout-ON forward, loss and gradients; not on `Engine`), and compares `predEval` / `lossEval` with `predict` / `evaluate`. Classification targets in `batch.y` are class indices stored as floats (0 or 1). `after.losses[k]` is the objective before update k+1 (so `losses[0] == loss`). GELU is the exact erf form (`nn.GELU()`); the engine uses jax-js `gelu` in its default tanh form instead (see "Engine exceptions" below).
+Details: in dropout cases `pred`, `loss` and `grads` are the dropout-ON training forward and backward with the given mask (how the engine test injects the mask is the engine's choice); `predEval` and `lossEval` are the dropout-off values that `predict` and `evaluate` must return. At-zero conventions are pinned by fixtures: the L1 penalty has subgradient sign(0) = 0 (`penalty_l1_zero_weight`) and relu'(0) = 0 (`act_relu_zero_preact`). `dropoutMask` is a 0/1 keep mask shaped [n][width of the dropout node]; the engine multiplies by mask/(1−p). The engine test injects it through the internal `debugTrainPass(model, params, batch, { [dropoutNodeId]: mask })` in `engine/src/compile.ts` (non-jitted dropout-ON forward, loss and gradients; not on `Engine`), and compares `predEval` / `lossEval` with `predict` / `evaluate`. Version 1 graphs in fixtures are read with `v2.parseGraph` (migrated), so every version 1 case also checks the migration; the `prim_*` cases are version 2 graphs (primitive losses, Weights taps and norms, a Linear read only by a tap, no ŷ pin, two ŷ pins, an auxiliary objective, a link that also feeds something else, a DAG with dropout, a skip and a feature piece, a 300-step Adam run). Their torch reference evaluates the graph literally, primitive by primitive (a log loss on `sigmoid` probabilities), so it also checks the engine's fused forms. Classification targets in `batch.y` are class indices stored as floats (0 or 1). `after.losses[k]` is the objective before update k+1 (so `losses[0] == loss`). GELU is the exact erf form (`nn.GELU()`); the engine uses jax-js `gelu` in its default tanh form instead (see "Engine exceptions" below).
 
 Gradients are not part of `Engine`, so the engine reference test reads them from one SGD step with learning rate 1 (grad = W before - W after).
 

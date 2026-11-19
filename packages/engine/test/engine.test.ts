@@ -1,9 +1,10 @@
-import { analyse } from '@tinker/core';
-import type { Graph } from '@tinker/core';
+import { v2 } from '@tinker/core';
+
+type Graph = v2.Graph;
 import { beforeAll, describe, expect, test } from 'vitest';
 import { createEngine } from '../src/index.js';
 import type { Engine, Model, TrainState } from '../src/index.js';
-import { loadFixture, toBatch, toHostParams, withLr } from './util.js';
+import { loadFixture, toBatch, toHostParams, withLr, predict0 } from './util.js';
 
 let engine: Engine;
 beforeAll(async () => {
@@ -101,15 +102,11 @@ describe('compile', () => {
   test('an invalid graph throws the first issue sentence', () => {
     const { graph, data } = mlp();
     const broken: Graph = { ...graph, edges: graph.edges.filter((e) => e[0] !== 'act1') };
-    const issues = analyse(broken, data).issues;
+    const issues = v2.analyse(broken, data).issues;
     expect(issues.length).toBeGreaterThan(0);
     expect(() => engine.compile(broken, data)).toThrow(issues[0]?.message);
-    const noLoss: Graph = {
-      ...graph,
-      nodes: graph.nodes.filter((n) => n.type !== 'loss'),
-      edges: [],
-    };
-    expect(() => engine.compile(noLoss, data)).toThrow(Error);
+    const noLoss: Graph = { ...graph, loss: null };
+    expect(() => engine.compile(noLoss, data)).toThrow(/No loss is pinned/);
   });
 
   test.each(['sgd', 'momentum', 'adam'] as const)(
@@ -185,11 +182,11 @@ describe('compile', () => {
     const model = engine.compile(only2, data);
     expect(model.analysis.inWidth['lin1']).toBe(1);
     const p = engine.init(model, 1);
-    const pred = engine.predict(model, p, batch.x, batch.n);
+    const pred = predict0(engine, model, p, batch.x, batch.n);
     // the same model on x with column x1 replaced by 0 must agree: lin1 sees only column x2
     const x2 = Float32Array.from(batch.x);
     for (let i = 0; i < batch.n; i++) x2[i * 2] = 99;
-    expect(Array.from(engine.predict(model, p, x2, batch.n))).toEqual(Array.from(pred));
+    expect(Array.from(predict0(engine, model, p, x2, batch.n))).toEqual(Array.from(pred));
     engine.dispose(p);
   });
 
@@ -218,7 +215,7 @@ describe('ownership', () => {
     const { graph, data, batch } = mlp();
     const model = engine.compile(graph, data);
     const { p, s } = started(model);
-    expect(() => engine.predict(model, p, batch.x, batch.n)).toThrow(/already consumed/);
+    expect(() => predict0(engine, model, p, batch.x, batch.n)).toThrow(/already consumed/);
     expect(() => engine.startTraining(model, p, 1)).toThrow(/already consumed/);
     engine.dispose(s);
   });
@@ -229,12 +226,14 @@ describe('ownership', () => {
     const { s } = started(model);
     const staleParams = s.params;
     const r = engine.step(model, s, batch);
-    expect(() => engine.predict(model, staleParams, batch.x, batch.n)).toThrow(/already consumed/);
+    expect(() => predict0(engine, model, staleParams, batch.x, batch.n)).toThrow(
+      /already consumed/,
+    );
     expect(() => engine.evaluate(model, staleParams, batch)).toThrow(/already consumed/);
     expect(() => engine.toHost(staleParams)).toThrow(/already consumed/);
     expect(() => engine.step(model, s, batch)).toThrow(/already consumed/);
     // the new state is fine
-    expect(engine.predict(model, r.state.params, batch.x, batch.n)).toHaveLength(batch.n);
+    expect(predict0(engine, model, r.state.params, batch.x, batch.n)).toHaveLength(batch.n);
     engine.dispose(r.state);
   });
 
@@ -246,7 +245,7 @@ describe('ownership', () => {
     engine.dispose(s);
     engine.dispose(s);
     engine.dispose(params);
-    expect(() => engine.predict(model, params, batch.x, batch.n)).toThrow(/already consumed/);
+    expect(() => predict0(engine, model, params, batch.x, batch.n)).toThrow(/already consumed/);
     expect(() => engine.step(model, s, batch)).toThrow(/already consumed/);
   });
 
@@ -254,8 +253,8 @@ describe('ownership', () => {
     const { graph, data, host, batch } = mlp();
     const model = engine.compile(graph, data);
     const p = engine.fromHost(model, host);
-    const a = engine.predict(model, p, batch.x, batch.n);
-    const b = engine.predict(model, p, batch.x, batch.n);
+    const a = predict0(engine, model, p, batch.x, batch.n);
+    const b = predict0(engine, model, p, batch.x, batch.n);
     expect(Array.from(a)).toEqual(Array.from(b));
     expect(engine.evaluate(model, p, batch)).toBe(engine.evaluate(model, p, batch));
     engine.dispose(p);
@@ -323,7 +322,7 @@ describe('failing calls and finiteness', () => {
     const other = loadFixture('two_param');
     const otherModel = engine.compile(other.graph, other.data);
     const foreign = engine.init(otherModel, 1);
-    expect(() => engine.predict(model, foreign, batch.x, batch.n)).toThrow(/different model/);
+    expect(() => predict0(engine, model, foreign, batch.x, batch.n)).toThrow(/different model/);
     expect(() => engine.evaluate(model, foreign, batch)).toThrow(/different model/);
     expect(() => engine.startTraining(model, foreign, 1)).toThrow(/different model/);
     // still alive and usable with its own model

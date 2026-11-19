@@ -21,6 +21,10 @@ Conventions (fixed by CONTRACTS.md):
   x^p for p = 1..degree (power-major, then column), then sin(x) if sin, then
   cos(x) if cos, then x_i * x_j for i < j in row-major pair order if products.
 - classification targets are class indices stored as floats (0 or 1).
+- cases named prim_* are graph version 2 (CONTRACTS.md section 2): `predictions` and `loss` are pins,
+  losses are built from primitives (a log loss takes probabilities, so a sigmoid link in front is
+  evaluated literally here and fused by the engine). `expect.pred` is the first prediction pin
+  (empty with none) and `expect.predictions` has every pin in order.
 """
 
 import json
@@ -299,6 +303,334 @@ def write(fx):
     (OUT / f"{fx['name']}.json").write_text(json.dumps(fx, indent=1) + "\n")
 
 
+# ---------- graph v2 cases (arbitrary DAG with pins; CONTRACTS.md section 2) ----------
+#
+# The v2 evaluator walks the graph literally, primitive by primitive, in float64. Losses are built
+# from primitives (subtract, square, ..., log_loss on probabilities, mean), so the semantic forms
+# here are compared with the engine's fused, numerically stable forms.
+
+def n_(id, type, **kw):
+    return {"id": id, "type": type, **kw}
+
+
+def src_of(edges):
+    """(node, input port) -> source node id. A bare destination is the port `in`."""
+    s = {}
+    for a, b in edges:
+        dst, _, port = b.partition(".")
+        s[(dst, port or "in")] = a.split(".")[0]
+    return s
+
+
+def widths_v2(nodes, edges, d):
+    """Example width per node (None for scalars and weight matrices)."""
+    src = src_of(edges)
+    w = {}
+    for n in nodes:
+        t, i = n["type"], n["id"]
+        if t == "input":
+            w[i] = len(n["columns"])
+        elif t == "target":
+            w[i] = 1
+        elif t in ("weights", "mean", "norm"):
+            w[i] = None
+        elif t in ("add", "subtract"):
+            w[i] = w[src[(i, "a")]]
+        elif t in ("log_loss", "cross_entropy"):
+            w[i] = 1
+        else:
+            wi = w[src[(i, "in")]]
+            if t == "feature":
+                w[i] = (wi * n["degree"] + (wi if n["sin"] else 0) + (wi if n["cos"] else 0)
+                        + (wi * (wi - 1) // 2 if n["products"] else 0))
+            elif t == "linear":
+                w[i] = n["out"]
+            else:
+                w[i] = wi
+    return w, src
+
+
+class ModelV2(nn.Module):
+    def __init__(self, nodes, edges, params, w, src, dropout_mask=None):
+        super().__init__()
+        self.nodes, self.src, self.mask = nodes, src, dropout_mask
+        self.lins = nn.ModuleDict()
+        for n in nodes:
+            if n["type"] == "linear":
+                i = n["id"]
+                inw = w[src[(i, "in")]]
+                m = nn.Linear(inw, n["out"], bias=n["bias"])
+                m.weight.data = torch.tensor(
+                    np.array(params[i]["W"]).reshape(inw, n["out"]).T.copy()).contiguous()
+                if n["bias"]:
+                    m.bias.data = torch.tensor(params[i]["b"])
+                self.lins[i] = m
+
+    def forward(self, x, y, pins, loss_id):
+        v = {}
+        for n in self.nodes:
+            t, i = n["type"], n["id"]
+
+            def get(port="in"):
+                return v[self.src[(i, port)]]
+
+            if t == "input":
+                v[i] = x
+            elif t == "target":
+                v[i] = y
+            elif t == "linear":
+                v[i] = self.lins[i](get())
+            elif t == "weights":
+                v[i] = self.lins[n["of"]].weight.T  # W in HostParams layout [in, out]
+            elif t == "norm":
+                a = get()
+                v[i] = (a ** 2).sum() if n["kind"] == "l2" else a.abs().sum()
+            elif t == "feature":
+                a = get()
+                parts = [a ** p for p in range(1, n["degree"] + 1)]
+                if n["sin"]:
+                    parts.append(torch.sin(a))
+                if n["cos"]:
+                    parts.append(torch.cos(a))
+                if n["products"]:
+                    dd = a.shape[1]
+                    parts += [(a[:, p] * a[:, q]).unsqueeze(1) for p in range(dd) for q in range(p + 1, dd)]
+                v[i] = torch.cat(parts, dim=1)
+            elif t == "activation":
+                f = {"sigmoid": torch.sigmoid, "tanh": torch.tanh, "relu": torch.relu,
+                     "gelu": nn.GELU()}[n["fn"]]
+                v[i] = f(get())
+            elif t == "dropout":
+                v[i] = get() if self.mask is None else get() * self.mask / (1.0 - n["p"])
+            elif t == "add":
+                v[i] = get("a") + get("b")
+            elif t == "subtract":
+                v[i] = get("a") - get("b")
+            elif t == "link":
+                z = get()
+                v[i] = torch.sigmoid(z) if n["fn"] == "sigmoid" else torch.softmax(z, dim=1)
+            elif t == "square":
+                v[i] = get() ** 2
+            elif t == "abs":
+                v[i] = get().abs()
+            elif t == "huber":
+                d_ = get()
+                v[i] = F.huber_loss(d_, torch.zeros_like(d_), reduction="none", delta=n["delta"])
+            elif t == "log_loss":
+                v[i] = F.binary_cross_entropy(get("pred"), get("target"), reduction="none")
+            elif t == "cross_entropy":
+                v[i] = -torch.log(get("pred").gather(1, get("target").long()))
+            elif t == "mean":
+                v[i] = get().mean()
+            elif t == "scale":
+                v[i] = get() * n["c"]
+            else:
+                raise ValueError(t)
+        return [v[p] for p in pins], v[loss_id]
+
+    def host(self, what="params"):
+        out = {}
+        for i, m in self.lins.items():
+            t = m.weight if what == "params" else m.weight.grad
+            if t is None:  # only possible for grads of a never-used tensor: zero
+                t = torch.zeros_like(m.weight)
+            e = {"W": t.detach().T.contiguous().flatten().tolist()}
+            if m.bias is not None:
+                tb = m.bias if what == "params" else m.bias.grad
+                if tb is None:
+                    tb = torch.zeros_like(m.bias)
+                e["b"] = tb.detach().flatten().tolist()
+            out[i] = e
+        return out
+
+
+def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, ytype="reg",
+                 optimizer=None, steps=5, lr=0.1, mask_for=None, xscale=1.5):
+    rng = np.random.default_rng(seed)
+    x = rng.uniform(-xscale, xscale, size=(n, d))
+    if ytype == "reg":
+        y = 0.7 * x[:, :1] + 0.3 * np.sin(2 * x[:, :1]) + 0.4 * rng.standard_normal((n, 1))
+        y = y * 2.0
+    else:
+        y = (rng.uniform(size=(n, 1)) > 0.5).astype(float)
+        y[0, 0], y[1, 0] = 0.0, 1.0
+    w, src = widths_v2(nodes, edges, d)
+    params = {}
+    for nd in nodes:
+        if nd["type"] == "linear":
+            inw, o = w[src[(nd["id"], "in")]], nd["out"]
+            s = 1.0 / math.sqrt(inw)
+            e = {"W": rng.uniform(-s, s, size=inw * o).tolist()}
+            if nd["bias"]:
+                e["b"] = rng.uniform(-s, s, size=o).tolist()
+            params[nd["id"]] = e
+    mask = None
+    if mask_for:
+        dn = next(k for k in nodes if k["type"] == "dropout")
+        mask = (rng.uniform(size=(n, w[dn["id"]])) > dn["p"]).astype(float)
+        assert 0 < mask.sum() < mask.size
+    xt, yt = torch.tensor(x), torch.tensor(y)
+    maskt = torch.tensor(mask) if mask is not None else None
+    pin_nodes = [p.split(".")[0] for p in predictions]
+    loss_node = loss_id.split(".")[0]
+
+    m = ModelV2(nodes, edges, params, w, src, maskt)
+    preds, obj = m(xt, yt, pin_nodes, loss_node)
+    assert obj.dim() == 0
+    obj.backward()
+    flat = [p.detach().flatten().tolist() for p in preds]
+    expect = {"pred": flat[0] if flat else [], "predictions": flat, "loss": obj.item(),
+              "grads": m.host("grads")}
+    if mask is not None:
+        expect["dropoutMask"] = mask.tolist()
+        pe, oe = ModelV2(nodes, edges, params, w, src, None)(xt, yt, pin_nodes, loss_node)
+        expect["predEval"] = pe[0].detach().flatten().tolist() if pe else []
+        expect["lossEval"] = oe.item()
+    if optimizer:
+        m2 = ModelV2(nodes, edges, params, w, src, maskt)
+        opt = {"sgd": lambda ps: torch.optim.SGD(ps, lr=lr),
+               "momentum": lambda ps: torch.optim.SGD(ps, lr=lr, momentum=0.9),
+               "adam": lambda ps: torch.optim.Adam(ps, lr=lr)}[optimizer](m2.parameters())
+        losses = []
+        for _ in range(steps):
+            opt.zero_grad()
+            _, o = m2(xt, yt, pin_nodes, loss_node)
+            losses.append(o.item())
+            o.backward()
+            opt.step()
+        expect["after"] = {"steps": steps, "params": m2.host("params"), "losses": losses}
+
+    graph = {
+        "version": 2, "nodes": nodes, "edges": edges,
+        "predictions": predictions, "loss": loss_id,
+        "data": {"set": "blobs" if ytype == "cls" else {1: "sine", 2: "plane"}[d],
+                 "n": 40, "noise": 0.1, "val": 0.25, "seed": 1, "standardize": False},
+        "train": {"optimizer": optimizer or "sgd", "lr": lr, "batch": "full", "seed": 1},
+    }
+    return {"name": name, "graph": graph, "params": params,
+            "batch": {"x": x.flatten().tolist(), "y": y.flatten().tolist(), "n": n}, "expect": expect}
+
+
+def v2_cases(add):
+    """add(name, nodes, edges, predictions, loss, **kw)"""
+    # regression stem: x -> lin1 -> act1 -> lin2 (the prediction), target y
+    stem = [inp(2), lin("lin1", 3), act("act1", "tanh"), lin("lin2", 1), TARGET]
+    stem_e = [["x", "lin1"], ["lin1", "act1"], ["act1", "lin2"]]
+
+    def with_loss(extra_nodes, extra_edges, **kw):
+        return stem + extra_nodes, stem_e + extra_edges
+
+    # subtract -> square -> mean (the squared-error loss from primitives)
+    nodes, edges = with_loss(
+        [n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")],
+        [["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]])
+    add("prim_square_mean", nodes, edges, ["lin2"], "loss", d=2)
+
+    # abs
+    nodes, edges = with_loss(
+        [n_("diff", "subtract"), n_("err", "abs"), n_("loss", "mean")],
+        [["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]])
+    add("prim_abs_mean", nodes, edges, ["lin2"], "loss", d=2)
+
+    # huber with a small delta (n=8 so both regimes occur), checked inline below
+    nodes, edges = with_loss(
+        [n_("diff", "subtract"), n_("err", "huber", delta=0.5), n_("loss", "mean")],
+        [["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]])
+    add("prim_huber_mean", nodes, edges, ["lin2"], "loss", d=2, n=8)
+
+    # scale (negative c) and add of two scalars: L = mean(sq) + (-0.25) * mean(abs)
+    nodes, edges = with_loss(
+        [n_("diff", "subtract"), n_("sq", "square"), n_("ab", "abs"), n_("m1", "mean"),
+         n_("m2", "mean"), n_("sc", "scale", c=-0.25), n_("loss", "add")],
+        [["lin2", "diff.a"], ["y", "diff.b"], ["diff", "sq"], ["diff", "ab"], ["sq", "m1"],
+         ["ab", "m2"], ["m2", "sc"], ["m1", "loss.a"], ["sc", "loss.b"]])
+    add("prim_scale_add", nodes, edges, ["lin2"], "loss", d=2)
+
+    # Weights tap + norm: L2 and L1 penalties on two Linears, summed, scaled, added to the loss
+    for kind in ("l2", "l1"):
+        nodes, edges = with_loss(
+            [n_("diff", "subtract"), n_("err", "square"), n_("mean1", "mean"),
+             n_("w1", "weights", of="lin1"), n_("n1", "norm", kind=kind),
+             n_("w2", "weights", of="lin2"), n_("n2", "norm", kind=kind),
+             n_("both", "add"), n_("pen", "scale", c=0.1), n_("loss", "add")],
+            [["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "mean1"],
+             ["w1", "n1"], ["w2", "n2"], ["n1", "both.a"], ["n2", "both.b"], ["both", "pen"],
+             ["mean1", "loss.a"], ["pen", "loss.b"]])
+        add(f"prim_weights_norm_{kind}", nodes, edges, ["lin2"], "loss", d=2)
+
+    # a Linear read only through a Weights tap: no forward pass, but its W (and zero-grad bias) is live
+    nodes, edges = with_loss(
+        [lin("tap", 2), n_("diff", "subtract"), n_("err", "square"), n_("mean1", "mean"),
+         n_("wt", "weights", of="tap"), n_("nt", "norm", kind="l2"), n_("pen", "scale", c=0.3),
+         n_("loss", "add")],
+        [["x", "tap"], ["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "mean1"],
+         ["wt", "nt"], ["nt", "pen"], ["mean1", "loss.a"], ["pen", "loss.b"]])
+    add("prim_weights_tap_only", nodes, edges, ["lin2"], "loss", d=2, optimizer="sgd", lr=0.1)
+
+    # no prediction pin: the graph still trains; predict() returns nothing
+    nodes, edges = with_loss(
+        [n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")],
+        [["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]])
+    add("prim_no_prediction", nodes, edges, [], "loss", d=2, optimizer="adam", lr=0.05)
+
+    # two prediction pins: the output and a second head (a Linear the loss does not use); L on the output
+    nodes, edges = with_loss(
+        [lin("head2", 1), n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")],
+        [["act1", "head2"], ["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]])
+    add("prim_two_predictions", nodes, edges, ["lin2", "head2"], "loss", d=2, optimizer="sgd")
+
+    # an auxiliary objective that is not part of the model: L = mean(sq(out - y)) + 0.3 mean(abs(hidden))
+    nodes, edges = with_loss(
+        [n_("diff", "subtract"), n_("err", "square"), n_("m1", "mean"), n_("hab", "abs"),
+         n_("m2", "mean"), n_("sc", "scale", c=0.3), n_("loss", "add")],
+        [["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "m1"], ["act1", "hab"],
+         ["hab", "m2"], ["m2", "sc"], ["m1", "loss.a"], ["sc", "loss.b"]])
+    add("prim_aux_objective", nodes, edges, ["lin2"], "loss", d=2, optimizer="momentum", lr=0.05)
+
+    # log loss on probabilities (sigmoid link in front): fused by the engine, semantic here
+    nodes = [inp(2), lin("lin1", 3), act("act1", "tanh"), lin("lin2", 1),
+             n_("p", "link", fn="sigmoid"), TARGET, n_("err", "log_loss"), n_("loss", "mean")]
+    edges = [["x", "lin1"], ["lin1", "act1"], ["act1", "lin2"], ["lin2", "p"], ["p", "err.pred"],
+             ["y", "err.target"], ["err", "loss"]]
+    add("prim_log_loss_sigmoid", nodes, edges, ["p"], "loss", d=2, ytype="cls", optimizer="sgd")
+
+    # cross-entropy on softmax probabilities
+    nodes = [inp(2), lin("lin1", 3), act("act1", "tanh"), lin("lin2", 2),
+             n_("p", "link", fn="softmax"), TARGET, n_("err", "cross_entropy"), n_("loss", "mean")]
+    edges = [["x", "lin1"], ["lin1", "act1"], ["act1", "lin2"], ["lin2", "p"], ["p", "err.pred"],
+             ["y", "err.target"], ["err", "loss"]]
+    add("prim_cross_entropy_softmax", nodes, edges, ["p"], "loss", d=2, ytype="cls", optimizer="sgd")
+
+    # the link also feeds something else (a second consumer), so it must still be computed in the loss pass
+    nodes = [inp(2), lin("lin1", 3), act("act1", "tanh"), lin("lin2", 1),
+             n_("p", "link", fn="sigmoid"), TARGET, n_("err", "log_loss"), n_("m1", "mean"),
+             n_("sq", "square"), n_("m2", "mean"), n_("sc", "scale", c=0.5), n_("loss", "add")]
+    edges = [["x", "lin1"], ["lin1", "act1"], ["act1", "lin2"], ["lin2", "p"], ["p", "err.pred"],
+             ["y", "err.target"], ["err", "m1"], ["p", "sq"], ["sq", "m2"], ["m2", "sc"],
+             ["m1", "loss.a"], ["sc", "loss.b"]]
+    add("prim_link_shared", nodes, edges, ["p"], "loss", d=2, ytype="cls", optimizer="adam", lr=0.05)
+
+    # dropout, a skip connection (add) and feature expansion together in one DAG, with a dropout mask
+    nodes = [inp(2), n_("feat", "feature", degree=2, sin=True, cos=False, products=True),
+             lin("lin1", 4), act("act1", "relu"), n_("drop1", "dropout", p=0.5),
+             lin("lin2", 4), n_("skip", "add"), lin("lin3", 1), TARGET,
+             n_("diff", "subtract"), n_("err", "huber", delta=1.0), n_("loss", "mean")]
+    edges = [["x", "feat"], ["feat", "lin1"], ["lin1", "act1"], ["act1", "drop1"], ["drop1", "lin2"],
+             ["lin2", "skip.a"], ["lin1", "skip.b"], ["skip", "lin3"], ["lin3", "diff.a"],
+             ["y", "diff.b"], ["diff", "err"], ["err", "loss"]]
+    add("prim_dag_dropout_skip", nodes, edges, ["lin3"], "loss", d=2, mask_for=True)
+
+    # 300-step plain Adam on the primitive form with a penalty: long-run agreement
+    nodes, edges = with_loss(
+        [n_("diff", "subtract"), n_("err", "square"), n_("mean1", "mean"),
+         n_("w1", "weights", of="lin1"), n_("n1", "norm", kind="l2"), n_("pen", "scale", c=0.01),
+         n_("loss", "add")],
+        [["lin2", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "mean1"], ["w1", "n1"],
+         ["n1", "pen"], ["mean1", "loss.a"], ["pen", "loss.b"]])
+    add("prim_penalty_adam_300steps", nodes, edges, ["lin2"], "loss", d=2, optimizer="adam", lr=0.05,
+        n=8, steps=300)
+
+
 def main():
     cases = []
     seed = [100]
@@ -375,6 +707,14 @@ def main():
 
     # long plain-Adam run (300 steps): the gradients shrink, so the second moment decays (tinker-df1)
     add("mlp_tanh_adam_300steps", mlp(2, [3], "tanh"), d=2, optimizer="adam", lr=0.1, n=8, steps=300)
+
+    # graph v2 cases (primitives, Weights taps, pins); the cases above are version 1 graphs that the
+    # engine tests migrate with parseGraph
+    def add2(name, nodes, edges, predictions, loss_id, **kw):
+        seed[0] += 1
+        cases.append(make_case_v2(name, seed[0], nodes, edges, predictions, loss_id, **kw))
+
+    v2_cases(add2)
 
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)

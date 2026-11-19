@@ -742,7 +742,8 @@ function sources(): { name: string; json: unknown }[] {
   const out: { name: string; json: unknown }[] = [];
   for (const dir of [fixturesDir, presetsDir]) {
     for (const f of readdirSync(dir).filter((x) => x.endsWith('.json'))) {
-      const j = JSON.parse(readFileSync(dir + f, 'utf8')) as { graph: unknown };
+      const j = JSON.parse(readFileSync(dir + f, 'utf8')) as { graph: { version?: number } };
+      if (j.graph.version === 2) continue; // prim_* fixtures are already version 2
       out.push({ name: f, json: j.graph });
     }
   }
