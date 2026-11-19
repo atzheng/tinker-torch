@@ -41,6 +41,8 @@ export type Analysis = {
   paramShapes: Record<NodeId, ParamShapes>;
   /** The init of each node in `paramShapes` (from the piece's `paramInit`). */
   paramInit: Record<NodeId, ParamInit>;
+  /** The piece type of each node in `paramShapes`, so `reconcileParams` can tell a reused id from the same node. */
+  paramType: Record<NodeId, string>;
   /** Parameter-owning nodes whose parameters are live: in `order`, or a Linear read by a Weights tap in `order`. In node order. */
   paramNodes: NodeId[];
   /** Sum of `params` over `paramNodes`. */
@@ -72,7 +74,7 @@ type ShapeFn = (
   ctx: ShapeCtx,
 ) => Shape | { error: string };
 type ParamFn = (node: Node, inW: number) => ParamShapes;
-type InitFn = (node: Node, inW: number) => ParamInit;
+type InitFn = (node: Node, inW: number, data: DataInfo) => ParamInit;
 
 const record = <T>() => Object.create(null) as Record<NodeId, T>; // no prototype: ids like "constructor" are safe
 
@@ -179,6 +181,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   const params = record<number>();
   const paramShapes = record<ParamShapes>();
   const paramInit = record<ParamInit>();
+  const paramType = record<string>();
   const computed = new Set<NodeId>();
   const visiting = new Set<NodeId>();
   let loopHit = false; // set when a shape lookup re-enters a node that is still being computed
@@ -292,7 +295,8 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
       params[id] = count;
       if (Object.keys(ps).length > 0) {
         paramShapes[id] = ps;
-        paramInit[id] = (piece.paramInit as InitFn)(node, w);
+        paramInit[id] = (piece.paramInit as InitFn)(node, w, data);
+        paramType[id] = node.type;
       }
     }
   }
@@ -516,6 +520,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     params,
     paramShapes,
     paramInit,
+    paramType,
     paramNodes,
     totalParams,
     predictions,

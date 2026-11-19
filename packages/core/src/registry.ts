@@ -1,5 +1,5 @@
 /** Piece registry v2, core half (CONTRACTS.md section 3): ports, defaults, shape rules, param shapes, torch strings. */
-import type { Node, NodeBody, NodeOf, PieceType } from './graph.js';
+import type { DataInfo, Node, NodeBody, NodeOf, PieceType } from './graph.js';
 import type { NodeId } from './common.js';
 import {
   lossSubgraph,
@@ -64,7 +64,7 @@ export type CorePiece<N extends Node> = {
    */
   paramShapes(node: N, inWidth: number): ParamShapes;
   /** How the node's tensors start. Called only when `paramShapes` is non-empty. */
-  paramInit(node: N, inWidth: number): ParamInit;
+  paramInit(node: N, inWidth: number, data: DataInfo): ParamInit;
   /** Torch counterpart for the later code view. `inWidth` is the width entering the node, when known. */
   torch(node: N, inWidth?: number): string;
 };

@@ -15,7 +15,7 @@ export type JsonParams = Record<NodeId, Record<string, number[]>>;
 const size = (shape: readonly number[]): number => shape.reduce((a, d) => a * d, 1);
 const bare = <T>() => Object.create(null) as Record<string, T>; // no prototype: tensor names are data
 
-type Owner = { shapes: ParamShapes; init: ParamInit };
+type Owner = { shapes: ParamShapes; init: ParamInit; type: string | undefined };
 
 /**
  * Shapes and init of every live param node (`analysis.paramNodes`) whose input width is known. A Linear
@@ -26,7 +26,7 @@ function owners(analysis: Analysis): Map<NodeId, Owner> {
   for (const id of analysis.paramNodes) {
     const shapes = analysis.paramShapes[id];
     const init = analysis.paramInit[id];
-    if (shapes && init) out.set(id, { shapes, init });
+    if (shapes && init) out.set(id, { shapes, init, type: analysis.paramType[id] });
   }
   return out;
 }
@@ -75,7 +75,8 @@ const sameShape = (a: readonly number[] | undefined, b: readonly number[] | unde
  * new graph. If every tensor present in both keeps its shape, those are kept, tensors only in the new shapes
  * are drawn fresh and tensors only in the old are dropped (Linear: W is kept when [in, out] is unchanged
  * even if bias was toggled; b is drawn fresh when bias is turned on). If any shared tensor changed shape,
- * or the old entry does not fit, the whole node is re-inited. Nodes that are no longer live are dropped.
+ * or the old entry does not fit, or the node's piece type changed (an id reused for another piece), the
+ * whole node is re-inited. Nodes that are no longer live are dropped.
  * Does not mutate `old`. The returned arrays are shared with `old` and must never be written in place.
  */
 export function reconcileParams(
@@ -94,6 +95,7 @@ export function reconcileParams(
     const keep =
       prev !== undefined &&
       os !== undefined &&
+      os.type === o.type &&
       shared.length > 0 &&
       shared.every(
         (k) => sameShape(os.shapes[k], o.shapes[k]) && prev[k]?.length === size(o.shapes[k] ?? []),

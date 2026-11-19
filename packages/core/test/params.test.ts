@@ -250,13 +250,18 @@ describe('live parameters', () => {
 describe('a non-Linear parameter owner (stub)', () => {
   // No piece owns parameters besides Linear yet, so the owner is added to a real analysis by hand.
   type A = ReturnType<typeof analyse>;
-  function withStub(shapes: Record<string, number[]>, init: A['paramInit'][string]): A {
+  function withStub(
+    shapes: Record<string, number[]>,
+    init: A['paramInit'][string],
+    type = 'stub',
+  ): A {
     const a = analyse(net([2]), info);
     return {
       ...a,
       paramNodes: [...a.paramNodes, 'stub'],
       paramShapes: { ...a.paramShapes, stub: shapes },
       paramInit: { ...a.paramInit, stub: init },
+      paramType: { ...a.paramType, stub: type },
     };
   }
   const uni = { kind: 'uniform', bound: 0.5 } as const;
@@ -289,6 +294,9 @@ describe('a non-Linear parameter owner (stub)', () => {
     const reshaped = reconcileParams(h1, a1, withStub({ g: [3, 3] }, uni), 9);
     expect(reshaped['stub']?.['g']?.length).toBe(9);
     expect(reshaped['stub']?.['g']).not.toBe(h1['stub']?.['g']);
+    // the same id and tensors under another piece type (a reused id): fresh values
+    const retyped = reconcileParams(h1, a1, withStub({ g: [2, 3] }, uni, 'other'), 9);
+    expect(retyped['stub']?.['g']).not.toBe(h1['stub']?.['g']);
     // the owner is not in the old analysis: fresh
     const fresh = reconcileParams(h1, analyse(net([2]), info), a1, 9);
     expect(fresh['stub']?.['g']).not.toBe(h1['stub']?.['g']);
@@ -307,5 +315,13 @@ describe('a non-Linear parameter owner (stub)', () => {
     const other = paramsFromJson(json, withStub({ g: [2, 4], s: [1] }, uni));
     expect(other.dropped).toEqual(['stub']);
     expect(other.params['l1']).toBeDefined();
+  });
+
+  test('an extra key on a Linear without bias is dropped, not thrown', () => {
+    const a = analyse(net([2], { bias: false }), info);
+    const w = Array.from(initParams(a, 1)['l1']?.['W'] ?? []);
+    const r = paramsFromJson({ l1: { W: w, b: [0, 0] } }, a);
+    expect(r.dropped).toEqual(['l1']);
+    expect(r.params['l1']).toBeUndefined();
   });
 });
