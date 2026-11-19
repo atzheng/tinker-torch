@@ -529,19 +529,17 @@ path.tk-hit {
   cursor: grab;
 }
 .tk-wire-end-dot {
-  fill: none;
-  stroke: transparent;
+  fill: var(--node-fill);
+  stroke: var(--accent);
   stroke-width: 2;
   pointer-events: none;
 }
-@media (hover: hover) {
-  .tk-wire-end:hover .tk-wire-end-dot {
-    stroke: var(--accent);
-  }
+.tk-wire[data-replace='true'] {
+  opacity: 0.45;
 }
-.tk-wire-end[data-selected='true'] .tk-wire-end-dot {
-  stroke: var(--accent);
-  fill: var(--node-fill);
+.tk-wire[data-replace='true'] .tk-wire-line {
+  stroke: var(--error);
+  stroke-dasharray: 5 4;
 }
 .tk-armed {
   position: absolute;

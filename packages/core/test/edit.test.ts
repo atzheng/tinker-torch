@@ -312,6 +312,7 @@ describe('rewireEdge', () => {
       'This piece is locked.',
     );
     ok(rewireEdge(base(), 0, 'to', 'act1', { locked: ['x', 'lin2'] }));
+    err(rewireEdge(base(), 1, 'from', 'x', { locked: ['act1'] })); // the source end: old destination
   });
 
   test('does not mutate its input', () => {

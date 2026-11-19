@@ -118,6 +118,12 @@ export function Canvas() {
   useEditShortcuts();
   useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no preview
   useEffect(() => () => dnd.arm(null), []);
+  // Tap-to-add ends when the ground moves under it: any graph change (edit, undo, redo, preset or
+  // file load), a grain switch, or a pan or zoom (`userView`).
+  const [edited, setEdited] = useState(false);
+  useEffect(() => {
+    if (canUndo) setEdited(true);
+  }, [canUndo]);
 
   const layerLayout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
   const neuronLayout = useMemo(
@@ -154,6 +160,7 @@ export function Canvas() {
   const [userView, setUserView] = useState<Transform | null>(null);
   const loadEpoch = useStore((st) => st.loadEpoch);
   useEffect(() => setUserView(null), [grain, loadEpoch]);
+  useEffect(() => dnd.arm(null), [graph, grain, loadEpoch, userView]);
   const clampT = (x: Transform) => clampView(x, layout.size, view, HEADER_H);
   const t: Transform = useMemo(
     () => (isNeuron && userView ? clampView(userView, layout.size, view, HEADER_H) : base),
@@ -407,11 +414,11 @@ export function Canvas() {
           {HINTS.empty}
         </div>
       ) : (
-        !canUndo && (
+        !edited && (
           <div className="tk-hints" data-testid="canvas-hints">
             <p>{HINTS.insert}</p>
-            <p>{HINTS.connect}</p>
-            <p>{HINTS.rewire}</p>
+            {!isNeuron && <p>{HINTS.connect}</p>}
+            {!isNeuron && <p>{HINTS.rewire}</p>}
           </div>
         )
       )}

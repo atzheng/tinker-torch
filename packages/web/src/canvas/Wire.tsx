@@ -16,6 +16,10 @@ export type WireProps = {
   valid?: boolean;
   /** This wire's end is being dragged elsewhere (rewire): drawn faint. */
   lifted?: boolean;
+  /** Dropping the dragged wire end here would replace this wire. */
+  replace?: boolean;
+  /** Mouse hover over the wire or its label (-1 on leave). */
+  onHover?: (edge: number) => void;
   /** Screen pixels per abstract unit: labels and the hit stroke are sized in pixels. */
   scale: number;
   /** Width in screen pixels of the transparent stroke that receives presses. */
@@ -34,6 +38,9 @@ export function Wire(p: WireProps) {
       data-drop={p.drop === true}
       data-valid={p.valid === true}
       data-lifted={p.lifted === true}
+      data-replace={p.replace === true}
+      onPointerEnter={(e) => e.pointerType === 'mouse' && p.onHover?.(p.edge)}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && p.onHover?.(-1)}
       data-width={p.width ?? ''}
       className="tk-wire"
       onPointerDown={pointerDownWith({ onTap: p.onSelect })}
@@ -65,6 +72,9 @@ export function WireLabel(p: WireProps & { hit: { x: number; y: number; w: numbe
       data-selected={p.selected}
       data-drop={p.drop === true}
       data-lifted={p.lifted === true}
+      data-replace={p.replace === true}
+      onPointerEnter={(e) => e.pointerType === 'mouse' && p.onHover?.(p.edge)}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && p.onHover?.(-1)}
       className="tk-wire tk-wire-label"
       onPointerDown={pointerDownWith({ onTap: p.onSelect })}
     >

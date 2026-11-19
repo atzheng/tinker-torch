@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import { useRef, useState, type ComponentType } from 'react';
 import type { Analysis, Graph, HostParams, LayerLayout, Node } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
@@ -72,6 +72,23 @@ export function LayerView(p: LayerViewProps) {
   const lockedList = useStore((s) => s.preset?.locked);
   const locked = new Set(lockedList ?? []);
   const cand = p.candidates;
+  const [hover, setHover] = useState(-1);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Moving from a wire onto its end handle leaves the wire first: wait a moment before hiding.
+  const hoverWire = (edge: number) => {
+    clearTimeout(hoverTimer.current);
+    if (edge >= 0) setHover(edge);
+    else hoverTimer.current = setTimeout(() => setHover(-1), 200);
+  };
+  // The wire a drop would replace: the one already feeding the target port.
+  const replaced =
+    target?.kind === 'port' && p.drag && p.drag.payload.kind !== 'palette'
+      ? graph.edges.findIndex(
+          (e, i) =>
+            e[1] === target.port &&
+            !(p.drag?.payload.kind === 'rewire' && p.drag.payload.edge === i),
+        )
+      : -1;
   const src = p.drag ? wireSource(p.drag.payload) : undefined;
   const lifted = p.drag?.payload.kind === 'rewire' ? p.drag.payload.edge : -1;
   const sel = p.selection;
@@ -108,6 +125,8 @@ export function LayerView(p: LayerViewProps) {
             drop={dropEdge === w.edge}
             valid={cand?.edges.has(w.edge)}
             lifted={lifted === w.edge}
+            replace={replaced === w.edge}
+            onHover={hoverWire}
             scale={scale}
             hitPx={hitPx}
             onSelect={() => p.select({ kind: 'wire', from: edge[0], to: edge[1] })}
@@ -191,48 +210,6 @@ export function LayerView(p: LayerViewProps) {
           </g>
         );
       })}
-      {layout.wires.map((w) => {
-        // The destination end of a wire is a handle: drag it to another input port to rewire.
-        const edge = graph.edges[w.edge];
-        const end = w.points[w.points.length - 1];
-        const r = edge ? resolveEdge(graph.nodes, edge) : undefined;
-        const toNode = r?.ok ? graph.nodes.find((n) => n.id === r.to.node) : undefined;
-        const box = toNode ? layout.nodes[toNode.id] : undefined;
-        if (!edge || !end || !r?.ok || !toNode || !box) return null;
-        const n = inputPortsOf(toNode.type).length;
-        const hh = Math.min(hitPx / scale, box.h / (n + 1));
-        const selectedHere = selectedEdge === w.edge;
-        return (
-          <g
-            key={`end-${w.edge}`}
-            data-testid={`wire-end-${w.edge}`}
-            data-selected={selectedHere}
-            className="tk-wire-end"
-            onPointerDown={pointerDownWith({
-              onTap: () => p.select({ kind: 'wire', from: edge[0], to: edge[1] }),
-              onStart: (pt) =>
-                dnd.begin(
-                  { kind: 'rewire', edge: w.edge, from: r.from.node, to: edge[1] },
-                  pt.x,
-                  pt.y,
-                ),
-              onMove: (pt) => dnd.move(pt.x, pt.y),
-              onEnd: (pt) => dnd.end(pt.x, pt.y),
-              onCancel: () => dnd.cancel(),
-            })}
-          >
-            <rect
-              className="tk-hit"
-              x={end[0]}
-              y={end[1] - hh / 2}
-              width={(hitPx * 0.6) / scale}
-              height={hh}
-            />
-            <circle className="tk-wire-end-dot" cx={end[0]} cy={end[1]} r={PORT_R + 2} />
-            <title>Drag to another input to rewire</title>
-          </g>
-        );
-      })}
       {src !== undefined &&
         graph.nodes.map((node) => {
           const ports = inputPortsOf(node.type);
@@ -273,11 +250,53 @@ export function LayerView(p: LayerViewProps) {
             drop={dropEdge === w.edge}
             valid={cand?.edges.has(w.edge)}
             lifted={lifted === w.edge}
+            replace={replaced === w.edge}
+            onHover={hoverWire}
             scale={scale}
             hitPx={hitPx}
             hit={hit}
             onSelect={() => p.select({ kind: 'wire', from: edge[0], to: edge[1] })}
           />
+        );
+      })}
+      {layout.wires.map((w) => {
+        // The destination end of a wire is a handle, shown only while the wire is hovered (mouse)
+        // or selected (touch: tap the wire, then drag its end). It sits just outside the
+        // destination piece, so the piece body always wins a press (CONTRACTS section 10).
+        // The handle being dragged stays mounted (it holds the pointer capture).
+        if (lifted !== w.edge && (p.drag || (hover !== w.edge && selectedEdge !== w.edge))) {
+          return null;
+        }
+        const edge = graph.edges[w.edge];
+        const end = w.points[w.points.length - 1];
+        const r = edge ? resolveEdge(graph.nodes, edge) : undefined;
+        if (!edge || !end || !r?.ok) return null;
+        const hw = hitPx / scale;
+        return (
+          <g
+            key={`end-${w.edge}`}
+            data-testid={`wire-end-${w.edge}`}
+            data-selected={selectedEdge === w.edge}
+            className="tk-wire-end"
+            onPointerEnter={(e) => e.pointerType === 'mouse' && hoverWire(w.edge)}
+            onPointerLeave={(e) => e.pointerType === 'mouse' && hoverWire(-1)}
+            onPointerDown={pointerDownWith({
+              onTap: () => p.select({ kind: 'wire', from: edge[0], to: edge[1] }),
+              onStart: (pt) =>
+                dnd.begin(
+                  { kind: 'rewire', edge: w.edge, from: r.from.node, to: edge[1] },
+                  pt.x,
+                  pt.y,
+                ),
+              onMove: (pt) => dnd.move(pt.x, pt.y),
+              onEnd: (pt) => dnd.end(pt.x, pt.y),
+              onCancel: () => dnd.cancel(),
+            })}
+          >
+            <rect className="tk-hit" x={end[0] - hw} y={end[1] - hw / 2} width={hw} height={hw} />
+            <circle className="tk-wire-end-dot" cx={end[0] - 6} cy={end[1]} r={PORT_R + 2} />
+            <title>Drag to another input to rewire</title>
+          </g>
         );
       })}
     </g>
