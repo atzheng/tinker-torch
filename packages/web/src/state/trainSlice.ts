@@ -12,7 +12,7 @@ import {
   type Graph,
   type HostParams,
 } from '@tinker/core';
-import type { Engine, Model, ParamAxis, TrainState } from '@tinker/engine';
+import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engine';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
 import type { Store } from './store.js';
@@ -34,12 +34,19 @@ import type { Store } from './store.js';
  *   fixing the graph brings the model back.
  */
 
+/** A batch size at or above nTrain (after a data change) is the same as full batch. */
+export function isMiniBatch(batch: 'full' | number, nTrain: number): boolean {
+  return batch !== 'full' && batch < nTrain;
+}
+
 export type HistoryPoint = {
   step: number;
   /** Loss of the batch used for this update, before the update. */
   train: number;
   /** Validation loss after the update; null on steps where it was not evaluated (see VAL_EVERY). */
   val: number | null;
+  /** Loss on the whole training set, evaluated on the validation cadence; only when mini-batching. */
+  trainFull?: number | null;
 };
 export type Best = { step: number; val: number; params: HostParams };
 
@@ -99,6 +106,10 @@ export type TrainSlice = {
   setSpeed: (n: number) => void;
   /** Commit a learning rate (one undo step). Committed on release or blur by the UI. */
   setLearningRate: (lr: number) => void;
+  /** Switching optimizer keeps the parameters and restarts the optimizer state. */
+  setOptimizer: (optimizer: Graph['train']['optimizer']) => void;
+  /** Batch size, or 'full'. The batch order restarts from the run seed. */
+  setBatch: (batch: Graph['train']['batch']) => void;
 };
 
 export const SPEEDS = [1, 2, 5, 10, 25, 50];
@@ -133,6 +144,8 @@ type Runtime = {
   trainLoss: number | null;
   valLoss: number | null;
   valBatch: Batch | null;
+  /** The whole training set as one batch (fixed nTrain, so one trace). */
+  trainBatch: Batch | null;
 };
 
 const rt: Runtime = {
@@ -153,6 +166,7 @@ const rt: Runtime = {
   trainLoss: null,
   valLoss: null,
   valBatch: null,
+  trainBatch: null,
 };
 
 function structuralKey(g: Graph): string {
@@ -263,6 +277,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     }
     rt.batches = batchSchedule(dataset.nTrain, graph.train.batch, rt.seed);
     rt.valBatch = { x: dataset.xVal, y: dataset.yVal, n: dataset.nVal };
+    rt.trainBatch = { x: dataset.xTrain, y: dataset.yTrain, n: dataset.nTrain };
 
     // 4. Compile and start. Not-yet-implemented pieces surface here as an ordinary sentence.
     let issue: string | null = null;
@@ -270,13 +285,15 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       issue = get().engineStatus === 'error' ? 'The training engine could not be loaded.' : null;
     } else {
       let model: Model | null = null;
+      let params: Params | null = null;
       try {
         model = engine.compile(graph, dataInfo);
-        const params = engine.fromHost(model, rt.host);
+        params = engine.fromHost(model, rt.host);
         rt.state = engine.startTraining(model, params, rt.seed);
         rt.model = model;
         if (structural) evaluateInitial();
       } catch (e) {
+        if (params && rt.state === null) engine.dispose(params); // startTraining throws before consuming
         if (model && rt.model !== model) engine.disposeModel(model); // compiled but never used
         issue = e instanceof Error ? e.message : 'The model could not be compiled.';
       }
@@ -301,18 +318,23 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     rt.step += 1;
     rt.trainLoss = r.loss;
     let val: number | null = null;
+    let trainFull: number | null = null;
     const vb = rt.valBatch;
     if (vb && vb.n > 0 && rt.step % valEvery(vb.n) === 0) {
       const v = engine.evaluate(model, r.state.params, vb);
       if (Number.isFinite(v)) {
         val = v;
         rt.valLoss = v;
+        if (rt.trainBatch && isMiniBatch(get().graph.train.batch, rt.trainBatch.n)) {
+          const t = engine.evaluate(model, r.state.params, rt.trainBatch);
+          if (Number.isFinite(t)) trainFull = t;
+        }
         if (!rt.best || v < rt.best.val) {
           rt.best = { step: rt.step, val: v, params: engine.toHost(r.state.params) };
         }
       }
     }
-    rt.history.push({ step: rt.step, train: r.loss, val });
+    rt.history.push({ step: rt.step, train: r.loss, val, trainFull });
     if (rt.history.length > MAX_HISTORY) {
       const last = rt.history.length - 1;
       rt.history = rt.history.filter((_, i) => i % 2 === 0 || i === last);
@@ -482,6 +504,16 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const { graph } = get();
       if (!(lr > 0) || lr === graph.train.lr) return;
       get().apply({ ok: true, graph: { ...graph, train: { ...graph.train, lr } } });
+    },
+    setOptimizer: (optimizer) => {
+      const { graph } = get();
+      if (optimizer === graph.train.optimizer) return;
+      get().apply({ ok: true, graph: { ...graph, train: { ...graph.train, optimizer } } });
+    },
+    setBatch: (batch) => {
+      const { graph } = get();
+      if (batch === graph.train.batch) return;
+      get().apply({ ok: true, graph: { ...graph, train: { ...graph.train, batch } } });
     },
   };
 };
