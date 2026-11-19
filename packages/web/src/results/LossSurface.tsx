@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
+import { AxisLabels } from '../plot/AxisLabels.js';
 import { MARGINS, drawAxes, drawLegend } from '../plot/draw.js';
 import {
   SURFACE_N,
@@ -184,8 +185,6 @@ function Surface({
       ys,
       niceTicks(range.a[0], range.a[1], 5),
       niceTicks(range.b[0], range.b[1], 4),
-      labelA,
-      labelB,
     );
     drawLegend(ctx, c, m, [
       { label: 'path', color: c.val, kind: 'line' },
@@ -202,6 +201,7 @@ function Surface({
       </div>
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Loss surface of the two parameters" />
+        <AxisLabels x={labelA} y={labelB} />
       </div>
     </div>
   );

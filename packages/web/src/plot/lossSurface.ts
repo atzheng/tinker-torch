@@ -44,13 +44,15 @@ export function twoParams(
 }
 
 /** Short axis label: "weight" / "bias", prefixed with the node id when the two axes sit on different nodes. */
+/** Axis titles as `$...$` text: `$w_{1}$`, `$b$`, or the node's name before the symbol. */
 export function axisLabels(axes: [SurfaceAxis, SurfaceAxis]): [string, string] {
   const sameNode = axes[0].node === axes[1].node;
   const bothW = sameNode && axes[0].tensor === 'W' && axes[1].tensor === 'W';
   const one = (a: SurfaceAxis) => {
-    const t = a.tensor === 'W' ? 'weight' : 'bias';
-    const n = bothW ? `${t} ${a.index + 1}` : t;
-    return sameNode ? n : `${a.node} ${t}`;
+    const sym = a.tensor === 'W' ? 'w' : 'b';
+    const n = bothW ? `${sym}_{${a.index + 1}}` : sym;
+    // The node id is plain text: a `$` in it would break the pairing, so it is dropped.
+    return sameNode ? `$${n}$` : `${a.node.replace(/\$/g, '')} $${n}$`;
   };
   return [one(axes[0]), one(axes[1])];
 }

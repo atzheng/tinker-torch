@@ -16,10 +16,10 @@ export const lossPiece: WebPiece<'loss'> = {
   Layer: ({ node, w, h, scale }) => {
     const lines: string[] = [];
     const extra = [
-      node.fn === 'huber' ? `δ=${node.delta ?? 1}` : '',
-      node.penalty ? `${node.penalty.kind.toUpperCase()} ${node.penalty.lambda}` : '',
+      node.fn === 'huber' ? `$\\delta=${node.delta ?? 1}$` : '',
+      node.penalty ? `$L_${node.penalty.kind.slice(1)},\\ \\lambda=${node.penalty.lambda}$` : '',
     ].filter(Boolean);
-    if (extra.length) lines.push(extra.join(' · '));
+    if (extra.length) lines.push(extra.join(' '));
     return (
       <NodeShell
         piece="loss"
@@ -50,7 +50,7 @@ export const lossPiece: WebPiece<'loss'> = {
       />
       {node.fn === 'huber' && (
         <NumberField
-          label="Threshold delta"
+          label="Threshold $\delta$"
           testid="field-delta"
           value={node.delta ?? 1}
           min={0}
@@ -76,7 +76,7 @@ export const lossPiece: WebPiece<'loss'> = {
       />
       {node.penalty && (
         <NumberField
-          label="Strength lambda"
+          label="Strength $\lambda$"
           testid="field-penalty-lambda"
           value={node.penalty.lambda}
           min={0}

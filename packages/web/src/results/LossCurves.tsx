@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { decimatePath, linearScale, logScale, logTicks, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
+import { AxisLabels } from '../plot/AxisLabels.js';
 import { MARGINS, drawAxes, drawLegend } from '../plot/draw.js';
 import { lossRange } from '../plot/loss.js';
 import { Pins } from './Pins.js';
@@ -27,7 +28,7 @@ export function LossCurves() {
     const xs = linearScale(0, r.stepMax, m.l, w - m.r);
     const ys = log ? logScale(r.lo, r.hi, h - m.b, m.t) : linearScale(r.lo, r.hi, h - m.b, m.t);
     const yTicks = log ? logTicks(r.lo, r.hi) : niceTicks(r.lo, r.hi, 4);
-    drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(0, r.stepMax, 4), yTicks, 'step', 'loss');
+    drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(0, r.stepMax, 4), yTicks);
     drawLegend(ctx, c, m, [
       { label: 'train', color: c.train, kind: 'line' },
       ...(miniBatch ? [{ label: 'batch', color: c.train, kind: 'line' as const, alpha: 0.3 }] : []),
@@ -125,6 +126,7 @@ export function LossCurves() {
       <Pins />
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Loss curves" />
+        <AxisLabels x="step" y="loss" />
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ import {
 import { ACTIVATION_LABEL, ACTIVATION_SYMBOL } from './drawings/activation.js';
 import { WEB_PIECES } from './drawings/index.js';
 import { fitName } from './pure.js';
+import { SvgTex } from '../tex/Tex.js';
 import { NODE_RADIUS, NodeShell, roleOfNode } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 import type { LayerProps } from './drawings/types.js';
@@ -153,14 +154,12 @@ function UnitCircle(p: { kind: NeuronLayout['units'][number]['kind']; node: Node
         </text>
       )}
       {p.kind === 'act' && p.node.type === 'activation' && (
-        <text
-          className="tk-text tk-small"
-          style={{ fontSize: ACTIVATION_SYMBOL[p.node.fn].length > 2 ? 7.5 : 12 }}
-          textAnchor="middle"
-          dominantBaseline="central"
-        >
-          {ACTIVATION_SYMBOL[p.node.fn]}
-        </text>
+        <SvgTex
+          src={ACTIVATION_SYMBOL[p.node.fn]}
+          box={{ x: -UNIT_R, y: -UNIT_R, width: 2 * UNIT_R, height: 2 * UNIT_R }}
+          fontSize={p.node.fn === 'sigmoid' ? 12 : 7.5}
+          className="tk-unit-tex"
+        />
       )}
       {p.kind === 'out' && <circle className="tk-dot" r={UNIT_R * 0.35} />}
     </>

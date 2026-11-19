@@ -68,7 +68,13 @@ export function pinLabel(graph: Graph): string {
   }
   for (const n of lins.slice(0, -1)) if (n.type === 'linear') widths.push(n.out);
   const t = graph.train;
-  return [acts.join('/') || 'linear', widths.join('x'), `${t.optimizer} ${t.lr}`]
+  // `$...$` parts are typeset as maths by the chip (and stripped for titles): the widths read
+  // `$16 \\times 8$` and the learning rate `$\\eta = 0.01$`.
+  return [
+    acts.join('/') || 'linear',
+    widths.length > 1 ? `$${widths.join(' \\times ')}$` : widths.join(''),
+    `${t.optimizer} $\\eta=${t.lr}$`,
+  ]
     .filter((s) => s !== '')
     .join(' · ');
 }

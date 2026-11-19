@@ -5,6 +5,7 @@ import { deleteSelection } from './actions.js';
 import { biasAt, weightAt } from './neuronPure.js';
 import { edgeIndexOf } from './pure.js';
 import { beginWeightEdit, type WeightTarget } from './weightEdit.js';
+import { TexText } from '../tex/Tex.js';
 import { hostShape } from '../state/hostShape.js';
 import { useStore } from '../state/store.js';
 import type { Selection } from '../state/viewSlice.js';
@@ -44,9 +45,11 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
       </h2>
       {node.type === 'linear' && (
         <p data-testid="inspector-params" className="tk-muted">
-          {inW === undefined || count === undefined
-            ? 'Parameters: unknown until the input width is known.'
-            : `${inW} x ${node.out}${node.bias ? ` + ${node.out}` : ''} = ${count} parameters`}
+          <TexText>
+            {inW === undefined || count === undefined
+              ? 'Parameters: unknown until the input width is known.'
+              : `$${inW} \\times ${node.out}${node.bias ? ` + ${node.out}` : ''} = ${count}$ parameters`}
+          </TexText>
         </p>
       )}
       {inW !== undefined && node.type !== 'linear' && <p className="tk-muted">Width {inW}</p>}

@@ -106,7 +106,10 @@ test('feature inspector: degree, sin, cos, products; width shown; one undo step 
   expect(steps()).toBe(before + 4);
   act(() => s().undo());
   expect(node('feat')).toMatchObject({ products: false });
-  expect(must('node-feat').textContent).toContain('x to x^3'); // main label stays at any scale
+  // The main label (typeset by KaTeX; its TeX is the aria-label) stays at any scale.
+  expect(must('node-feat').querySelector('.tk-tex')?.getAttribute('aria-label')).toBe(
+    'x, \\dots, x^{3}',
+  );
 });
 
 test('dropout inspector: p commits once; out of range is refused', () => {

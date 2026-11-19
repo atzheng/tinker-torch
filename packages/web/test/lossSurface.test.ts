@@ -26,7 +26,7 @@ test('twoParams: exactly two parameters across nodes, else null', () => {
   const two = { a: { W: Float32Array.of(1) }, b: { W: Float32Array.of(4) } };
   const t = twoParams(two, ['a', 'b']);
   expect(t?.values).toEqual([1, 4]);
-  if (t) expect(axisLabels(t.axes)).toEqual(['a weight', 'b weight']);
+  if (t) expect(axisLabels(t.axes)).toEqual(['a $w$', 'b $w$']);
 });
 
 test('nextRange keeps the range while the path stays inside, then re-centres on the current point', () => {
@@ -103,6 +103,6 @@ test('nextRange keeps the last good range when the path runs off (divergence)', 
 
 test('axisLabels numbers two weights of one node', () => {
   const a = { node: 'l', tensor: 'W' as const, index: 0 };
-  expect(axisLabels([a, { ...a, index: 1 }])).toEqual(['weight 1', 'weight 2']);
-  expect(axisLabels([a, { node: 'l', tensor: 'b', index: 0 }])).toEqual(['weight', 'bias']);
+  expect(axisLabels([a, { ...a, index: 1 }])).toEqual(['$w_{1}$', '$w_{2}$']);
+  expect(axisLabels([a, { node: 'l', tensor: 'b', index: 0 }])).toEqual(['$w$', '$b$']);
 });

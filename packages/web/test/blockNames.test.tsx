@@ -57,8 +57,11 @@ test('fitName keeps names at least MIN_TEXT_PX on screen where the width allows,
 });
 
 test('Tanh has no glyph that repeats its name; ReLU keeps max(0,x)', () => {
-  const g = (id: string) => host.querySelector(`[data-testid="node-${id}"] .tk-glyph`)?.textContent;
-  expect(g('act1')).toBe('max(0,x)');
+  // The glyph is KaTeX; its TeX source is the span's aria-label.
+  const g = (id: string) =>
+    host.querySelector(`[data-testid="node-${id}"] .tk-fo .tk-tex`)?.getAttribute('aria-label') ??
+    undefined;
+  expect(g('act1')).toBe('\\max(0,x)');
   act(() => {
     editSetting('act1', 'fn', 'tanh');
   });
