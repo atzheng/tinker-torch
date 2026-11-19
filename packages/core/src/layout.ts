@@ -2,8 +2,8 @@
  * Layout geometry (CONTRACTS.md section 9): pure, deterministic, nothing stored. Works on the whole
  * node set (not `analysis.order`), so invalid graphs lay out too: every node gets a position.
  */
-import type { Graph, Node, NodeId } from './graph.js';
-import { inputPortsOf, resolveEdge } from './graph.js';
+import type { Graph, Node, NodeId } from './legacy/graph.js';
+import { inputPortsOf, resolveEdge } from './legacy/graph.js';
 import type { Analysis } from './analyse.js';
 
 export type Box = { x: number; y: number; w: number; h: number };
