@@ -45,6 +45,12 @@ export function valCount(n: number, val: number): number {
   return Math.min(n, Math.max(0, Math.round(n * val)));
 }
 
+/** Regression 1, binary 2, multiclass k. */
+export function classCount(set: DatasetName): number {
+  const spec = SETS[set];
+  return spec.kind === 'regression' ? 1 : spec.kind === 'binary' ? 2 : (spec.numClasses ?? 3);
+}
+
 export function sample(config: DataConfig): Dataset {
   const spec = SETS[config.set];
   const d = spec.d;
@@ -89,9 +95,17 @@ export function sample(config: DataConfig): Dataset {
 
   return {
     info: {
-      columns: Array.from({ length: d }, (_, c) => `x${c + 1}`),
+      columns: spec.featureNames ?? Array.from({ length: d }, (_, c) => `x${c + 1}`),
       kind: spec.kind,
-      numClasses: spec.kind === 'binary' ? 2 : 1,
+      numClasses: classCount(config.set),
+      targetName: spec.targetName ?? 'y',
+      ...(spec.kind === 'regression'
+        ? {}
+        : {
+            classNames:
+              spec.classNames ??
+              Array.from({ length: classCount(config.set) }, (_, i) => `class ${i}`),
+          }),
     },
     xTrain: xt,
     yTrain,
@@ -105,7 +119,8 @@ export function sample(config: DataConfig): Dataset {
 }
 
 /**
- * Regression: f*(x). Classification: P(y=1|x) of the clean generator.
+ * Regression: f*(x). Binary: P(y=1|x) of the clean generator. Multiclass: the class index of the
+ * clean generator.
  * `xRaw` is row-major raw (unstandardised) inputs with the set's d columns.
  */
 export function truth(set: DatasetName, xRaw: Float32Array): Float32Array {
@@ -136,5 +151,21 @@ export function truthMargin(set: DatasetName, xRaw: Float32Array): Float32Array 
     for (let c = 0; c < d; c++) row[c] = xRaw[i * d + c] ?? 0;
     out[i] = g(row);
   }
+  return out;
+}
+
+/**
+ * What a model's output should look like on `xRaw`: the same as `truth` for regression and binary
+ * sets; for multiclass sets row-major [n, k] one-hot of the true class.
+ */
+export function truthProbs(set: DatasetName, xRaw: Float32Array): Float32Array {
+  const spec = SETS[set];
+  const t = truth(set, xRaw);
+  if (spec.kind !== 'multiclass') return t;
+  const k = classCount(set);
+  const out = new Float32Array(t.length * k);
+  t.forEach((c, i) => {
+    out[i * k + c] = 1;
+  });
   return out;
 }

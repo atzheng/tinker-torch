@@ -53,6 +53,7 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   prim_aux_objective: {},
   prim_log_loss_sigmoid: {},
   prim_cross_entropy_softmax: {},
+  prim_cross_entropy_softmax_k3: {}, // k = 3 classes (tinker-75o)
   prim_link_shared: {},
   prim_dag_dropout_skip: {},
   prim_penalty_adam_300steps: {},

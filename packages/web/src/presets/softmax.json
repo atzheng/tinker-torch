@@ -1,0 +1,61 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Softmax classifier on three blobs",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "x",
+        "type": "input",
+        "columns": ["x1", "x2"]
+      },
+      {
+        "id": "lin1",
+        "type": "linear",
+        "out": 3,
+        "bias": true
+      },
+      {
+        "id": "yhat",
+        "type": "link",
+        "fn": "softmax"
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "err",
+        "type": "cross_entropy"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["x", "lin1"],
+      ["lin1", "yhat"],
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
+    ],
+    "predictions": ["yhat"],
+    "loss": "loss",
+    "data": {
+      "set": "blobs3",
+      "n": 90,
+      "noise": 0.3,
+      "val": 0.3,
+      "seed": 7,
+      "standardize": false
+    },
+    "train": {
+      "optimizer": "adam",
+      "lr": 0.05,
+      "batch": "full",
+      "seed": 11
+    }
+  }
+}
