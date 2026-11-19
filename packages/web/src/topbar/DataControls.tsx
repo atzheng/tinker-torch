@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { DatasetName } from '@tinker/core';
 import { useStore } from '../state/store.js';
+import { Popover } from './Popover.js';
 import styles from './DataControls.module.css';
 
 const GROUPS: { label: string; sets: { name: DatasetName; label: string }[] }[] = [
@@ -118,47 +119,54 @@ export function DataControls() {
         integer
         onCommit={(n) => setData({ n })}
       />
-      <NumField
-        label="Noise"
-        testid="data-noise"
-        value={data.noise}
-        min={0}
-        max={1}
-        step={0.05}
-        onCommit={(noise) => setData({ noise })}
-      />
-      <NumField
-        label="Val %"
-        testid="data-val"
-        value={data.val}
-        min={0}
-        max={0.5}
-        step={5}
-        scale={100}
-        onCommit={(val) => setData({ val })}
-      />
-      <NumField
-        label="Seed"
-        testid="data-seed"
-        value={data.seed}
-        min={-2147483648}
-        max={4294967295}
-        step={1}
-        integer
-        onCommit={(seed) => setData({ seed })}
-      />
+      <Popover
+        label="Data"
+        ariaLabel="More data settings"
+        buttonTestId="data-more"
+        panelTestId="data-more-panel"
+      >
+        <NumField
+          label="Noise"
+          testid="data-noise"
+          value={data.noise}
+          min={0}
+          max={1}
+          step={0.05}
+          onCommit={(noise) => setData({ noise })}
+        />
+        <NumField
+          label="Val %"
+          testid="data-val"
+          value={data.val}
+          min={0}
+          max={0.5}
+          step={5}
+          scale={100}
+          onCommit={(val) => setData({ val })}
+        />
+        <NumField
+          label="Seed"
+          testid="data-seed"
+          value={data.seed}
+          min={-2147483648}
+          max={4294967295}
+          step={1}
+          integer
+          onCommit={(seed) => setData({ seed })}
+        />
+        <label className={styles.check}>
+          <input
+            type="checkbox"
+            data-testid="data-standardize"
+            checked={data.standardize}
+            onChange={(e) => setData({ standardize: e.target.checked })}
+          />
+          <span>Standardise</span>
+        </label>
+      </Popover>
       <button type="button" data-testid="data-resample" onClick={resample}>
         Resample
       </button>
-      <label className={styles.check}>
-        <input
-          type="checkbox"
-          data-testid="data-standardize"
-          checked={data.standardize}
-          onChange={(e) => setData({ standardize: e.target.checked })}
-        />
-        <span>Standardise</span>
-      </label>
     </div>
   );
 }
