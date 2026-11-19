@@ -219,7 +219,7 @@ export function FitPlot2D() {
   const ref = usePlotCanvas(draw, [dataset, fixed, shown, host, showTruth, mapped]);
   return (
     <div className={styles.panel} data-testid="fit-plot">
-      <div className={`${styles.head} ${styles.headWrap}`}>
+      <div className={`${styles.head} ${styles.headWrap}`} data-panel-head="">
         <span className={styles.title}>Fit</span>
         {classification ? (
           <span className={`${styles.key} tk-diag-label`} data-testid="fit-key">

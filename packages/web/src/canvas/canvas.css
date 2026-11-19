@@ -499,7 +499,7 @@ path.tk-hit {
 }
 /* Beside Fit: puts every moved piece back on the automatic layout */
 .tk-tidy {
-  left: 160px;
+  left: 196px;
 }
 /* A piece being moved (tinker-ong): grabbed, a little lifted */
 .tk-node[data-moving='true'] {

@@ -39,9 +39,9 @@
 }
 .results {
   grid-area: results;
-  display: grid;
-  grid-auto-rows: minmax(0, 1fr); /* fit, loss curves, loss surface (two-parameter models) */
-  gap: 1px;
+  /* fit, loss curves, loss surface (two-parameter models): ResultsPanels lays them out */
+  display: flex;
+  flex-direction: column;
 }
 .train {
   grid-area: train;

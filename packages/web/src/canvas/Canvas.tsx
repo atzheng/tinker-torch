@@ -236,10 +236,19 @@ export function Canvas() {
   useEffect(() => setUserViewRaw(null), [grain, loadEpoch]);
   useEffect(() => dnd.arm(null), [graph, grain, loadEpoch, userView]);
   const clampT = (x: Transform) => clampView(x, layout.size, view, HEADER_H);
+  // While a piece is moved the view stays exactly as it was, so the piece stays under the pointer
+  // even though the drawing's size (and so its fit or centring) changes.
+  const frozen = useRef<Transform | null>(null);
   const t: Transform = useMemo(
     () =>
-      userView === 'fit' ? fit : userView ? clampView(userView, layout.size, view, HEADER_H) : base,
-    [userView, fit, base, layout.size, view],
+      moving && frozen.current
+        ? frozen.current
+        : userView === 'fit'
+          ? fit
+          : userView
+            ? clampView(userView, layout.size, view, HEADER_H)
+            : base,
+    [moving, userView, fit, base, layout.size, view],
   );
   const tRef = useRef(t);
   tRef.current = t;
@@ -307,7 +316,7 @@ export function Canvas() {
       const b = layerLayout.nodes[id];
       if (!b) return;
       moveStart.current = { id, x: b.x, y: b.y };
-      // Freeze the view while pieces move: the drawing's size may change, the zoom must not.
+      frozen.current = tRef.current;
       setUserView(tRef.current);
       setMoving({ id, x: b.x, y: b.y });
     },
@@ -318,6 +327,7 @@ export function Canvas() {
     end: (id: string, dx: number, dy: number) => {
       const m = moveTo(id, dx, dy);
       moveStart.current = null;
+      frozen.current = null;
       setMoving(null);
       if (!m) return;
       if (m.x !== m.from.x || m.y !== m.from.y) {
@@ -328,6 +338,7 @@ export function Canvas() {
     },
     cancel: () => {
       moveStart.current = null;
+      frozen.current = null;
       setMoving(null);
     },
   };

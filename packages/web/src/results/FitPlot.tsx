@@ -168,7 +168,7 @@ function FitPlot1D() {
   const ref = usePlotCanvas(draw, [dataset, fixed, curve, showTruth, overlay, pins]);
   return (
     <div className={styles.panel} data-testid="fit-plot">
-      <div className={styles.head}>
+      <div className={styles.head} data-panel-head="">
         <span className={styles.title}>Fit</span>
         <label className={styles.toggle}>
           <input
