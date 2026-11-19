@@ -1,4 +1,5 @@
 import { ACTIVATION_FNS, type ActivationFn } from '@tinker/core';
+import { NodeShell } from './NodeShell.js';
 import { SelectField, editSetting } from './fields.js';
 import type { WebPiece } from './types.js';
 
@@ -15,15 +16,19 @@ const LABEL: Record<ActivationFn, string> = {
   gelu: 'GELU',
 };
 
-/** Layer drawing: a circle that applies a function, with its symbol. */
+/** Layer drawing: the shared node with the function's symbol as its glyph. */
 export const activationPiece: WebPiece<'activation'> = {
-  Layer: ({ node, w, h }) => (
-    <g data-piece="activation">
-      <circle className="tk-shape" cx={w / 2} cy={h / 2} r={Math.min(w, h) / 2 - 4} />
-      <text className="tk-text" x={w / 2} y={h / 2} textAnchor="middle" dominantBaseline="middle">
-        {ACTIVATION_SYMBOL[node.fn]}
-      </text>
-    </g>
+  Layer: ({ node, w, h, scale }) => (
+    <NodeShell
+      piece="activation"
+      w={w}
+      h={h}
+      scale={scale}
+      name="Activation"
+      glyph={ACTIVATION_SYMBOL[node.fn]}
+      inPorts={1}
+      outPort
+    />
   ),
   Neuron: () => <g data-placeholder="activation-neuron" />,
   Fields: ({ node }) => (

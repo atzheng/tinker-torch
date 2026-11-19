@@ -1,26 +1,14 @@
 import { parsePort } from '@tinker/core';
 import { useAnalysis } from '../../state/derived.js';
 import { useStore } from '../../state/store.js';
+import { NodeShell } from './NodeShell.js';
 import type { NodeOf, WebPiece } from './types.js';
 
-/** Layer drawing: a plus circle with two black input dots on its left. */
+/** Layer drawing: the shared node with two input ports (a, b) and a plus glyph. */
 export const addPiece: WebPiece<'add'> = {
-  Layer: ({ w, h }) => {
-    const r = Math.min(w, h) / 2 - 8;
-    const cx = w / 2;
-    const cy = h / 2;
-    return (
-      <g data-piece="add">
-        <circle className="tk-shape" cx={cx} cy={cy} r={r} />
-        <path
-          className="tk-stroke"
-          d={`M${cx - r / 2} ${cy}H${cx + r / 2}M${cx} ${cy - r / 2}V${cy + r / 2}`}
-        />
-        <circle className="tk-dot" cx={cx - r} cy={cy - r / 2} r={3.5} />
-        <circle className="tk-dot" cx={cx - r} cy={cy + r / 2} r={3.5} />
-      </g>
-    );
-  },
+  Layer: ({ w, h, scale }) => (
+    <NodeShell piece="add" w={w} h={h} scale={scale} name="Add" glyph="+" inPorts={2} outPort />
+  ),
   Neuron: () => <g data-placeholder="add-neuron" />,
   Fields: ({ node }) => <AddFields node={node} />,
 };

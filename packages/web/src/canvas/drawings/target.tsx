@@ -1,14 +1,21 @@
+import { NodeShell } from './NodeShell.js';
 import type { WebPiece } from './types.js';
 
-/** Layer drawing: a dot labelled y. */
+/** Layer drawing: the shared node in the input role (the target y is data entering), badge y. */
 export const targetPiece: WebPiece<'target'> = {
-  Layer: ({ w, h }) => (
-    <g data-piece="target">
-      <circle className="tk-dot" cx={w * 0.3} cy={h / 2} r={8} />
-      <text className="tk-text" x={w * 0.3 + 16} y={h / 2} dominantBaseline="middle">
-        y
-      </text>
-    </g>
+  Layer: ({ w, h, scale }) => (
+    <NodeShell
+      piece="target"
+      role="input"
+      badge
+      w={w}
+      h={h}
+      scale={scale}
+      name="Target"
+      glyph="y"
+      inPorts={0}
+      outPort
+    />
   ),
   Neuron: () => <g data-placeholder="target-neuron" />,
   Fields: () => <p className="tk-muted">No settings.</p>,
