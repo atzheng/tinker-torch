@@ -276,6 +276,8 @@ Initialisation follows each piece's `paramInit` (plain data, carried in `analysi
 
 HostParams has an entry for exactly the nodes in `analysis.paramNodes` (parameter owners on `order` plus Linears read only through a Weights tap) with a known input width; an entry has exactly the tensors of `analysis.paramShapes[id]` (for a Linear `b` iff it has bias). Each node draws its tensors, in the key order of its shapes (W then b), from `makeRng(seed).fork(nodeId)`, so adding a node does not change the others' init. `reconcileParams` takes the analysis the old params belong to (flat arrays alone cannot tell 2x3 from 3x2; `analysis.paramShapes` has the shapes, so no graph is passed). Per node: when every tensor present in both old and new shapes keeps its shape, those arrays (the same objects) are kept, a tensor only in the new shapes is drawn fresh from the node's rng stream and one only in the old is dropped (for a Linear: W is kept when [in, out] is unchanged even if bias was toggled; b is drawn fresh when bias is turned on and dropped when turned off); if any shared tensor changed shape, the node was not in the old analysis, or its piece type (`analysis.paramType`) changed (an id reused for another piece), the node is re-initialised; nodes that left the path are dropped; `old` is never mutated. `paramsFromJson` drops (never throws on) malformed entries (non-arrays, non-finite numbers, holes), entries whose tensor names or lengths do not match exactly (including an extra key, such as `b` on a Linear without bias) and unknown nodes, listing their ids in `dropped`; nodes with no saved entry are absent, so callers follow it with `reconcileParams`.
 
+Group into Linear and Expand to scalars (section 8) carry host values between nodes with different ids: the Weight on column x_j becomes `W[j-1][0]` of a Linear (and back) and the Bias becomes `b`; the new nodes get exact copies, never a fresh init. A locked consumer of the replaced node may be rewired by these edits, since it receives identical values (section 8).
+
 HostParams arrays are immutable once created: `reconcileParams` shares unchanged arrays with `old` (and so with undo history), so nobody writes into them in place. The engine's `fromHost` copies into jax arrays and `toHost` creates new arrays.
 
 All data sampling, initialisation and mini-batch shuffling use `core/rng.ts`, never `Math.random` and never jax random. Only dropout masks use jax random, keyed from `TrainState.key`.
@@ -421,6 +423,20 @@ Choices fixed by the implementation (`core/edit.ts`, exports `EditResult` and `E
 - `moveNodes` / `clearPositions` (tinker-ong): change only `positions` (the result shares `nodes`, `edges`, pins, `data` and `train` with the input, which is how the train slice recognises a move). A locked piece **may** be moved: a lock protects what a piece computes (settings, wires, pins), not where it sits, and a preset author can lay out a lesson by hand.
 
 Params after an edit: the train slice re-initialises the parameters of every node whose param shapes changed and keeps the others (`reconcileParams(oldHost, oldAnalysis, newAnalysis, seed)` in `core/params.ts`).
+
+Scalar edits (tinker-9io.5, `core/scalar.ts`): these two change the graph and the host params together, so each is one pure function `(graph, host, ...) -> { ok: true; graph; host; select } | { ok: false; error }` and the store applies it as one undo step (the reconcile above then finds nothing to re-init, because every new node already has its values).
+
+```ts
+findLinearGroups(g, analysis): NodeId[][]            // one list per pattern: its Columns, Weights, Sum and Bias, in node order
+groupIntoLinear(g, host, ids, opts?)                 // Columns -> Weights -> Sum (-> Bias)  =>  Input -> Linear(d, 1)
+expandToScalars(g, host, linearId, opts?)            // Input -> Linear(out 1)  =>  Columns -> Weights -> Sum (-> Bias)
+```
+
+- Pattern: a Sum whose every input is a distinct Weight, each Weight fed by its own Column that names a dataset column (`x1..xd` of the set); Weights and Sum have no other wires; a Bias that is the Sum's only consumer (and takes only the Sum) is part of it. Only Columns feed a group (no other width-1 source yet). A group with an analysis issue on one of its pieces is not listed.
+- `groupIntoLinear` always makes a fresh Input (`input<k>`, columns in dataset order) and Linear (`linear<k>`, bias iff a Bias was in the group); `W[k][0]` is the Weight of the k-th dataset column (so the wiring order does not matter), `b` the Bias; values are copied bit for bit. Consumers of the Bias (else the Sum) read the Linear, in place in `edges`; a ŷ or L pin on that node moves to the Linear. A Column with other wires out or a pin stays. Refused when `ids` is not exactly one pattern, a pin sits on a Weight (or on the Sum when a Bias follows), a removed piece is locked, or `host` lacks a value.
+- `expandToScalars` makes `x<k>` Columns (the Input's columns, in order), `w<k>` Weights, `sum<k>` and `bias<k>` (smallest free ids), with Sum's inputs in that order; Weight k takes `W[k][0]`, the Bias takes `b`. The Input goes unless something else reads it or it carries a pin. Consumers and pins of the Linear move to the last node. Refused for out > 1, a feeder that is not an Input, an Input with no columns, a Weights tap on the Linear, a locked Linear or removed Input, or missing values.
+- Locks: a locked consumer of the group's last node (or of the Linear) may be rewired by these edits, because it receives identical values; only the pieces that are removed or replaced must be unlocked. A graph that fails `parseGraph` after the edit is refused with one sentence, never the raw parser error.
+- Round trip: group -> expand -> group returns the same params bit for bit and the same loss (engine test `scalarGroup.test.ts`).
 
 ## 9. Layout geometry (`core/layout.ts`)
 
