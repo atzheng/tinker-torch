@@ -29,8 +29,12 @@ export function useViewGestures(ref: RefObject<HTMLElement | null>, o: ViewGestu
     const el = ref.current;
     if (!el || !o.enabled) return;
     const pts = new Map<number, [number, number]>();
-    let pinch: { ids: [number, number]; start: Transform; a0: [number, number]; b0: [number, number] } | null =
-      null;
+    let pinch: {
+      ids: [number, number];
+      start: Transform;
+      a0: [number, number];
+      b0: [number, number];
+    } | null = null;
     const local = (ev: { clientX: number; clientY: number }): [number, number] => {
       const r = el.getBoundingClientRect();
       return [ev.clientX - r.left, ev.clientY - r.top];

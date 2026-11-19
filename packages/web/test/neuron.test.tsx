@@ -206,7 +206,7 @@ test('tapping a unit selects it and shows its bias; the background clears', () =
   expect(s().selection).toEqual({ kind: 'unit', node: 'lin1', index: 2 });
   expect(must('inspector-bias').textContent).toBe('Bias 0.3000');
   expect(must('unit-lin1-2').getAttribute('data-selected')).toBe('true');
-  act(() => fire(must('canvas-svg'), 'pointerdown', 5, 5, 'touch'));
+  tapAt(must('canvas-svg'), 5, 5); // a press that moves pans instead, so it clears on release
   expect(s().selection).toBeNull();
 });
 
