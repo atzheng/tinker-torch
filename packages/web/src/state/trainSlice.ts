@@ -180,6 +180,19 @@ const rt: Runtime = {
   trainBatch: null,
 };
 
+/** Whether `b` is `a` with only its piece positions changed (same node, edge, pin, data and train objects). */
+function onlyMoved(a: Graph, b: Graph): boolean {
+  return (
+    a.positions !== b.positions &&
+    a.nodes === b.nodes &&
+    a.edges === b.edges &&
+    a.predictions === b.predictions &&
+    a.loss === b.loss &&
+    a.data === b.data &&
+    a.train === b.train
+  );
+}
+
 function structuralKey(g: Graph): string {
   return JSON.stringify([g.nodes, g.edges, g.data]);
 }
@@ -562,7 +575,14 @@ export function attachTrainLoop(store: StoreApi<Store>): void {
   rt.seed = store.getState().graph.train.seed;
   store.subscribe(() => {
     const s = store.getState(); // the listener argument can be stale inside nested set() calls
-    if (s.graph !== rt.lastGraph || s.dataset !== rt.lastDataset) resyncRef?.();
+    if (s.graph !== rt.lastGraph || s.dataset !== rt.lastDataset) {
+      // Moving a piece changes only `positions`: nothing to recompile, the run goes on.
+      if (rt.lastGraph && s.dataset === rt.lastDataset && onlyMoved(rt.lastGraph, s.graph)) {
+        rt.lastGraph = s.graph;
+        return;
+      }
+      resyncRef?.();
+    }
   });
   resyncRef?.();
 }

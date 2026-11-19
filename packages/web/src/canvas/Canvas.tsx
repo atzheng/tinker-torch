@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   LAYOUT,
+  clearPositions,
+  moveNodes,
   inputPortsOf as inputPortsOfType,
   layoutLayers,
   layoutNeurons,
@@ -35,8 +37,11 @@ import {
   edgeIndexOf,
   errorNodes,
   fitTransform,
-  pinCentre,
+  PIN,
   PIN_ROOM_X,
+  pinKey,
+  pinsOf,
+  placePins,
   placeInspector,
   placeIssues,
   type InspectorPlacement,
@@ -44,6 +49,10 @@ import {
 } from './pure.js';
 import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
 import { useStore } from '../state/store.js';
+
+/** Pieces snap to this grid (layout units): the `--sp-2` spacing token. */
+const SNAP = 8;
+const snap = (v: number): number => Math.round(v / SNAP) * SNAP;
 
 const DEFAULT_SIZE = { w: 800, h: 500 };
 const INSPECTOR_W = 248;
@@ -145,11 +154,45 @@ export function Canvas() {
     if (canUndo) setEdited(true);
   }, [canUndo]);
 
-  const layerLayout = useMemo(() => layoutLayers(graph, analysis), [graph, analysis]);
+  // A piece being moved: where its box's top-left is now, in layout units (not yet in the graph).
+  const [moving, setMoving] = useState<{ id: string; x: number; y: number } | null>(null);
+  // The graph as drawn: while a piece is moved it already sits at the pointer, wires follow.
+  const shown = useMemo(
+    () =>
+      moving
+        ? {
+            ...graph,
+            positions: {
+              ...graph.positions,
+              [moving.id]: [moving.x, moving.y] as [number, number],
+            },
+          }
+        : graph,
+    [graph, moving],
+  );
+  const layerLayout = useMemo(() => layoutLayers(shown, analysis), [shown, analysis]);
   const neuronLayout = useMemo(
     () => (grain === 'neuron' ? layoutNeurons(graph, analysis) : null),
     [grain, graph, analysis],
   );
+  // Where the pins sit (real pins only; LayerView adds the add pins of a selected piece) and how
+  // far they reach, so fit and pan bounds include them.
+  const pinSpots = useMemo(
+    () => placePins(layerLayout.nodes, pinsOf(graph), graph.positions !== undefined),
+    [layerLayout, graph],
+  );
+  const pinExtent = useMemo((): [number, number] => {
+    let w = 0;
+    let h = 0;
+    // Without hand-placed pieces the automatic layout already leaves room (PIN_ROOM_X).
+    if (graph.positions) {
+      for (const [x, y] of pinSpots.values()) {
+        w = Math.max(w, x + PIN.r + 2);
+        h = Math.max(h, y + PIN.r + 8);
+      }
+    }
+    return [w, h];
+  }, [pinSpots, graph.positions]);
   // Boxes and wires of the drawing on screen. The neuron layout has the same shape, so drops,
   // callouts and the inspector anchor work in both grains.
   const layout: LayerLayout = useMemo(
@@ -163,10 +206,13 @@ export function Canvas() {
           }
         : {
             ...layerLayout,
-            // room for a pin on the last column
-            size: [layerLayout.size[0] + PIN_ROOM_X, layerLayout.size[1]],
+            // room for a pin on the last column, and for pins placed further out
+            size: [
+              Math.max(layerLayout.size[0] + PIN_ROOM_X, pinExtent[0]),
+              Math.max(layerLayout.size[1], pinExtent[1]),
+            ],
           },
-    [neuronLayout, layerLayout],
+    [neuronLayout, layerLayout, pinExtent],
   );
   // A header strip above the drawing holds the grain toggle, so it never covers a piece or wire.
   const isNeuron = neuronLayout !== null;
@@ -190,10 +236,19 @@ export function Canvas() {
   useEffect(() => setUserViewRaw(null), [grain, loadEpoch]);
   useEffect(() => dnd.arm(null), [graph, grain, loadEpoch, userView]);
   const clampT = (x: Transform) => clampView(x, layout.size, view, HEADER_H);
+  // While a piece is moved the view stays exactly as it was, so the piece stays under the pointer
+  // even though the drawing's size (and so its fit or centring) changes.
+  const frozen = useRef<Transform | null>(null);
   const t: Transform = useMemo(
     () =>
-      userView === 'fit' ? fit : userView ? clampView(userView, layout.size, view, HEADER_H) : base,
-    [userView, fit, base, layout.size, view],
+      moving && frozen.current
+        ? frozen.current
+        : userView === 'fit'
+          ? fit
+          : userView
+            ? clampView(userView, layout.size, view, HEADER_H)
+            : base,
+    [moving, userView, fit, base, layout.size, view],
   );
   const tRef = useRef(t);
   tRef.current = t;
@@ -244,6 +299,49 @@ export function Canvas() {
       onTap: () => select(null),
       onMove: (p) => setUserView(clampT({ ...t0, tx: t0.tx + p.dx, ty: t0.ty + p.dy })),
     });
+  };
+  // Moving a piece: positions are layout units, so the pointer's movement is divided by the zoom.
+  // Snapped to the 8-unit grid (the `--sp-2` spacing token), kept inside the margin, committed as
+  // one edit (one undo step) on release, and only when the piece actually ended up elsewhere.
+  const moveStart = useRef<{ id: string; x: number; y: number } | null>(null);
+  const moveTo = (id: string, dx: number, dy: number) => {
+    const s0 = moveStart.current;
+    if (!s0 || s0.id !== id) return null;
+    // Snap the movement, not the result: an off-grid piece moved less than a grid step stays put.
+    const x = Math.max(LAYOUT.pad, s0.x + snap(dx / tRef.current.scale));
+    const y = Math.max(LAYOUT.pad, s0.y + snap(dy / tRef.current.scale));
+    return { id, x, y, from: s0 };
+  };
+  const mover = {
+    start: (id: string) => {
+      const b = layerLayout.nodes[id];
+      if (!b) return;
+      moveStart.current = { id, x: b.x, y: b.y };
+      frozen.current = tRef.current;
+      setUserView(tRef.current);
+      setMoving({ id, x: b.x, y: b.y });
+    },
+    move: (id: string, dx: number, dy: number) => {
+      const m = moveTo(id, dx, dy);
+      if (m) setMoving({ id, x: m.x, y: m.y });
+    },
+    end: (id: string, dx: number, dy: number) => {
+      const m = moveTo(id, dx, dy);
+      moveStart.current = null;
+      frozen.current = null;
+      setMoving(null);
+      if (!m) return;
+      if (m.x !== m.from.x || m.y !== m.from.y) {
+        const r = apply(moveNodes(graph, { [id]: [m.x, m.y] }));
+        if (!r.ok) return;
+      }
+      selectNode(id);
+    },
+    cancel: () => {
+      moveStart.current = null;
+      frozen.current = null;
+      setMoving(null);
+    },
   };
   // Layer view draws pin issues at the pin; neuron view has no pins, so they stay at the piece.
   const placed = useMemo(
@@ -324,7 +422,7 @@ export function Canvas() {
   } else if (selection?.kind === 'pin') {
     const box = layout.nodes[selection.node];
     if (box) {
-      const [cx, cy] = pinCentre(box, selection.role);
+      const [cx, cy] = pinSpots.get(pinKey(selection.role, selection.node)) ?? [0, 0];
       // A ŷ pin sits over the Target and the Subtract inputs below it: open the inspector above.
       const above = selection.role === 'pred' && py(cy) - 20 >= 230;
       anchor = placeInspector(
@@ -398,6 +496,20 @@ export function Canvas() {
             Fit
           </button>
         )}
+      {!isNeuron && graph.positions && (
+        <button
+          type="button"
+          className="tk-grain tk-resetview tk-tidy"
+          data-testid="tidy-layout"
+          title="Put every piece back where the automatic layout puts it"
+          onClick={() => {
+            const r = apply(clearPositions(graph));
+            if (r.ok) setUserView('fit');
+          }}
+        >
+          Tidy
+        </button>
+      )}
       {isNeuron && userView && (
         <button
           type="button"
@@ -460,6 +572,8 @@ export function Canvas() {
               coarse={coarse}
               drag={drag}
               candidates={candidates}
+              mover={mover}
+              moving={moving?.id ?? null}
             />
           )}
         </g>
@@ -561,7 +675,7 @@ export function Canvas() {
         const [role, id] = key.split(':') as ['pred' | 'loss', string];
         const box = id ? layout.nodes[id] : undefined;
         if (!box) return null;
-        const [cx, cy] = pinCentre(box, role);
+        const [cx, cy] = pinSpots.get(key) ?? [0, 0];
         return (
           <Callout
             key={`p${key}`}

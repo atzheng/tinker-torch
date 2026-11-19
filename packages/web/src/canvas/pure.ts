@@ -145,19 +145,92 @@ export function pinCentre(box: Rect, role: PinRole): [number, number] {
   return [box.x + box.w + PIN.dx, box.y + box.h / 2 + (role === 'pred' ? -PIN.dy : PIN.dy)];
 }
 
+/** Offsets (dx right of the box's right edge, dy from the port row) tried in turn, by role. */
+const PIN_SLOTS: Record<PinRole, [number, number][]> = {
+  pred: [
+    [PIN.dx, -PIN.dy],
+    [PIN.dx, PIN.dy],
+    [PIN.dx, -PIN.dy - 30],
+    [PIN.dx, PIN.dy + 30],
+    [PIN.dx + 32, -PIN.dy],
+    [PIN.dx + 32, PIN.dy],
+  ],
+  loss: [
+    [PIN.dx, PIN.dy],
+    [PIN.dx, -PIN.dy],
+    [PIN.dx, PIN.dy + 30],
+    [PIN.dx, -PIN.dy - 30],
+    [PIN.dx + 32, PIN.dy],
+    [PIN.dx + 32, -PIN.dy],
+  ],
+};
+
+/** Clearance around a pin disc (and its ring) when it is kept off pieces and other pins. */
+const PIN_CLEAR = PIN.r + 6;
+
+/**
+ * Where each pin sits. By default (`avoid` false) exactly `pinCentre`. With `avoid` (the graph has
+ * pieces placed by hand, so another piece may be where the default spot is) a pin takes the first
+ * of a short list of spots right of its piece (default, the other side, further out, further
+ * right) whose disc clears every piece and every pin already placed; when none is free it keeps the
+ * default. Marks are placed in the order given, so real pins win over the add pins after them.
+ * Keys are `pinKey(role, node)`.
+ */
+export function placePins(
+  boxes: Readonly<Record<NodeId, Rect | undefined>>,
+  marks: readonly { role: PinRole; node: NodeId }[],
+  avoid: boolean,
+): Map<string, [number, number]> {
+  const out = new Map<string, [number, number]>();
+  const placed: [number, number][] = [];
+  const hitsBox = (c: [number, number], b: Rect) =>
+    c[0] + PIN_CLEAR > b.x &&
+    c[0] - PIN_CLEAR < b.x + b.w &&
+    c[1] + PIN_CLEAR > b.y &&
+    c[1] - PIN_CLEAR < b.y + b.h;
+  for (const { role, node } of marks) {
+    const box = boxes[node];
+    if (!box) continue;
+    let at = pinCentre(box, role);
+    if (avoid) {
+      const mid = box.y + box.h / 2;
+      for (const [dx, dy] of PIN_SLOTS[role]) {
+        const c: [number, number] = [box.x + box.w + dx, mid + dy];
+        const clear =
+          !Object.values(boxes).some((b) => b && b !== box && hitsBox(c, b)) &&
+          !placed.some((q) => Math.hypot(q[0] - c[0], q[1] - c[1]) < 2 * PIN_CLEAR);
+        if (clear) {
+          at = c;
+          break;
+        }
+      }
+    }
+    placed.push(at);
+    out.set(pinKey(role, node), at);
+  }
+  return out;
+}
+
 /**
  * The press rectangle of a pin: at least 32 screen px each way where there is room, but never
  * reaching into the piece (it starts right of the box) nor into the 32 px band around the output
  * port's row, where the wire label and the connect handle are, so those keep winning their presses.
+ * `centre` is where the pin is drawn (`placePins`); left out, the default spot.
  */
-export function pinHitRect(box: Rect, role: PinRole, scale: number): Rect {
-  const [cx, cy] = pinCentre(box, role);
+export function pinHitRect(
+  box: Rect,
+  role: PinRole,
+  scale: number,
+  centre: readonly [number, number] = pinCentre(box, role),
+): Rect {
+  const [cx, cy] = centre;
   const half = Math.max(PIN.r, HIT_MIN_PX / 2 / scale);
   const mid = box.y + box.h / 2;
   const band = HIT_MIN_PX / 2 / scale;
   const x0 = Math.max(cx - half, box.x + box.w + 1);
-  const y0 = role === 'loss' ? Math.max(cy - half, mid + band) : cy - half;
-  const y1 = role === 'pred' ? Math.min(cy + half, mid - band) : cy + half;
+  const below = cy > mid;
+  const y0 = below ? Math.max(cy - half, mid + band) : cy - half;
+  const y1 = below ? cy + half : Math.min(cy + half, mid - band);
   return { x: x0, y: y0, w: cx + half - x0, h: Math.max(1, y1 - y0) };
 }
 
