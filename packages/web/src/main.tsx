@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
 import { loadBundled } from './topbar/PresetMenu.js';
 import './theme.css';
+import './tex/tex.css';
 
 if (import.meta.env.DEV) {
   // Dev only: lets browser checks read the store (window.__tinker.store) next to liveArrays.

@@ -1,4 +1,5 @@
 import { useStore } from '../state/store.js';
+import { TexText } from '../tex/Tex.js';
 import styles from './PromptLine.module.css';
 
 /**
@@ -12,7 +13,9 @@ export function PromptLine() {
   if (!prompt || dismissed) return null;
   return (
     <div className={styles.line} data-testid="preset-prompt" role="status">
-      <span className={styles.text}>{prompt}</span>
+      <span className={styles.text}>
+        <TexText>{prompt}</TexText>
+      </span>
       <button type="button" aria-label="Dismiss" data-testid="prompt-dismiss" onClick={dismiss}>
         ×
       </button>

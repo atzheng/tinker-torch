@@ -1,0 +1,18 @@
+.tk-axis-x,
+.tk-axis-y {
+  position: absolute;
+  font: 11px var(--font);
+  color: var(--text-muted);
+  white-space: nowrap;
+  line-height: 1.2;
+  pointer-events: none;
+}
+.tk-axis-x {
+  bottom: 1px;
+}
+/* The right end of the box sits at the top of the y axis; the text reads upward, as the canvas label did. */
+.tk-axis-y {
+  left: 11px;
+  transform-origin: 100% 50%;
+  transform: translate(-100%, -50%) rotate(-90deg);
+}

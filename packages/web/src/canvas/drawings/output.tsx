@@ -20,7 +20,7 @@ export const outputPiece: WebPiece<'output'> = {
       h={h}
       scale={scale}
       name="Output"
-      glyph={'ŷ'}
+      glyph={'\\hat{y}'}
       secondary={node.link === 'identity' ? [] : [node.link]}
       inPorts={1}
       outPort

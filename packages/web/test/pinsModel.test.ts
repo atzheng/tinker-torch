@@ -43,10 +43,10 @@ test('decimation keeps a validation value in every run when validation is sparse
 
 test('the label names activation, hidden width, optimizer and learning rate', () => {
   const g = initialGraph();
-  expect(pinLabel(g)).toBe('relu · 4 · sgd 0.03');
+  expect(pinLabel(g)).toBe('relu · 4 · sgd $\\eta=0.03$');
   const r = swapPiece(g, 'act1', { type: 'activation', fn: 'tanh' });
   if (!r.ok) throw new Error(r.error);
-  expect(pinLabel(r.graph)).toBe('tanh · 4 · sgd 0.03');
+  expect(pinLabel(r.graph)).toBe('tanh · 4 · sgd $\\eta=0.03$');
 });
 
 test('makePin needs a run and a free slot; slots are reused after a removal', () => {

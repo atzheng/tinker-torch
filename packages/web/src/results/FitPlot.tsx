@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { grid1d, truth, unstandardizeRows } from '@tinker/core';
 import { fitYRange, linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
+import { AxisLabels } from '../plot/AxisLabels.js';
 import { MARGINS, drawAxes, drawLegend, type LegendItem } from '../plot/draw.js';
 import { useStore } from '../state/store.js';
 import { FitPlot2D } from './FitPlot2D.js';
@@ -71,7 +72,7 @@ function FitPlot1D() {
     const [ylo, yhi] = fitYRange(lo, hi, curve);
     const xs = linearScale(xlo, xhi, m.l, w - m.r);
     const ys = linearScale(ylo, yhi, h - m.b, m.t);
-    drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(xlo, xhi, 6), niceTicks(ylo, yhi, 4), 'x', 'y');
+    drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(xlo, xhi, 6), niceTicks(ylo, yhi, 4));
     const legend: LegendItem[] = [
       { label: 'train', color: c.train, kind: 'dot' },
       { label: 'val', color: c.val, kind: 'ring' },
@@ -179,6 +180,7 @@ function FitPlot1D() {
       <ResampleReadout />
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Fit plot" />
+        <AxisLabels x="$x$" y="$y$" />
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import type { PieceType } from '@tinker/core';
 import { fitName, legibleAt } from '../pure.js';
+import { SvgTex } from '../../tex/Tex.js';
+import { splitTex } from '../../tex/Tex.js';
 
 /**
  * The one node component (CONTRACTS.md section 10, "Visual language"). Every piece in layer view,
@@ -48,15 +50,15 @@ export type NodeShellProps = {
   piece: string;
   /** The piece's name, top left. Always drawn. */
   name: string;
-  /** Short symbol or formula for the operation, right slot. Ignored when `slot` is given. */
+  /** TeX (no dollar signs) for the operation or role badge, right slot. Ignored when `slot` is given. */
   glyph?: string;
   /** A role badge (x, y-hat, L) instead of plain glyph text. Needs `role`. */
   badge?: boolean;
-  /** Short qualifier, top right (Feature options, a weight penalty). Drawn when legible. */
+  /** TeX qualifier, top right (Feature options, a weight penalty). Drawn when legible. */
   tag?: string;
   /** Custom content for the right slot (the Linear heat map), drawn in place of the glyph. */
   slot?: ReactNode;
-  /** Secondary info, bottom left, one entry per line (at most two). Both are always drawn. */
+  /** Secondary info, bottom left, one entry per line (at most two). Both are always drawn. A line with `$...$` is typeset as maths. */
   secondary?: string[];
   /** `data-testid` of the second secondary line, when a test or a caller needs to find it. */
   secondaryTestId?: string;
@@ -81,41 +83,59 @@ export function NodeShell(p: NodeShellProps) {
         {name.text}
       </text>
       {p.tag && small && (
-        <text className="tk-secondary" x={w - PAD} y={NAME_PX + 4} fontSize={11} textAnchor="end">
-          {p.tag}
-        </text>
+        <SvgTex
+          src={p.tag}
+          box={{ x: w / 2, y: 3, width: w / 2 - PAD, height: 22 }}
+          fontSize={11}
+          align="end"
+          className="tk-secondary-tex"
+        />
       )}
-      {lines.map((t, i) => (
-        <text
-          key={i}
-          className="tk-secondary"
-          data-testid={i === 1 ? p.secondaryTestId : undefined}
-          x={PAD}
-          y={secondaryY[i]}
-          fontSize={SECONDARY_PX}
-        >
-          {t}
-        </text>
-      ))}
+      {lines.map((t, i) =>
+        splitTex(t).some((x) => x.tex) ? (
+          <SvgTex
+            key={i}
+            src={t}
+            mixed
+            box={{ x: PAD, y: (secondaryY[i] ?? 0) - 12, width: w - 2 * PAD, height: 16 }}
+            fontSize={SECONDARY_PX}
+            align="start"
+            className="tk-secondary-tex"
+            testid={i === 1 ? p.secondaryTestId : undefined}
+          />
+        ) : (
+          <text
+            key={i}
+            className="tk-secondary"
+            data-testid={i === 1 ? p.secondaryTestId : undefined}
+            x={PAD}
+            y={secondaryY[i]}
+            fontSize={SECONDARY_PX}
+          >
+            {t}
+          </text>
+        ),
+      )}
       {p.slot ??
         (p.badge ? (
           <g className="tk-badge" transform={`translate(${w - PAD - 10} ${h / 2 + 4})`}>
             <circle r={10} />
-            <text textAnchor="middle" dominantBaseline="central" y={1.5}>
-              {p.glyph}
-            </text>
+            <SvgTex
+              src={p.glyph ?? ''}
+              box={{ x: -10, y: -10, width: 20, height: 20 }}
+              fontSize={13}
+              align="center"
+              className="tk-badge-tex"
+            />
           </g>
         ) : (
           p.glyph !== undefined && (
-            <text
-              className="tk-glyph"
-              x={w - PAD}
-              y={h / 2 + 11}
-              textAnchor="end"
-              style={{ fontSize: Math.min(name.size, p.glyph.length > 4 ? 13 : 15) }}
-            >
-              {p.glyph}
-            </text>
+            <SvgTex
+              src={p.glyph}
+              box={slotBox(w, h)}
+              fontSize={Math.min(name.size, p.glyph.length > 4 ? 13 : 15)}
+              align="end"
+            />
           )
         ))}
       {p.children}

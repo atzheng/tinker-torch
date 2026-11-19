@@ -1,0 +1,36 @@
+/* KaTeX fonts and rules come from the katex package (bundled by Vite, no network). */
+@import 'katex/dist/katex.min.css';
+
+.tk-tex {
+  white-space: nowrap;
+}
+/* KaTeX defaults to 1.21em; keep it at the surrounding size so labels match the text beside them. */
+.tk-tex .katex {
+  font-size: 1.1em;
+}
+/* A foreignObject never takes the pointer: the node body beneath keeps hit-testing. */
+.tk-fo {
+  pointer-events: none;
+  overflow: visible;
+}
+.tk-fo-box {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--node-name);
+  pointer-events: none;
+  user-select: none;
+}
+.tk-fo-box.tk-secondary-tex {
+  color: var(--node-secondary);
+}
+.tk-fo-box.tk-badge-tex {
+  color: var(--on-role);
+}
+.tk-fo-box.tk-unit-tex {
+  justify-content: center;
+  color: var(--node-name);
+}

@@ -6,10 +6,10 @@ import type { NodeOf, WebPiece } from './types.js';
 /** Layer drawing: the shared node; the formula and the columns produced are its secondary lines. */
 export const featurePiece: WebPiece<'feature'> = {
   Layer: ({ node, w, h, outWidth, scale }) => {
-    const extra = [node.sin ? 'sin' : '', node.cos ? 'cos' : '', node.products ? 'xy' : '']
+    const extra = [node.sin ? '\\sin' : '', node.cos ? '\\cos' : '', node.products ? 'xy' : '']
       .filter(Boolean)
-      .join(' ');
-    const main = node.degree === 1 ? 'x' : `x to x^${node.degree}`;
+      .join('\\ ');
+    const main = node.degree === 1 ? '$x$' : `$x, \\dots, x^{${node.degree}}$`;
     const cols = outWidth === undefined ? '? columns' : `${outWidth} columns`;
     return (
       <NodeShell
