@@ -24,7 +24,7 @@ export function useInitialWeights(analysis: Analysis): HostParams | undefined {
   const graph = useStore((s) => s.graph);
   return useMemo(() => {
     try {
-      return initParams(graph, analysis, graph.train.seed);
+      return initParams(analysis, graph.train.seed);
     } catch {
       return undefined;
     }

@@ -1,10 +1,10 @@
 // Public engine types (CONTRACTS.md section 7). No jax array type is exported from the package.
-import type { Batch, DataInfo, HostParams, NodeId, v2 } from '@tinker/core';
+import type { Analysis, Batch, DataInfo, Graph, HostParams, NodeId } from '@tinker/core';
 
 export type { Batch };
 
 /** Call `Engine.disposeModel` when done with it: the jitted functions hold memory. */
-export type Model = { readonly graph: v2.Graph; readonly analysis: v2.Analysis };
+export type Model = { readonly graph: Graph; readonly analysis: Analysis };
 /** Opaque; owns jax arrays. Becomes unusable once consumed or disposed (later use throws). */
 export type Params = { readonly __brand: 'Params' };
 /**
@@ -19,7 +19,7 @@ export type ParamAxis = { node: NodeId; tensor: 'W' | 'b'; index: number };
 
 export interface Engine {
   /** Throws Error(first issue) when the analysis is not trainable. */
-  compile(graph: v2.Graph, data: DataInfo): Model;
+  compile(graph: Graph, data: DataInfo): Model;
   init(model: Model, seed: number): Params;
   fromHost(model: Model, host: HostParams): Params;
   toHost(params: Params): HostParams;

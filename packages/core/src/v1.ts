@@ -1,6 +1,9 @@
-/** Graph format (CONTRACTS.md section 2): types, zod schema, parse and serialise, port helpers. */
+/**
+ * Graph format version 1, read only (CONTRACTS.md section 2, "Version 1 migration"). This is the one place
+ * version 1 documents are parsed; `migrate.ts` turns the result into a version 2 graph. Nothing else
+ * in core, the engine or the web app knows version 1.
+ */
 import { z } from 'zod';
-import { CORE_PIECES } from './registry.js';
 import {
   ACTIVATION_FNS,
   DATASET_NAMES,
@@ -24,7 +27,7 @@ import {
   type NodeId,
   type PortRef,
   type TrainConfig,
-} from '../common.js';
+} from './common.js';
 
 export {
   ACTIVATION_FNS,
@@ -151,7 +154,13 @@ export type ResolvedEdge =
 
 /** Input port names of a node type (CONTRACTS.md section 2). */
 export function inputPortsOf(type: PieceType): string[] {
-  return CORE_PIECES[type].inputPorts;
+  return type === 'input' || type === 'target'
+    ? []
+    : type === 'loss'
+      ? ['pred', 'target']
+      : type === 'add'
+        ? ['a', 'b']
+        : ['in'];
 }
 
 /** Whether nodes of this type have the output port `out`. */
@@ -291,45 +300,4 @@ export function parseGraph(json: unknown): ParseResult {
     ok: true,
     graph: { version: 1, nodes, edges: g.edges, data: g.data, train: g.train },
   };
-}
-
-// ---------------------------------------------------------------- serialise
-
-const NODE_KEY_ORDER: Record<PieceType, string[]> = {
-  input: ['id', 'type', 'columns'],
-  feature: ['id', 'type', 'degree', 'sin', 'cos', 'products'],
-  linear: ['id', 'type', 'out', 'bias'],
-  activation: ['id', 'type', 'fn'],
-  dropout: ['id', 'type', 'p'],
-  add: ['id', 'type'],
-  output: ['id', 'type', 'link'],
-  target: ['id', 'type'],
-  loss: ['id', 'type', 'fn', 'delta', 'penalty'],
-};
-
-function pick(obj: object, keys: string[]): Record<string, unknown> {
-  const src = obj as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const k of keys) if (src[k] !== undefined) out[k] = src[k];
-  return out;
-}
-
-/** Two-space JSON with a stable key order. */
-export function serializeGraph(graph: Graph): string {
-  const nodes = graph.nodes.map((n) => {
-    const o = pick(n, NODE_KEY_ORDER[n.type]);
-    if (n.type === 'loss' && n.penalty) o['penalty'] = pick(n.penalty, ['kind', 'lambda']);
-    return o;
-  });
-  return JSON.stringify(
-    {
-      version: graph.version,
-      nodes,
-      edges: graph.edges,
-      data: pick(graph.data, ['set', 'n', 'noise', 'val', 'seed', 'standardize']),
-      train: pick(graph.train, ['optimizer', 'lr', 'batch', 'seed']),
-    },
-    null,
-    2,
-  );
 }

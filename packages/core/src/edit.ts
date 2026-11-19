@@ -5,10 +5,13 @@
  * `parseGraph`, so it always re-parses (defaults filled, huber delta set). Edits may leave a graph
  * that `analyse` reports as not trainable; they refuse only what cannot be represented (cycles,
  * unknown nodes or ports, a swap across families, a locked node, a value the schema rejects).
+ * Pins (`predictions`, `loss`) follow their node: deleting a pinned node moves the pin to what fed
+ * it, or drops it.
  */
-import { analyse } from './analyse.js';
+import { analyse, type Analysis } from './analyse.js';
 import {
   parseGraph,
+  parsePort,
   resolveEdge,
   inputPortsOf,
   type Edge,
@@ -17,10 +20,10 @@ import {
   type Node,
   type NodeBody,
   type NodeId,
-  type Penalty,
   type PortRef,
-} from './legacy/graph.js';
-import { CORE_PIECES } from './legacy/registry.js';
+} from './graph.js';
+import { CORE_PIECES, PALETTE, type Shape } from './registry.js';
+import type { Namer } from './macros.js';
 
 export type EditResult = { ok: true; graph: Graph; select?: NodeId } | { ok: false; error: string };
 
@@ -101,7 +104,7 @@ function reaches(resolved: Resolved[], start: NodeId, target: NodeId): boolean {
 /**
  * Puts a new piece on a wire: `a -> b` becomes `a -> new -> b`. The first half keeps the wire's
  * place in the edge list and the second half follows it. An Add goes in on its `a` input.
- * Refused for pieces with no input or no output (Input, Target, losses), and when the wire ends at
+ * Refused for pieces with no input port (Input, Target, Weights), and when the wire ends at
  * a locked node. Selects the new node.
  */
 export function insertOnWire(
@@ -115,25 +118,40 @@ export function insertOnWire(
   if (edge === undefined || !r) return fail('That wire does not exist.');
   const ports = inputPortsOf(piece.type);
   const first = ports[0];
-  if (first === undefined || piece.type === 'loss') {
-    return fail('That piece has no input and output, so it cannot go on a wire.');
+  if (first === undefined) {
+    return fail('That piece has no input, so it cannot go on a wire.');
   }
   if (lockedAmong(opts, [r.to.node])) return fail(LOCKED_MESSAGE);
   const id = freshId(g, piece.type);
   const node = { id, ...piece } as Node;
   const edges = g.edges.slice();
   edges.splice(edgeIndex, 1, [edge[0], ports.length === 1 ? id : `${id}.${first}`], [id, edge[1]]);
-  return finish(g, [...g.nodes, node], edges, id);
+  // A pin on the source follows the data when this is the source's only wire out.
+  const src = r.from.node;
+  const onlyOut = resolveAll(g).filter((x) => x?.from.node === src).length === 1;
+  const move = (ref: PortRef): PortRef => (onlyOut && pinNode(ref) === src ? id : ref);
+  const parsed = parseGraph({
+    ...g,
+    nodes: [...g.nodes, node],
+    edges,
+    predictions: g.predictions.map(move),
+    loss: g.loss === null ? null : move(g.loss),
+  });
+  if (!parsed.ok) return fail(parsed.error);
+  return { ok: true, graph: parsed.graph, select: id };
 }
 
 /** Keys that name which piece it is within its type; they are never carried over by a swap. */
-const IDENTITY_KEYS: Partial<Record<Node['type'], string>> = { activation: 'fn', loss: 'fn' };
+const IDENTITY_KEYS: Partial<Record<Node['type'], string>> = {
+  activation: 'fn',
+  link: 'fn',
+  norm: 'kind',
+};
 
 /**
  * Replaces a piece by another of the same family. Settings with the same name and a value the new
- * piece accepts carry over (so a Linear keeps its width, a loss keeps its penalty); the rest take
- * the new piece's values. A Huber loss gets delta 1 unless the piece says otherwise, and delta is
- * dropped when swapping to another loss. Wires follow the new piece's ports by position.
+ * piece accepts carry over (so a Linear keeps its width); the rest take the new piece's values.
+ * Wires follow the new piece's ports by position. Pins stay where they are (the id is unchanged).
  */
 export function swapPiece(
   g: Graph,
@@ -148,7 +166,10 @@ export function swapPiece(
   if (CORE_PIECES[piece.type].family !== family) {
     return fail(`A ${old.type} piece can only be swapped for another piece of the same family.`);
   }
-  if (old.type !== piece.type && family === 'outputs') {
+  // A swap keeps the wiring, so the two pieces must take the same input ports (and Input and
+  // Target, which both have none, are different data and never swap).
+  const same = inputPortsOf(old.type).join() === inputPortsOf(piece.type).join();
+  if (!same || (old.type !== piece.type && family === 'inputs')) {
     return fail(
       `A ${piece.type} cannot replace the ${old.type}; they are different kinds of piece.`,
     );
@@ -185,10 +206,7 @@ export function swapPiece(
   const identity = IDENTITY_KEYS[piece.type];
   const carried: Record<string, unknown> = {};
   const rest = old as unknown as Record<string, unknown>;
-  const known = new Set<string>([
-    ...Object.keys(CORE_PIECES[piece.type].defaults()),
-    ...(piece.type === 'loss' ? ['penalty', 'delta'] : []),
-  ]);
+  const known = new Set<string>(Object.keys(CORE_PIECES[piece.type].defaults()));
   if (old.type === piece.type) {
     for (const key of Object.keys(rest)) {
       if (key === 'id' || key === 'type' || key === identity || !known.has(key)) continue;
@@ -202,8 +220,8 @@ export function swapPiece(
 /**
  * Adds the wire `from -> to`, replacing whatever fed that input port. The wire is stored in the
  * short form (`x`, `loss.pred`). Refused for a bad port, a cycle (including a node into itself),
- * a wire that already exists, and a locked destination. Does not enforce the Output/Target wiring
- * rules; `analyse` reports those.
+ * a wire that already exists, and a locked destination. Does not enforce shape or role rules;
+ * `analyse` reports those.
  */
 export function connect(g: Graph, from: PortRef, to: PortRef, opts?: EditOptions): EditResult {
   const r = resolveEdge(g.nodes, [from, to]);
@@ -247,56 +265,97 @@ export function rewireEdge(
   return end === 'to' ? connect(rest, e[0], ref, opts) : connect(rest, ref, e[1], opts);
 }
 
+function sameShape(a: Shape, b: Shape): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'example') return a.width === (b as typeof a).width;
+  if (a.kind === 'param') return a.rows === (b as typeof a).rows && a.cols === (b as typeof a).cols;
+  return true;
+}
+
+/** Analysis for shape questions only: the dataset kind and class count do not change shapes. */
+function shapesOf(g: Graph): Analysis {
+  return analyse(g, {
+    columns: [...new Set(g.nodes.flatMap((n) => (n.type === 'input' ? n.columns : [])))],
+    kind: 'regression',
+    numClasses: 2,
+  });
+}
+
+/** The node a pin points at. */
+const pinNode = (ref: PortRef): NodeId => parsePort(ref).node;
+
 /**
- * Removes a piece and its wires. When it had exactly one wire in, at least one wire out, and the
- * width that reaches it equals the width it passes on (or either is not known yet), each wire out
- * is reconnected to the upstream piece, keeping its place in the edge list. Otherwise the wires
- * out are removed and the pieces downstream are left with an open input. Refused when the piece or
- * any piece it feeds is locked.
+ * Removes a piece and its wires. When it had exactly one wire in, and at least one wire out or a
+ * pin, and the shape that reaches it equals the shape it passes on (or either is not known yet),
+ * each wire out is reconnected to the upstream piece, keeping its place in the edge list, and a ŷ or
+ * L pin on the piece moves to that upstream piece. Otherwise the wires out are removed, the pieces
+ * downstream are left with an open input, and its pins are dropped. A Linear takes the Weights
+ * pieces that read it along. Refused when the piece or any piece it feeds is locked.
  */
 export function deleteNode(g: Graph, nodeId: NodeId, opts?: EditOptions): EditResult {
   const node = findNode(g, nodeId);
   if (!node) return noNode(nodeId);
+  // Weights taps of a deleted Linear go with it (a tap needs its Linear).
+  const gone = new Set<NodeId>([
+    nodeId,
+    ...(node.type === 'linear'
+      ? g.nodes.flatMap((n) => (n.type === 'weights' && n.of === nodeId ? [n.id] : []))
+      : []),
+  ]);
   const resolved = resolveAll(g);
   const outs = g.edges.flatMap((_, i) => (resolved[i]?.from.node === nodeId ? [i] : []));
   const ins = g.edges.flatMap((_, i) => (resolved[i]?.to.node === nodeId ? [i] : []));
-  const downstream = outs.flatMap((i) => {
+  const downstream = g.edges.flatMap((_, i) => {
     const r = resolved[i];
-    return r ? [r.to.node] : [];
+    return r && gone.has(r.from.node) ? [r.to.node] : [];
   });
-  if (lockedAmong(opts, [nodeId, ...downstream])) return fail(LOCKED_MESSAGE);
+  if (lockedAmong(opts, [...gone, ...downstream])) return fail(LOCKED_MESSAGE);
 
-  const nodes = g.nodes.filter((n) => n.id !== nodeId);
+  const nodes = g.nodes.filter((n) => !gone.has(n.id));
   const inIdx = ins[0];
   const inEdge = inIdx === undefined ? undefined : g.edges[inIdx];
   const inRes = inIdx === undefined ? undefined : resolved[inIdx];
+  const pinned =
+    g.predictions.some((p) => pinNode(p) === nodeId) ||
+    (g.loss !== null && pinNode(g.loss) === nodeId);
   let close =
+    gone.size === 1 &&
     inputPortsOf(node.type).length === 1 &&
     ins.length === 1 &&
-    outs.length > 0 &&
+    (outs.length > 0 || pinned) &&
     inEdge !== undefined &&
     inRes != null;
   if (close && inRes && inRes.from.node === nodeId) close = false;
   if (close && inIdx !== undefined) {
-    const a = analyse(g, {
-      columns: [...new Set(g.nodes.flatMap((n) => (n.type === 'input' ? n.columns : [])))],
-      kind: 'regression',
-      numClasses: 2,
-    });
-    const up = a.edgeWidth[inIdx];
-    const down = a.outWidth[nodeId];
-    if (typeof up === 'number' && typeof down === 'number' && up !== down) close = false;
+    const a = shapesOf(g);
+    const up = a.edgeShape[inIdx];
+    const down = a.shape[nodeId];
+    if (up && down && !sameShape(up, down)) close = false;
   }
   const edges: Edge[] = [];
   g.edges.forEach((e, i) => {
-    if (i === inIdx || ins.includes(i)) return;
+    const r = resolved[i];
+    if (ins.includes(i)) return;
     if (outs.includes(i)) {
       if (close && inEdge !== undefined) edges.push([inEdge[0], e[1]]);
       return;
     }
+    if (r && (gone.has(r.from.node) || gone.has(r.to.node))) return;
     edges.push(e);
   });
-  return finish(g, nodes, edges);
+  const up = close && inEdge !== undefined ? pinNode(inEdge[0]) : null;
+  const move = (ref: PortRef): PortRef | null =>
+    pinNode(ref) === nodeId ? up : gone.has(pinNode(ref)) ? null : ref;
+  const predictions: PortRef[] = [];
+  for (const p of g.predictions) {
+    const m = move(p);
+    // The same node cannot be a ŷ twice; keep the first.
+    if (m !== null && !predictions.some((q) => pinNode(q) === pinNode(m))) predictions.push(m);
+  }
+  const loss = g.loss === null ? null : move(g.loss);
+  const parsed = parseGraph({ ...g, nodes, edges, predictions, loss });
+  if (!parsed.ok) return fail(parsed.error);
+  return { ok: true, graph: parsed.graph };
 }
 
 /** Removes one wire. Refused when it ends at a locked node. */
@@ -314,7 +373,7 @@ export function deleteEdge(g: Graph, edgeIndex: number, opts?: EditOptions): Edi
 /**
  * Sets one setting of a piece, checked against the node schema (an unknown key, a wrong type or an
  * out-of-range value is refused with the schema's sentence). `undefined` removes an optional
- * setting. Changing a loss's `fn` away from huber drops its delta. `id` and `type` cannot be set.
+ * setting. `id` and `type` cannot be set.
  */
 export function setSetting(
   g: Graph,
@@ -327,13 +386,9 @@ export function setSetting(
   if (!node) return noNode(nodeId);
   if (lockedAmong(opts, [nodeId])) return fail(LOCKED_MESSAGE);
   if (key === 'id' || key === 'type') return fail(`The ${key} of a piece cannot be changed.`);
-  const settings = [
-    ...Object.keys(CORE_PIECES[node.type].defaults()),
-    ...(node.type === 'loss' ? ['delta', 'penalty'] : []),
-  ];
+  const settings = Object.keys(CORE_PIECES[node.type].defaults());
   if (!settings.includes(key)) return fail(`A ${node.type} piece has no setting called "${key}".`);
-  const dropDelta = node.type === 'loss' && key === 'fn' && value !== 'huber';
-  const kept = Object.entries(node).filter(([k]) => k !== key && !(dropDelta && k === 'delta'));
+  const kept = Object.entries(node).filter(([k]) => k !== key);
   const next: Record<string, unknown> = Object.fromEntries(kept);
   if (value !== undefined) next[key] = value;
   return finish(
@@ -365,24 +420,63 @@ export function setLinearOut(
   );
 }
 
-/** Sets or (with null) removes the weight penalty of a loss node. */
-export function setPenalty(
-  g: Graph,
-  lossNodeId: NodeId,
-  penalty: Penalty | null,
-  opts?: EditOptions,
-): EditResult {
-  const node = findNode(g, lossNodeId);
-  if (!node) return noNode(lossNodeId);
-  if (node.type !== 'loss') return fail('A weight penalty can only go on a loss.');
-  if (lockedAmong(opts, [lossNodeId])) return fail(LOCKED_MESSAGE);
-  const { penalty: _old, ...rest } = node;
-  const next: Node = penalty === null ? rest : { ...rest, penalty: { ...penalty } };
-  return finish(
-    g,
-    g.nodes.map((n) => (n.id === lossNodeId ? next : n)),
-    g.edges,
-  );
+/** Makes unused ids: the suffix itself when free, else `suffix_2`, `suffix_3`, ... */
+function namer(used: Set<string>): Namer {
+  return (suffix) => {
+    let id = suffix;
+    for (let k = 2; used.has(id); k++) id = `${suffix}_${k}`;
+    used.add(id);
+    return id;
+  };
+}
+
+/**
+ * Adds a ready-made group (a palette macro, CONTRACTS.md section 3) as ordinary nodes and edges, in
+ * one edit. `at` is the wire it was dropped on; without it the group goes in free-standing and is
+ * wired as far as the graph allows:
+ * - a loss group is fed its prediction from the wire's source (else the first ŷ pin), gets the
+ *   graph's Target (a new one when there is none), and takes the L pin when none is set;
+ * - the weight penalty reads every Linear, is fed the current loss from the wire's source (else the
+ *   L pin), and takes the L pin over when that is where it was fed from.
+ * The wire it was dropped on stays. Selects the group's result node. Nothing existing changes, so
+ * locks do not apply.
+ */
+export function insertMacro(g: Graph, key: string, at?: { edge: number }): EditResult {
+  const entry = PALETTE.find((p) => p.kind === 'macro' && p.key === key);
+  if (entry?.kind !== 'macro') return fail(`There is no ready-made group called "${key}".`);
+  const wire = at === undefined ? undefined : resolveAll(g)[at.edge];
+  if (at !== undefined && !wire) return fail('That wire does not exist.');
+  const used = new Set(g.nodes.map((n) => n.id));
+  const linears = g.nodes.flatMap((n) => (n.type === 'linear' ? [n.id] : []));
+  const sub = entry.make(namer(used), { linears });
+  if (sub.out === null || sub.nodes.length === 0) {
+    return fail('There is no Linear piece for a weight penalty to read.');
+  }
+  const nodes: Node[] = [...g.nodes, ...sub.nodes];
+  const edges: Edge[] = [...g.edges];
+  let loss = g.loss;
+  const wireTo = (from: PortRef | undefined, to: PortRef | undefined) => {
+    if (from !== undefined && to !== undefined) edges.push([from, to]);
+  };
+  if (key === 'weight_penalty') {
+    const src = wire ? wire.from.node : g.loss === null ? undefined : pinNode(g.loss);
+    wireTo(src, sub.inputs['total']);
+    edges.push(...sub.edges);
+    if (src !== undefined && g.loss !== null && pinNode(g.loss) === src) loss = sub.out;
+  } else {
+    wireTo(wire ? wire.from.node : g.predictions[0], sub.inputs['pred']);
+    let target = g.nodes.find((n) => n.type === 'target')?.id;
+    if (target === undefined) {
+      target = namer(used)('target');
+      nodes.push({ id: target, type: 'target' });
+    }
+    wireTo(target, sub.inputs['target']);
+    edges.push(...sub.edges);
+    loss ??= sub.out;
+  }
+  const parsed = parseGraph({ ...g, nodes, edges, loss });
+  if (!parsed.ok) return fail(parsed.error);
+  return { ok: true, graph: parsed.graph, select: sub.out };
 }
 
 /** Sets which data columns an Input piece uses, in the order given. Refused for repeats. */

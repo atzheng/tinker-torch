@@ -1,6 +1,6 @@
 import { numpy as np } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
-import type { v2 } from '@tinker/core';
+import type { NodeOf } from '@tinker/core';
 import type { EnginePiece } from './types.js';
 
 /**
@@ -8,7 +8,7 @@ import type { EnginePiece } from './types.js';
  * then column), then sin(x), then cos(x), then x_i * x_j for i < j (row-major pairs). Consumes
  * `inputs.in` ([n, d]); returns [n, width].
  */
-export const feature: EnginePiece<v2.NodeOf<'feature'>> = {
+export const feature: EnginePiece<NodeOf<'feature'>> = {
   forward(node, inputs) {
     const x = inputs['in'];
     if (!x) throw new Error('A Feature piece is missing its input.');

@@ -1,5 +1,5 @@
 import type { Array as JArray } from '@jax-js/jax';
-import type { v2 } from '@tinker/core';
+import type { Node } from '@tinker/core';
 import type { Layer } from '../convert.js';
 
 /** What a piece sees besides its inputs. */
@@ -32,6 +32,6 @@ export type PieceCtx = {
  * node's own Linear, or, for a Weights tap, of the Linear it reads (one reference for this use).
  * Per-example values are `[n, width]`; a Mean or a norm gives a scalar.
  */
-export type EnginePiece<N extends v2.Node> = {
+export type EnginePiece<N extends Node> = {
   forward(node: N, inputs: Record<string, JArray>, layer: Layer | undefined, ctx: PieceCtx): JArray;
 };

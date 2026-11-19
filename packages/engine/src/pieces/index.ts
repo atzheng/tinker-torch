@@ -1,4 +1,4 @@
-import type { v2 } from '@tinker/core';
+import type { NodeOf, PieceType } from '@tinker/core';
 import { abs } from './abs.js';
 import { activation } from './activation.js';
 import { add } from './add.js';
@@ -22,7 +22,7 @@ import { weights } from './weights.js';
 export type { EnginePiece, PieceCtx } from './types.js';
 
 /** One entry per PieceType: adding a type fails to typecheck until it has an engine piece. */
-export const ENGINE_PIECES: { [T in v2.PieceType]: EnginePiece<v2.NodeOf<T>> } = {
+export const ENGINE_PIECES: { [T in PieceType]: EnginePiece<NodeOf<T>> } = {
   input,
   target,
   feature,

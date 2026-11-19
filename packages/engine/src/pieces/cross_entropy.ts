@@ -1,5 +1,5 @@
 import { nn, numpy as np } from '@jax-js/jax';
-import type { v2 } from '@tinker/core';
+import type { NodeOf } from '@tinker/core';
 import type { EnginePiece } from './types.js';
 
 /**
@@ -10,7 +10,7 @@ import type { EnginePiece } from './types.js';
  * -logSoftmax(z)[class]: finite for any finite z. Otherwise `pred` is probabilities, clipped to
  * [1e-7, 1] before the log (safety net: analyse only lets a softmax link feed this piece).
  */
-export const cross_entropy: EnginePiece<v2.NodeOf<'cross_entropy'>> = {
+export const cross_entropy: EnginePiece<NodeOf<'cross_entropy'>> = {
   forward(node, inputs, _layer, ctx) {
     const pred = inputs['pred'];
     const y = inputs['target'];

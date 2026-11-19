@@ -145,27 +145,6 @@ export function placeIssues(
   return out;
 }
 
-/**
- * The wire a node-level issue is really about. Only the Output-versus-loss compatibility issues
- * (link does not suit the loss, output width) belong on the wire into `loss.pred`. They are the
- * only node issues an Output gets while it is the prediction (`analysis.predNode`), its width is
- * known and its id is unique; "needs an input" (width unknown), a cycle (width unknown) and a
- * duplicate id stay at the piece, as does every other piece's issue.
- */
-export function wireOfNode(graph: Graph, analysis: Analysis, node: NodeId): number | undefined {
-  const n = graph.nodes.find((x) => x.id === node);
-  if (n?.type !== 'output' || analysis.predNode !== node) return undefined;
-  if (analysis.outWidth[node] === undefined) return undefined;
-  if (graph.nodes.filter((x) => x.id === node).length !== 1) return undefined;
-  const i = graph.edges.findIndex((e) => {
-    const r = resolveEdge(graph.nodes, e);
-    if (!r.ok) return false;
-    const to = graph.nodes.find((x) => x.id === r.to.node);
-    return r.from.node === node && to?.type === 'loss' && r.to.port === 'pred';
-  });
-  return i >= 0 ? i : undefined;
-}
-
 /** Pieces to outline red: any issue naming them, wherever the sentence is shown. */
 export function errorNodes(issues: readonly Issue[]): Set<NodeId> {
   const s = new Set<NodeId>();

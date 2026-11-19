@@ -1,0 +1,52 @@
+// The bundled presets are version 1 files that open migrated to graph v2. Their training loss at
+// steps 1, 50 and 300 was recorded on main before the cutover (tinker-8xw.6, version 1 graphs through
+// the migration adapter); the same numbers must come out of the v2-only code path.
+import { readFileSync } from 'node:fs';
+import { batchSchedule, gatherBatch, initParams, analyse, parseFile, sample } from '@tinker/core';
+import { expect, test } from 'vitest';
+import { createEngine } from '../src/index.js';
+
+const BEFORE: Record<string, { params: number; losses: [number, number, number] }> = {
+  linear: { params: 2, losses: [3.641615629196167, 0.032944925129413605, 0.032927874475717545] },
+  logistic: { params: 3, losses: [0.6768960356712341, 0.12601564824581146, 0.026935765519738197] },
+  sine: { params: 25, losses: [1.3797086477279663, 0.330300897359848, 0.004551100078970194] },
+  skip: { params: 97, losses: [0.12895630300045013, 0.07969650626182556, 0.010925737209618092] },
+  xor: { params: 105, losses: [0.7204835414886475, 0.06934435665607452, 0.0006533119012601674] },
+};
+
+const engine = await createEngine();
+
+test.each(Object.keys(BEFORE))(
+  'preset %s trains to the same losses as before the cutover',
+  (name) => {
+    const want = BEFORE[name];
+    if (!want) throw new Error(name);
+    const url = new URL(`../../web/src/presets/${name}.json`, import.meta.url);
+    const file = parseFile(JSON.parse(readFileSync(url, 'utf8')));
+    if (!file.ok) throw new Error(file.error);
+    const g = file.file.graph;
+    expect(g.version).toBe(2);
+    const ds = sample(g.data);
+    const analysis = analyse(g, ds.info);
+    expect(analysis.issues).toEqual([]);
+    expect(analysis.totalParams).toBe(want.params);
+    const model = engine.compile(g, ds.info);
+    let state = engine.startTraining(
+      model,
+      engine.fromHost(model, initParams(analysis, g.train.seed)),
+      g.train.seed,
+    );
+    const batches = batchSchedule(ds.nTrain, g.train.batch, g.train.seed);
+    const d = ds.info.columns.length;
+    const got: number[] = [];
+    for (let i = 0; i < 300; i++) {
+      const idx = batches.next().value;
+      const r = engine.step(model, state, gatherBatch(ds.xTrain, ds.yTrain, d, idx));
+      state = r.state;
+      if (i === 0 || i === 49 || i === 299) got.push(r.loss);
+    }
+    want.losses.forEach((l, k) => expect(got[k]).toBe(l));
+    engine.dispose(state);
+    engine.disposeModel(model);
+  },
+);

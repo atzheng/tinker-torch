@@ -11,25 +11,35 @@ import {
 
 const info: DataInfo = { columns: ['x1'], kind: 'regression', numClasses: 2 };
 
-function g(nodes: Node[], edges: Edge[]): Graph {
+function g(
+  nodes: Node[],
+  edges: Edge[],
+  predictions: string[] = [],
+  loss: string | null = null,
+): Graph {
   return {
-    version: 1,
+    version: 2,
     nodes,
     edges,
+    predictions,
+    loss,
     data: { set: 'line', n: 100, noise: 0.1, val: 0.2, seed: 1, standardize: false },
     train: { optimizer: 'adam', lr: 0.01, batch: 'full', seed: 1 },
   };
 }
 const lin = (id: string, out: number): Node => ({ id, type: 'linear', out, bias: true });
 const act = (id: string): Node => ({ id, type: 'activation', fn: 'relu' });
+// pred - target, squared, mean (the squared-error macro); the prediction feeds diff.a
 const tail: Node[] = [
-  { id: 'yhat', type: 'output', link: 'identity' },
   { id: 'y', type: 'target' },
-  { id: 'loss', type: 'loss', fn: 'squared_error' },
+  { id: 'diff', type: 'subtract' },
+  { id: 'err', type: 'square' },
+  { id: 'loss', type: 'mean' },
 ];
 const tailEdges: Edge[] = [
-  ['yhat', 'loss.pred'],
-  ['y', 'loss.target'],
+  ['y', 'diff.b'],
+  ['diff', 'err'],
+  ['err', 'loss'],
 ];
 
 function mlp(hidden: number): Graph {
@@ -41,7 +51,9 @@ function mlp(hidden: number): Graph {
       lin('lin2', 1),
       ...tail,
     ],
-    [['x', 'lin1'], ['lin1', 'act1'], ['act1', 'lin2'], ['lin2', 'yhat'], ...tailEdges],
+    [['x', 'lin1'], ['lin1', 'act1'], ['act1', 'lin2'], ['lin2', 'diff.a'], ...tailEdges],
+    ['lin2'],
+    'loss',
   );
 }
 function skip(): Graph {
@@ -62,9 +74,11 @@ function skip(): Graph {
       ['lin2', 'add.a'],
       ['lin1', 'add.b'],
       ['add', 'lin3'],
-      ['lin3', 'yhat'],
+      ['lin3', 'diff.a'],
       ...tailEdges,
     ],
+    ['lin3'],
+    'loss',
   );
 }
 
@@ -79,17 +93,17 @@ function interiorHit(s: Seg, b: { x: number; y: number; w: number; h: number }):
 }
 
 describe('layoutLayers', () => {
-  test('SPEC example: columns x, lin1, act1, lin2, yhat, loss; y beside yhat', () => {
+  test('columns x, lin1, act1, lin2, diff, err, loss; y beside the prediction', () => {
     const gr = mlp(4);
     const L = layoutLayers(gr, analyse(gr, info));
-    const cols = ['x', 'lin1', 'act1', 'lin2', 'yhat', 'loss'].map((id) => L.nodes[id]?.col);
-    expect(cols).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(L.nodes['y']?.col).toBe(4);
-    const yhat = L.nodes['yhat'];
+    const cols = ['x', 'lin1', 'act1', 'lin2', 'diff', 'err', 'loss'].map((id) => L.nodes[id]?.col);
+    expect(cols).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(L.nodes['y']?.col).toBe(3);
+    const yhat = L.nodes['lin2'];
     const y = L.nodes['y'];
     expect(y && yhat && y.y).toBeGreaterThan((yhat?.y ?? 0) + (yhat?.h ?? 0) - 1);
     expect(y?.x).toBe(yhat?.x);
-    expect(L.wires.map((w) => w.edge)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(L.wires.map((w) => w.edge)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
   test('x positions increase with column and nothing is outside size', () => {
@@ -146,7 +160,7 @@ describe('layoutLayers', () => {
         { id: 'constructor', type: 'activation', fn: 'tanh' },
         ...tail,
         { id: 'y2', type: 'target' },
-        { id: 'loss2', type: 'loss', fn: 'huber' },
+        { id: 'h2', type: 'huber', delta: 1 },
       ],
       [
         ['x', 'a'],
@@ -157,11 +171,14 @@ describe('layoutLayers', () => {
         ['a', 'c'],
         ['c', 'add.a'],
         ['ghost', 'add.b'],
-        ['add', 'yhat'],
-        ['yhat', 'loss.pred'],
-        ['y', 'loss.target'],
-        ['y2', 'loss2.target'],
+        ['add', 'diff.a'],
+        ['y', 'diff.b'],
+        ['diff', 'err'],
+        ['err', 'loss'],
+        ['y2', 'h2'],
       ],
+      ['add'],
+      'loss',
     );
     const an = analyse(gr, info);
     const L = layoutLayers(gr, an);
@@ -182,7 +199,7 @@ describe('layoutLayers', () => {
     const gr = mlp(4);
     gr.nodes.push({ id: 'drop', type: 'dropout', p: 0.5 });
     const L = layoutLayers(gr, analyse(gr, info));
-    expect(L.nodes['drop']?.col).toBe(5);
+    expect(L.nodes['drop']?.col).toBe(6);
     expect(L.nodes['x']?.col).toBe(0);
   });
 });
@@ -194,7 +211,7 @@ describe('review fixes', () => {
     const gr = mlp(4);
     gr.nodes.splice(1, 0, { id: 'drop', type: 'dropout', p: 0.5 });
     const after = layoutLayers(gr, analyse(gr, info));
-    for (const id of ['x', 'yhat', 'y', 'loss']) expect(after.nodes[id]).toEqual(before.nodes[id]);
+    for (const id of ['x', 'lin2', 'y', 'loss']) expect(after.nodes[id]).toEqual(before.nodes[id]);
     expect(after.nodes['drop']?.y).toBeGreaterThan(before.nodes['x']?.y ?? 0);
   });
 
@@ -288,7 +305,9 @@ describe('layoutNeurons', () => {
         lin('l', 2),
         ...tail,
       ],
-      [['x', 'd'], ['d', 'l'], ['l', 'yhat'], ...tailEdges],
+      [['x', 'd'], ['d', 'l'], ['l', 'diff.a'], ...tailEdges],
+      ['l'],
+      'loss',
     );
     const N = layoutNeurons(gr, analyse(gr, info));
     const es = N.edges.filter((e) => e.node === 'l');
@@ -308,5 +327,52 @@ describe('layoutNeurons', () => {
         for (const box of Object.values(N.boxes)) expect(interiorHit([a, b], box)).toBe(false);
       }
     }
+  });
+});
+
+describe('graph v2 shapes', () => {
+  test('a Weights tap sits one column after its Linear, even with no wire between them', () => {
+    const gr = mlp(4);
+    gr.nodes.push(
+      { id: 'tap', type: 'weights', of: 'lin1' },
+      { id: 'nrm', type: 'norm', kind: 'l2' },
+    );
+    gr.edges.push(['tap', 'nrm']);
+    const L = layoutLayers(gr, analyse(gr, info));
+    expect(L.nodes['tap']?.col).toBe((L.nodes['lin1']?.col ?? -1) + 1);
+    expect(L.nodes['nrm']?.col).toBe((L.nodes['tap']?.col ?? -1) + 1);
+  });
+
+  test('a Target feeding log loss sits one column left of it, below the prediction', () => {
+    const gr = g(
+      [
+        { id: 'x', type: 'input', columns: ['x1'] },
+        lin('lin1', 1),
+        { id: 'p', type: 'link', fn: 'sigmoid' },
+        { id: 'y', type: 'target' },
+        { id: 'err', type: 'log_loss' },
+        { id: 'loss', type: 'mean' },
+      ],
+      [
+        ['x', 'lin1'],
+        ['lin1', 'p'],
+        ['p', 'err.pred'],
+        ['y', 'err.target'],
+        ['err', 'loss'],
+      ],
+      ['p'],
+      'loss',
+    );
+    const L = layoutLayers(gr, analyse(gr, info));
+    expect(L.nodes['y']?.col).toBe((L.nodes['err']?.col ?? 0) - 1);
+    expect(L.nodes['y']?.col).toBe(L.nodes['p']?.col);
+    expect(L.nodes['y']?.y).toBeGreaterThan(L.nodes['p']?.y ?? 0);
+    // a sigmoid link with a narrow width is drawn as a column of 'out' units in neuron view
+    const kinds = new Set(
+      layoutNeurons(gr, analyse(gr, info))
+        .units.filter((u) => u.node === 'p')
+        .map((u) => u.kind),
+    );
+    expect([...kinds]).toEqual(['out']);
   });
 });

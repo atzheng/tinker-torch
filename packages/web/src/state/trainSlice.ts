@@ -12,8 +12,7 @@ import {
   type Graph,
   type HostParams,
 } from '@tinker/core';
-import type { Model, ParamAxis, Params, TrainState } from '@tinker/engine';
-import type { Engine } from '../legacyEngine.js';
+import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engine';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
 import type { Store } from './store.js';
@@ -282,8 +281,8 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     // 3. Weights: keep what still fits, draw the rest.
     rt.host =
       rt.host && rt.hostGraph && rt.hostAnalysis
-        ? reconcileParams(rt.host, rt.hostGraph, rt.hostAnalysis, graph, analysis, rt.seed)
-        : initParams(graph, analysis, rt.seed);
+        ? reconcileParams(rt.host, rt.hostAnalysis, analysis, rt.seed)
+        : initParams(analysis, rt.seed);
     rt.hostGraph = graph;
     rt.hostAnalysis = analysis;
     if (structural) {
@@ -505,7 +504,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const { engine, model, state } = rt;
       if (!engine || !model || !state) return null;
       try {
-        return engine.predict(model, state.params, x, n);
+        return engine.predict(model, state.params, x, n)[0] ?? null; // the first ŷ pin
       } catch {
         return null;
       }

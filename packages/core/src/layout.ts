@@ -2,8 +2,8 @@
  * Layout geometry (CONTRACTS.md section 9): pure, deterministic, nothing stored. Works on the whole
  * node set (not `analysis.order`), so invalid graphs lay out too: every node gets a position.
  */
-import type { Graph, Node, NodeId } from './legacy/graph.js';
-import { inputPortsOf, resolveEdge } from './legacy/graph.js';
+import type { Graph, Node, NodeId } from './graph.js';
+import { inputPortsOf, resolveEdge } from './graph.js';
 import type { Analysis } from './analyse.js';
 
 export type Box = { x: number; y: number; w: number; h: number };
@@ -82,9 +82,11 @@ function prepare(g: Graph) {
 }
 
 /**
- * Column per node: longest path from the inputs. The edge into a loss from a target does not count
- * (the target is then placed one column left of its loss). A cycle is broken at its first node in
- * graph order; nodes with no wires at all (other than Input and Target) go in the last column.
+ * Column per node: longest path from the inputs. A Weights tap counts as one column after its Linear
+ * (the tap is a parameter read, not a wire). The edges out of a Target do not count: the Target is
+ * placed one column left of the first node it feeds, so it sits beside the prediction. A cycle is
+ * broken at its first node in graph order; nodes with no wires at all (other than Input and Target)
+ * go in the last column.
  */
 function assignColumns(
   nodes: Node[],
@@ -92,9 +94,13 @@ function assignColumns(
   edges: { from: NodeId; to: NodeId }[],
 ): Record<NodeId, number> {
   const col = nullRecord<number>();
-  const counted = edges.filter(
-    (e) => e.from !== e.to && !(byId[e.from]?.type === 'target' && byId[e.to]?.type === 'loss'),
+  const taps = nodes.flatMap((n) =>
+    n.type === 'weights' && byId[n.of] !== undefined ? [{ from: n.of, to: n.id }] : [],
   );
+  const counted = [
+    ...edges.filter((e) => e.from !== e.to && byId[e.from]?.type !== 'target'),
+    ...taps,
+  ];
   const indeg = nullRecord<number>();
   const preds = nullRecord<NodeId[]>();
   const succs = nullRecord<NodeId[]>();
@@ -139,15 +145,17 @@ function assignColumns(
     }
   }
   const touched = nullRecord<boolean>();
-  for (const e of edges) {
+  for (const e of [...edges, ...taps]) {
     touched[e.from] = true;
     touched[e.to] = true;
   }
   for (const n of nodes) {
     if (!touched[n.id] && n.type !== 'input' && n.type !== 'target') col[n.id] = last;
   }
+  const placed = new Set<NodeId>();
   for (const e of edges) {
-    if (byId[e.from]?.type === 'target' && byId[e.to]?.type === 'loss') {
+    if (byId[e.from]?.type === 'target' && !placed.has(e.from)) {
+      placed.add(e.from);
       col[e.from] = Math.max(0, (col[e.to] ?? 0) - 1);
     }
   }
@@ -175,9 +183,10 @@ function assignRows(
     for (const n of ordered) {
       let want: number;
       if (n.type === 'target') {
-        const toLoss = edges.find((e) => e.from === n.id && byId[e.to]?.type === 'loss');
-        const pred = toLoss
-          ? edges.find((e) => e.to === toLoss.to && e.port === 'pred')
+        // Below whatever else feeds the first node the target feeds (the prediction).
+        const toNode = edges.find((e) => e.from === n.id);
+        const pred = toNode
+          ? edges.find((e) => e.to === toNode.to && e.from !== n.id && row[e.from] !== undefined)
           : undefined;
         const pr = pred ? row[pred.from] : undefined;
         want = pr === undefined ? 1 : pr + 1;
@@ -346,7 +355,7 @@ export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
         const s = src === undefined ? undefined : byId[src];
         return s?.type === 'linear' && expanded[s.id] ? unitPlan('act', s.out) : boxPlan();
       }
-      case 'output': {
+      case 'link': {
         const w = a.outWidth[n.id];
         return small(w) ? unitPlan('out', w) : boxPlan();
       }

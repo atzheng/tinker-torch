@@ -1,5 +1,5 @@
 import { nn, numpy as np } from '@jax-js/jax';
-import type { v2 } from '@tinker/core';
+import type { NodeOf } from '@tinker/core';
 import type { EnginePiece } from './types.js';
 
 /**
@@ -10,7 +10,7 @@ import type { EnginePiece } from './types.js';
  * docs/spike.md). Otherwise `pred` is a probability, clipped to [1e-7, 1 - 1e-7] so a stray 0 or 1
  * cannot give inf; analyse only lets a sigmoid link feed this piece, so that path is a safety net.
  */
-export const log_loss: EnginePiece<v2.NodeOf<'log_loss'>> = {
+export const log_loss: EnginePiece<NodeOf<'log_loss'>> = {
   forward(node, inputs, _layer, ctx) {
     const pred = inputs['pred'];
     const y = inputs['target'];

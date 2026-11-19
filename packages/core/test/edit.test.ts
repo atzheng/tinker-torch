@@ -10,7 +10,7 @@ import {
   serializeGraph,
   setColumns,
   setLinearOut,
-  setPenalty,
+  insertMacro,
   setSetting,
   swapPiece,
   PALETTE,
@@ -20,24 +20,28 @@ import {
 } from '../src/index.js';
 
 const example = {
-  version: 1,
+  version: 2,
   nodes: [
     { id: 'x', type: 'input', columns: ['x1'] },
     { id: 'lin1', type: 'linear', out: 4, bias: true },
     { id: 'act1', type: 'activation', fn: 'relu' },
     { id: 'lin2', type: 'linear', out: 1, bias: true },
-    { id: 'yhat', type: 'output', link: 'identity' },
     { id: 'y', type: 'target' },
-    { id: 'loss', type: 'loss', fn: 'squared_error', penalty: { kind: 'l2', lambda: 0.0 } },
+    { id: 'diff', type: 'subtract' },
+    { id: 'err', type: 'square' },
+    { id: 'loss', type: 'mean' },
   ],
   edges: [
     ['x', 'lin1'],
     ['lin1', 'act1'],
     ['act1', 'lin2'],
-    ['lin2', 'yhat'],
-    ['yhat', 'loss.pred'],
-    ['y', 'loss.target'],
+    ['lin2', 'diff.a'],
+    ['y', 'diff.b'],
+    ['diff', 'err'],
+    ['err', 'loss'],
   ],
+  predictions: ['lin2'],
+  loss: 'loss',
   data: { set: 'sine', n: 40, noise: 0.2, val: 0.3, seed: 7 },
   train: { optimizer: 'sgd', lr: 0.03, batch: 'full', seed: 11 },
 };
@@ -83,8 +87,8 @@ function err(r: EditResult): string {
 
 const entry = (key: string): NodeBody => {
   const e = PALETTE.find((p) => p.key === key);
-  if (!e) throw new Error(key);
-  return e.make() as NodeBody;
+  if (e?.kind !== 'piece') throw new Error(key);
+  return e.make();
 };
 
 const info = { columns: ['x1', 'x2'], kind: 'regression' as const, numClasses: 2 };
@@ -100,8 +104,8 @@ describe('insertOnWire', () => {
     expect(out.edges.slice(2, 6)).toEqual([
       ['act1', 'lin2'],
       ['lin2', 'activation1'],
-      ['activation1', 'yhat'],
-      ['yhat', 'loss.pred'],
+      ['activation1', 'diff.a'],
+      ['y', 'diff.b'],
     ]);
     expect(analyse(out, info).edgeWidth[3]).toBe(1);
   });
@@ -127,11 +131,12 @@ describe('insertOnWire', () => {
     expect(out.edges[2]).toEqual(['add1', 'act1']);
   });
 
-  test('refuses pieces without an input or output, and bad indexes', () => {
+  test('refuses pieces without an input, and bad indexes', () => {
     const g = base();
     err(insertOnWire(g, 0, entry('input')));
     err(insertOnWire(g, 0, entry('target')));
-    err(insertOnWire(g, 0, entry('huber')));
+    err(insertOnWire(g, 0, entry('weights')));
+    ok(insertOnWire(g, 0, entry('huber')));
     err(insertOnWire(g, 99, entry('linear')));
     err(insertOnWire(g, -1, entry('linear')));
   });
@@ -152,39 +157,51 @@ describe('swapPiece', () => {
     expect(out.edges).toEqual(base().edges);
   });
 
-  test('squared_error -> huber defaults delta and keeps the penalty', () => {
-    const out = ok(swapPiece(base(), 'loss', entry('absolute_error')));
-    const huber = ok(swapPiece(out, 'loss', { type: 'loss', fn: 'huber' }));
-    expect(node(huber, 'loss')).toEqual({
-      id: 'loss',
-      type: 'loss',
-      fn: 'huber',
-      delta: 1,
-      penalty: { kind: 'l2', lambda: 0 },
-    });
+  test('square -> huber defaults delta; huber -> abs drops it', () => {
+    const huber = ok(swapPiece(base(), 'err', { type: 'huber', delta: 1 }));
+    expect(node(huber, 'err')).toEqual({ id: 'err', type: 'huber', delta: 1 });
+    expect(huber.edges).toEqual(base().edges);
+    const abs = ok(swapPiece(huber, 'err', entry('abs')));
+    expect(node(abs, 'err')).toEqual({ id: 'err', type: 'abs' });
   });
 
-  test('huber -> other loss drops delta', () => {
+  test('log_loss -> cross_entropy keeps both wires', () => {
     const g = base((j) => {
-      j['nodes'][6] = { id: 'loss', type: 'loss', fn: 'huber', delta: 0.5 };
+      j['nodes'] = j['nodes'].filter((n: Loose) => n.id !== 'diff' && n.id !== 'err');
+      j['nodes'].push({ id: 'err', type: 'log_loss' });
+      j['edges'] = [
+        ['x', 'lin1'],
+        ['lin1', 'act1'],
+        ['act1', 'lin2'],
+        ['lin2', 'err.pred'],
+        ['y', 'err.target'],
+        ['err', 'loss'],
+      ];
     });
-    const out = ok(swapPiece(g, 'loss', entry('squared_error')));
-    expect(node(out, 'loss')).toEqual({ id: 'loss', type: 'loss', fn: 'squared_error' });
+    const out = ok(swapPiece(g, 'err', entry('cross_entropy')));
+    expect(node(out, 'err')).toEqual({ id: 'err', type: 'cross_entropy' });
+    expect(out.edges).toEqual(g.edges);
   });
 
-  test('log_loss -> cross_entropy', () => {
-    const g = base((j) => {
-      j['nodes'][6] = { id: 'loss', type: 'loss', fn: 'log_loss' };
-    });
-    const out = ok(swapPiece(g, 'loss', entry('cross_entropy')));
-    expect(node(out, 'loss')).toMatchObject({ fn: 'cross_entropy' });
+  test('sigmoid <-> softmax is a link swap; the function is not carried over', () => {
+    const g = ok(insertOnWire(base(), 3, entry('sigmoid')));
+    const out = ok(swapPiece(g, 'link1', entry('softmax')));
+    expect(node(out, 'link1')).toEqual({ id: 'link1', type: 'link', fn: 'softmax' });
+    const l1 = ok(insertOnWire(base(), 0, entry('l1')));
+    expect(node(ok(swapPiece(l1, 'norm1', entry('l2'))), 'norm1')).toMatchObject({ kind: 'l2' });
   });
 
   test('refuses activation -> loss and other cross-family swaps', () => {
     const g = base();
-    err(swapPiece(g, 'act1', entry('squared_error')));
+    err(swapPiece(g, 'act1', entry('log_loss')));
     err(swapPiece(g, 'lin1', entry('activation')));
-    err(swapPiece(g, 'loss', entry('output')));
+    err(swapPiece(g, 'err', entry('mean')));
+    err(swapPiece(g, 'loss', entry('square')));
+  });
+
+  test('a pin stays on a swapped node', () => {
+    const out = ok(swapPiece(base(), 'lin2', { type: 'linear', out: 1, bias: false }));
+    expect(out.predictions).toEqual(['lin2']);
   });
 
   test('refuses unknown and locked nodes', () => {
@@ -203,31 +220,64 @@ describe('swapPiece', () => {
     expect(node(out, 'lin1')).toEqual({ id: 'lin1', type: 'linear', out: 9, bias: false });
   });
 
-  test('dropout <-> add moves wires by port position', () => {
+  test('pieces with different input ports never swap (dropout and add, weights and norm)', () => {
     const g = ok(insertOnWire(base(), 1, entry('dropout')));
-    const toAdd = ok(swapPiece(g, 'dropout1', entry('add')));
-    expect(toAdd.edges[1]).toEqual(['lin1', 'dropout1.a']);
-    expect(node(toAdd, 'dropout1')).toEqual({ id: 'dropout1', type: 'add' });
-    const back = ok(swapPiece(toAdd, 'dropout1', entry('dropout')));
-    expect(back.edges[1]).toEqual(['lin1', 'dropout1']);
-    // an Add with both inputs is refused as a dropout rather than silently losing b
-    const two = ok(connect(toAdd, 'x', 'dropout1.b'));
-    err(swapPiece(two, 'dropout1', entry('dropout')));
+    err(swapPiece(g, 'dropout1', entry('add')));
+    const pen = ok(insertMacro(base(), 'weight_penalty'));
+    err(swapPiece(pen, 'w_lin1', entry('l2')));
+    err(swapPiece(pen, 'n_lin1', entry('weights')));
+    err(swapPiece(pen, 'pen', entry('subtract')));
+    err(swapPiece(pen, 'loss', entry('scale')));
   });
 
-  test('Output and Target never swap for each other', () => {
-    const g = base();
-    err(swapPiece(g, 'y', entry('output')));
-    err(swapPiece(g, 'yhat', entry('target')));
-    ok(swapPiece(g, 'yhat', { type: 'output', link: 'sigmoid' }));
+  test('Input and Target never swap for each other', () => {
+    err(swapPiece(base(), 'y', entry('input')));
+    err(swapPiece(base(), 'x', entry('target')));
+  });
+
+  test('every swap the palette allows on a valid graph gives a valid graph', () => {
+    const graphs = [base(), ok(insertMacro(base(), 'weight_penalty'))];
+    const open = (g: Graph) =>
+      analyse(g, info).issues.filter((i) => /input/.test(i.message)).length;
+    for (const g of graphs) {
+      for (const n of g.nodes) {
+        for (const p of PALETTE) {
+          if (p.kind !== 'piece') continue;
+          const r = swapPiece(g, n.id, p.make());
+          if (!r.ok) continue;
+          ok(r);
+          expect(r.graph.edges).toHaveLength(g.edges.length);
+          expect(open(r.graph), `${n.id} -> ${p.key}`).toBe(open(g));
+        }
+      }
+    }
   });
 
   test('huber delta carries over huber -> huber', () => {
     const g = base((j) => {
-      j['nodes'][6] = { id: 'loss', type: 'loss', fn: 'huber', delta: 3 };
+      j['nodes'][6] = { id: 'err', type: 'huber', delta: 3 };
     });
-    const out = ok(swapPiece(g, 'loss', entry('huber')));
-    expect(node(out, 'loss')).toMatchObject({ fn: 'huber', delta: 3 });
+    const out = ok(swapPiece(g, 'err', entry('huber')));
+    expect(node(out, 'err')).toMatchObject({ type: 'huber', delta: 3 });
+  });
+});
+
+describe('insertOnWire pins', () => {
+  test('a ŷ pin moves to the inserted node when it was the only wire out of the source', () => {
+    const g = base(); // lin2 carries the ŷ pin; its only wire out is edge 3
+    expect(ok(insertOnWire(g, 3, entry('sigmoid'))).predictions).toEqual(['link1']);
+    // a wire that does not leave the pinned node leaves the pin alone
+    expect(ok(insertOnWire(g, 5, entry('abs'))).predictions).toEqual(['lin2']);
+  });
+
+  test('an L pin moves too; a pin stays when the source has other wires out', () => {
+    const withL = base((j) => {
+      j['loss'] = 'diff';
+    });
+    expect(ok(insertOnWire(withL, 5, entry('scale'))).loss).toBe('scale1');
+    const fan = ok(connect(base(), 'lin2', 'loss')); // lin2 now also feeds the mean
+    const i = fan.edges.findIndex((e) => e[1] === 'diff.a');
+    expect(ok(insertOnWire(fan, i, entry('abs'))).predictions).toEqual(['lin2']);
   });
 });
 
@@ -255,7 +305,7 @@ describe('connect', () => {
     err(connect(g, 'act1', 'x'));
     err(connect(g, 'nope', 'lin1'));
     err(connect(g, 'loss', 'lin1'));
-    err(connect(g, 'x', 'loss')); // port not named
+    err(connect(g, 'x', 'diff')); // port not named
   });
 
   test('refuses an indirect cycle through add', () => {
@@ -330,9 +380,10 @@ describe('deleteNode', () => {
     expect(out.edges).toEqual([
       ['x', 'lin1'],
       ['lin1', 'lin2'],
-      ['lin2', 'yhat'],
-      ['yhat', 'loss.pred'],
-      ['y', 'loss.target'],
+      ['lin2', 'diff.a'],
+      ['y', 'diff.b'],
+      ['diff', 'err'],
+      ['err', 'loss'],
     ]);
     expect(analyse(out, info).trainable).toBe(true);
   });
@@ -341,9 +392,10 @@ describe('deleteNode', () => {
     const out = ok(deleteNode(base(), 'lin1')); // 1 -> 4
     expect(out.edges).toEqual([
       ['act1', 'lin2'],
-      ['lin2', 'yhat'],
-      ['yhat', 'loss.pred'],
-      ['y', 'loss.target'],
+      ['lin2', 'diff.a'],
+      ['y', 'diff.b'],
+      ['diff', 'err'],
+      ['err', 'loss'],
     ]);
   });
 
@@ -369,7 +421,36 @@ describe('deleteNode', () => {
     ok(deleteNode(base(), 'x'));
     ok(deleteNode(base(), 'y'));
     const noLoss = ok(deleteNode(base(), 'loss'));
-    expect(noLoss.edges.some(([, t]) => t.startsWith('loss'))).toBe(false);
+    expect(noLoss.edges.some(([f, t]) => f === 'loss' || t === 'loss')).toBe(false);
+  });
+
+  test('a ŷ or L pin moves to what fed the node when the shape is kept, else it is dropped', () => {
+    const g = base((j) => {
+      j['predictions'] = ['act1', 'lin2'];
+    });
+    const out = ok(deleteNode(g, 'act1')); // 4 -> 4: closes, the pin moves up to lin1
+    expect(out.predictions).toEqual(['lin1', 'lin2']);
+    const moved = ok(deleteNode(base(), 'err')); // example(1) -> example(1): closes
+    expect(moved.edges).toContainEqual(['diff', 'loss']);
+    const noPred = ok(deleteNode(base(), 'lin2')); // 4 -> 1: gap, pin dropped
+    expect(noPred.predictions).toEqual([]);
+    const noL = ok(deleteNode(base(), 'loss')); // example -> scalar: gap, pin dropped
+    expect(noL.loss).toBeNull();
+    // pinning the same node twice is not possible, so the second pin that lands there is dropped
+    const dup = base((j) => {
+      j['predictions'] = ['lin1', 'act1'];
+    });
+    expect(ok(deleteNode(dup, 'act1')).predictions).toEqual(['lin1']);
+  });
+
+  test('a Linear takes its Weights taps along', () => {
+    const g = ok(insertMacro(base(), 'weight_penalty'));
+    expect(g.nodes.some((n) => n.type === 'weights' && n.of === 'lin1')).toBe(true);
+    const out = ok(deleteNode(g, 'lin1'));
+    expect(out.nodes.some((n) => n.type === 'weights' && n.of === 'lin1')).toBe(false);
+    expect(out.nodes.some((n) => n.id === 'w_lin2')).toBe(true);
+    expect(out.edges.some(([f, t]) => f === 'w_lin1' || t === 'w_lin1')).toBe(false);
+    err(deleteNode(g, 'lin1', { locked: ['w_lin1'] }));
   });
 
   test('unknown node and locks', () => {
@@ -392,12 +473,12 @@ describe('deleteNode', () => {
 describe('deleteEdge', () => {
   test('removes one wire', () => {
     const out = ok(deleteEdge(base(), 1));
-    expect(out.edges).toHaveLength(5);
+    expect(out.edges).toHaveLength(6);
     expect(out.edges).not.toContainEqual(['lin1', 'act1']);
   });
   test('bad index and locked end', () => {
     const g = base();
-    err(deleteEdge(g, 6));
+    err(deleteEdge(g, 7));
     err(deleteEdge(g, -1));
     err(deleteEdge(g, 1, { locked: ['act1'] }));
   });
@@ -411,9 +492,6 @@ describe('setSetting', () => {
     expect(node(ok(setSetting(base(), 'act1', 'fn', 'gelu')), 'act1')).toMatchObject({
       fn: 'gelu',
     });
-    expect(node(ok(setSetting(base(), 'yhat', 'link', 'sigmoid')), 'yhat')).toMatchObject({
-      link: 'sigmoid',
-    });
   });
   test('schema violations give a sentence', () => {
     const g = base();
@@ -426,21 +504,27 @@ describe('setSetting', () => {
     err(setSetting(g, 'lin1', 'id', 'other'));
     err(setSetting(g, 'lin1', 'type', 'add'));
     err(setSetting(g, 'act1', 'fn', 'swish'));
-    err(setSetting(g, 'loss', 'delta', 2)); // only huber
+    err(setSetting(g, 'err', 'delta', 2)); // only huber
+    err(setSetting(g, 'loss', 'penalty', 1));
     err(setSetting(g, 'nope', 'out', 2));
   });
-  test('loss fn and delta', () => {
-    const toHuber = ok(setSetting(base(), 'loss', 'fn', 'huber'));
-    expect(node(toHuber, 'loss')).toMatchObject({ fn: 'huber', delta: 1 });
-    const tuned = ok(setSetting(toHuber, 'loss', 'delta', 0.3));
-    expect(node(tuned, 'loss')).toMatchObject({ delta: 0.3 });
-    err(setSetting(tuned, 'loss', 'delta', 0));
-    const away = ok(setSetting(tuned, 'loss', 'fn', 'absolute_error'));
-    expect(node(away, 'loss')).not.toHaveProperty('delta');
+  test('huber delta, scale c, link fn, norm kind', () => {
+    const g = ok(insertOnWire(base(), 5, entry('huber')));
+    const tuned = ok(setSetting(g, 'huber1', 'delta', 0.3));
+    expect(node(tuned, 'huber1')).toMatchObject({ delta: 0.3 });
+    err(setSetting(tuned, 'huber1', 'delta', 0));
+    const sc = ok(setSetting(ok(insertOnWire(base(), 5, entry('scale'))), 'scale1', 'c', -2));
+    expect(node(sc, 'scale1')).toMatchObject({ c: -2 });
+    const lk = ok(
+      setSetting(ok(insertOnWire(base(), 3, entry('sigmoid'))), 'link1', 'fn', 'softmax'),
+    );
+    expect(node(lk, 'link1')).toMatchObject({ fn: 'softmax' });
+    const nm = ok(setSetting(ok(insertOnWire(base(), 0, entry('l1'))), 'norm1', 'kind', 'l2'));
+    expect(node(nm, 'norm1')).toMatchObject({ kind: 'l2' });
   });
-  test('undefined removes an optional setting', () => {
-    const out = ok(setSetting(base(), 'loss', 'penalty', undefined));
-    expect(node(out, 'loss')).not.toHaveProperty('penalty');
+  test('undefined removes a setting, which then takes its default', () => {
+    const out = ok(setSetting(base(), 'lin1', 'bias', undefined));
+    expect(node(out, 'lin1')).toMatchObject({ bias: true });
   });
   test('locked', () => {
     err(setSetting(base(), 'lin1', 'out', 3, { locked: ['lin1'] }));
@@ -466,29 +550,99 @@ describe('setLinearOut', () => {
   });
 });
 
-describe('setPenalty', () => {
-  test('set, replace, remove', () => {
-    const g = base();
-    const l1 = ok(setPenalty(g, 'loss', { kind: 'l1', lambda: 0.5 }));
-    expect(node(l1, 'loss')).toMatchObject({ penalty: { kind: 'l1', lambda: 0.5 } });
-    const none = ok(setPenalty(l1, 'loss', null));
-    expect(node(none, 'loss')).not.toHaveProperty('penalty');
-    const l2 = ok(setPenalty(none, 'loss', entry('weight_penalty') as never));
-    expect(node(l2, 'loss')).toMatchObject({ penalty: { kind: 'l2', lambda: 0.01 } });
+/** The example without its loss group: a network with a ŷ pin and a target, no L. */
+function noLoss(): Graph {
+  return base((j) => {
+    j['nodes'] = j['nodes'].filter((n: Loose) => !['diff', 'err', 'loss', 'y'].includes(n.id));
+    j['edges'] = j['edges'].slice(0, 3);
+    j['loss'] = null;
   });
+}
+
+describe('insertMacro', () => {
+  test('a loss group goes in free-standing, wired to ŷ and a new Target, and takes L', () => {
+    const r = insertMacro(noLoss(), 'loss_squared_error');
+    const out = ok(r);
+    expect(r.ok && r.select).toBe('loss');
+    expect(out.nodes.map((n) => n.id)).toEqual([
+      'x',
+      'lin1',
+      'act1',
+      'lin2',
+      'diff',
+      'err',
+      'loss',
+      'target',
+    ]);
+    expect(out.edges).toEqual([
+      ['x', 'lin1'],
+      ['lin1', 'act1'],
+      ['act1', 'lin2'],
+      ['lin2', 'diff.a'],
+      ['target', 'diff.b'],
+      ['diff', 'err'],
+      ['err', 'loss'],
+    ]);
+    expect(out.loss).toBe('loss');
+    expect(analyse(out, info).trainable).toBe(true);
+  });
+
+  test('every loss macro makes a graph that parses; log loss needs a link to be trainable', () => {
+    for (const key of PALETTE.flatMap((p) =>
+      p.kind === 'macro' && p.key.startsWith('loss_') ? [p.key] : [],
+    )) {
+      ok(insertMacro(noLoss(), key));
+    }
+    const withLink = ok(insertOnWire(noLoss(), 2, entry('sigmoid')));
+    const out = ok(insertMacro(withLink, 'loss_log_loss'));
+    expect(out.nodes.some((n) => n.type === 'log_loss')).toBe(true);
+  });
+
+  test('uses the existing Target and keeps an existing L pin', () => {
+    const out = ok(insertMacro(base(), 'loss_absolute_error'));
+    expect(out.nodes.filter((n) => n.type === 'target')).toHaveLength(1);
+    expect(out.loss).toBe('loss');
+    expect(node(out, 'loss_2')).toEqual({ id: 'loss_2', type: 'mean' });
+    expect(out.edges).toContainEqual(['y', 'diff_2.b']);
+    expect(out.edges).toContainEqual(['lin2', 'diff_2.a']);
+  });
+
+  test('dropped on a wire, that wire feeds the group and stays', () => {
+    const g = noLoss();
+    const out = ok(insertMacro(g, 'loss_squared_error', { edge: 1 }));
+    expect(out.edges).toContainEqual(['lin1', 'diff.a']);
+    expect(out.edges).toContainEqual(['lin1', 'act1']);
+    expect(err(insertMacro(g, 'loss_squared_error', { edge: 9 }))).toMatch(/wire/);
+  });
+
+  test('the weight penalty reads every Linear, takes the loss in and the L pin over', () => {
+    const out = ok(insertMacro(base(), 'weight_penalty'));
+    expect(out.nodes.map((n) => n.id).slice(8)).toEqual([
+      'w_lin1',
+      'n_lin1',
+      'w_lin2',
+      'n_lin2',
+      'sum1',
+      'pen',
+      'total',
+    ]);
+    expect(out.edges).toContainEqual(['loss', 'total.a']);
+    expect(out.loss).toBe('total');
+    const a = analyse(out, info);
+    expect(a.trainable).toBe(true);
+    expect(a.totalParams).toBe(analyse(base(), info).totalParams);
+  });
+
   test('refusals', () => {
-    const g = base();
-    err(setPenalty(g, 'loss', { kind: 'l2', lambda: -1 }));
-    err(setPenalty(g, 'loss', { kind: 'l3' as 'l2', lambda: 1 }));
-    err(setPenalty(g, 'lin1', { kind: 'l2', lambda: 1 }));
-    err(setPenalty(g, 'nope', null));
-    err(setPenalty(g, 'loss', null, { locked: ['loss'] }));
-  });
-  test('does not alias the argument', () => {
-    const p = { kind: 'l2' as const, lambda: 1 };
-    const out = ok(setPenalty(base(), 'loss', p));
-    const n = node(out, 'loss');
-    expect(n?.type === 'loss' && n.penalty !== p).toBe(true);
+    err(insertMacro(noLoss(), 'nope'));
+    err(insertMacro(noLoss(), 'square')); // a single piece, not a group
+    const noLinear = base((j) => {
+      j['nodes'] = j['nodes'].filter((n: Loose) => n.type !== 'linear');
+      j['edges'] = [];
+      j['predictions'] = [];
+      j['loss'] = null;
+    });
+    err(insertMacro(noLinear, 'weight_penalty'));
   });
 });
 
@@ -517,7 +671,7 @@ describe('purity', () => {
     cur = ok(insertOnWire(cur, 1, entry('dropout')));
     cur = ok(swapPiece(cur, 'act1', { type: 'activation', fn: 'sigmoid' }));
     cur = ok(setLinearOut(cur, 'lin1', 8));
-    cur = ok(setPenalty(cur, 'loss', null));
+    cur = ok(insertMacro(cur, 'weight_penalty'));
     cur = ok(setColumns(cur, 'x', ['x1']));
     cur = ok(deleteNode(cur, 'dropout1'));
     cur = ok(deleteEdge(cur, 0));
@@ -541,8 +695,8 @@ describe('purity', () => {
 
   test('every palette piece swaps or inserts to a re-parseable graph', () => {
     for (const p of PALETTE) {
-      if (p.family === 'penalties') continue;
-      const body = p.make() as NodeBody;
+      if (p.kind !== 'piece') continue;
+      const body = p.make();
       for (let i = 0; i < 6; i++) {
         const r = insertOnWire(base(), i, body);
         if (r.ok) ok(r);

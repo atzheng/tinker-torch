@@ -138,3 +138,41 @@ test('the dropped-weights notice names the dropped layers', () => {
   expect(r.message).toContain('"lin1", "lin2"');
   expect(r.message).not.toContain('more');
 });
+
+test('a saved version 1 file opens migrated, keeps its weights and locks, and saves as version 2', () => {
+  const v1 = {
+    kind: 'tinker',
+    version: 1,
+    title: 'Old',
+    locked: ['yhat', 'lin1'],
+    graph: {
+      version: 1,
+      nodes: [
+        { id: 'x', type: 'input', columns: ['x1'] },
+        { id: 'lin1', type: 'linear', out: 1, bias: true },
+        { id: 'yhat', type: 'output', link: 'identity' },
+        { id: 'y', type: 'target' },
+        { id: 'loss', type: 'loss', fn: 'squared_error', penalty: { kind: 'l2', lambda: 0.1 } },
+      ],
+      edges: [
+        ['x', 'lin1'],
+        ['lin1', 'yhat'],
+        ['yhat', 'loss.pred'],
+        ['y', 'loss.target'],
+      ],
+      data: { set: 'line', n: 40, noise: 0.1, val: 0.2, seed: 3 },
+      train: { optimizer: 'sgd', lr: 0.05, batch: 'full', seed: 4 },
+    },
+    params: { lin1: { W: [0.5], b: [0.1] } },
+  };
+  expect(loadText(JSON.stringify(v1))).toEqual({ ok: true, message: null });
+  expect(s().graph.version).toBe(2);
+  expect(s().graph.predictions).toEqual(['lin1']);
+  expect(s().analysis.trainable).toBe(true);
+  expect(Array.from(s().host?.lin1?.W ?? [])).toEqual([0.5]);
+  // the identity Output was spliced out, so locking it locks nothing; lin1 stays locked
+  expect(s().preset?.locked).toEqual(['lin1']);
+  const saved = JSON.parse(saveText(true)) as { version: number; graph: { version: number } };
+  expect(saved.version).toBe(2);
+  expect(saved.graph.version).toBe(2);
+});

@@ -19,10 +19,13 @@ test('initial graph is the SPEC example', () => {
     'lin1',
     'act1',
     'lin2',
-    'yhat',
     'y',
+    'diff',
+    'err',
     'loss',
   ]);
+  expect(s().graph.predictions).toEqual(['lin2']);
+  expect(s().graph.loss).toBe('loss');
   expect(s().canUndo).toBe(false);
   expect(s().canRedo).toBe(false);
 });

@@ -1,7 +1,7 @@
 /** Graph format v2 (CONTRACTS.md section 2): types, zod schema, parse (with v1 migration) and serialise, port helpers. */
 import { z } from 'zod';
 import { CORE_PIECES } from './registry.js';
-import { parseGraph as parseGraphV1 } from './legacy/graph.js';
+import { parseGraph as parseGraphV1 } from './v1.js';
 import { migrateV1WithMap, type IdMap } from './migrate.js';
 import {
   ACTIVATION_FNS,

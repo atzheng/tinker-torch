@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { PieceType } from '@tinker/core';
+import { parsePort, type PieceType } from '@tinker/core';
 import { fitName, legibleAt } from '../pure.js';
 import { SvgTex } from '../../tex/Tex.js';
 import { splitTex } from '../../tex/Tex.js';
@@ -13,22 +13,67 @@ import { splitTex } from '../../tex/Tex.js';
 /** Ordinary pieces share one style; the three roles below are the only special ones. */
 export type NodeRole = 'input' | 'pred' | 'loss';
 
+/** The pins of a graph (`Graph` has them); only these fields are read. */
+export type RolePins = { predictions: readonly string[]; loss: string | null };
+
+const pinTarget = (ref: string): string => parsePort(ref).node;
+
 /**
  * The role of a node, or undefined for an ordinary one. The single place that maps graph data to
- * roles: graph v2 (role pins on an output port) changes only this function.
+ * roles: the data pieces (Input, Target) are the input role, the node carrying the L pin is the
+ * loss role and a node carrying a ŷ pin is the prediction role (L wins when a node has both).
  */
-export function roleOfNode(node: { type: PieceType }): NodeRole | undefined {
-  switch (node.type) {
-    case 'input':
-    case 'target':
-      return 'input';
-    case 'output':
-      return 'pred';
-    case 'loss':
-      return 'loss';
-    default:
-      return undefined;
-  }
+export function roleOfNode(
+  node: { id: string; type: PieceType },
+  pins?: RolePins,
+): NodeRole | undefined {
+  if (node.type === 'input' || node.type === 'target') return 'input';
+  if (!pins) return undefined;
+  if (pins.loss !== null && pinTarget(pins.loss) === node.id) return 'loss';
+  if (pins.predictions.some((p) => pinTarget(p) === node.id)) return 'pred';
+  return undefined;
+}
+
+/** Every pin a node carries, in badge order (a node can be both a ŷ and L). */
+export function pinRolesOf(node: { id: string }, pins: RolePins): ('pred' | 'loss')[] {
+  const out: ('pred' | 'loss')[] = [];
+  if (pins.predictions.some((p) => pinTarget(p) === node.id)) out.push('pred');
+  if (pins.loss !== null && pinTarget(pins.loss) === node.id) out.push('loss');
+  return out;
+}
+
+/** The glyph (TeX, no dollars) of a role badge. */
+export const ROLE_GLYPH: Record<NodeRole, string> = { input: 'x', pred: '\\hat{y}', loss: 'L' };
+
+/**
+ * The small ŷ or L badge on a pinned node: top right, half outside the body, so it never covers
+ * the node's own glyph or tag. Static; moving a pin is a separate gesture.
+ */
+export function PinBadge({
+  role,
+  w,
+  slot = 0,
+}: {
+  role: 'pred' | 'loss';
+  w: number;
+  slot?: number;
+}) {
+  return (
+    <g
+      className="tk-badge"
+      data-testid={`pin-badge-${role}`}
+      transform={`translate(${w - 16 - slot * 22} 0)`}
+    >
+      <circle r={9} />
+      <SvgTex
+        src={ROLE_GLYPH[role]}
+        box={{ x: -9, y: -9, width: 18, height: 18 }}
+        fontSize={11}
+        align="center"
+        className="tk-badge-tex"
+      />
+    </g>
+  );
 }
 
 /** Box (node-local units) a custom glyph `slot` must stay inside: the KaTeX bead's foreignObject goes here. */

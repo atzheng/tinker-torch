@@ -3,8 +3,7 @@
  * here, not shared with the main thread), so the 20 x steps training never blocks the page.
  * Messages: ResampleRequest in, ResampleResponse (plus the dev-only live-buffer count) out.
  */
-import { adaptEngine } from '../legacyEngine.js';
-import type { Engine } from '../legacyEngine.js';
+import type { Engine } from '@tinker/engine';
 import { runResample, type ResampleRequest, type ResampleResponse } from './resampleRun.js';
 
 type Out = ResampleResponse & { live?: number };
@@ -22,7 +21,7 @@ function loadEngine(): Promise<Engine> {
       // Dev only: the live-buffer probe must be installed before jax-js is loaded.
       (await import('@tinker/engine/probe')).installProbe();
     }
-    return adaptEngine(await (await import('@tinker/engine')).createEngine()); // temporary adapter (tinker-8xw.4)
+    return (await import('@tinker/engine')).createEngine();
   })();
   return engine;
 }

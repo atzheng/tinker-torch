@@ -10,7 +10,6 @@ import {
   placeInspector,
   placeIssues,
   resolvedEdges,
-  wireOfNode,
   hitAt,
   layerHitShapes,
 } from '../src/canvas/pure.js';
@@ -63,46 +62,49 @@ const info = () => sample(initialGraph().data).info;
 /** Where `placeIssues` puts the issues of `g`, the way the canvas calls it. */
 function placed(g: Graph) {
   const a = analyse(g, info());
-  const p = placeIssues(a.issues, resolvedEdges(g), new Set(g.nodes.map((n) => n.id)), (id) =>
-    wireOfNode(g, a, id),
-  );
+  const p = placeIssues(a.issues, resolvedEdges(g), new Set(g.nodes.map((n) => n.id)));
   return { a, p };
 }
 const edit = (g: Graph, f: (g: Graph) => Partial<Graph>): Graph => ({ ...g, ...f(g) });
 
-test('wireOfNode: an Output points at its wire into the loss, other pieces at none', () => {
-  const g = initialGraph();
-  const a = analyse(g, info());
-  expect(wireOfNode(g, a, 'yhat')).toBe(4);
-  expect(wireOfNode(g, a, 'lin1')).toBeUndefined();
-  expect(wireOfNode(g, a, 'ghost')).toBeUndefined();
-});
-
-test('output width not fitting the loss: sentence on the wire into the loss', () => {
+test('a ŷ of the wrong width: the wire into b and the pinned piece each get their sentence', () => {
   const g = edit(initialGraph(), (g) => ({
     nodes: g.nodes.map((n) => (n.id === 'lin2' && n.type === 'linear' ? { ...n, out: 2 } : n)),
   }));
   const { p } = placed(g);
-  expect([...p.byEdge.keys()]).toEqual([4]);
-  expect(p.byEdge.get(4)?.[0]).toContain('width 1');
-  expect(p.byNode.size).toBe(0);
+  expect([...p.byEdge.keys()]).toEqual([4]); // y -> diff.b
+  expect(p.byEdge.get(4)?.[0]).toContain('same width');
+  expect(p.byNode.get('lin2')?.[0]).toContain('width 1');
 });
 
-test('link not fitting the loss (log loss with a raw output): on the wire; dataset sentence stays at the loss', () => {
+test('log loss without a sigmoid: sentence on the pred wire; dataset sentence stays at the node', () => {
   const g = edit(initialGraph(), (g) => ({
-    nodes: g.nodes.map((n) => (n.type === 'loss' ? { ...n, fn: 'log_loss' as const } : n)),
+    nodes: [
+      ...g.nodes.filter((n) => n.id !== 'diff' && n.id !== 'err'),
+      { id: 'err', type: 'log_loss' },
+    ],
+    edges: [
+      ['x', 'lin1'],
+      ['lin1', 'act1'],
+      ['act1', 'lin2'],
+      ['lin2', 'err.pred'],
+      ['y', 'err.target'],
+      ['err', 'loss'],
+    ],
   }));
   const { p } = placed(g);
-  expect(p.byEdge.get(4)).toEqual(['Log loss needs a sigmoid output.']);
-  expect(p.byNode.get('loss')?.[0]).toContain('two classes');
+  expect(p.byEdge.get(3)).toEqual([
+    'Log loss takes probabilities, so wire a Sigmoid link straight into its pred input.',
+  ]);
+  expect(p.byNode.get('err')?.[0]).toContain('two classes');
 });
 
-test('"needs an input" stays at the Output, not on its wire', () => {
-  const g = edit(initialGraph(), (g) => ({ edges: g.edges.filter((e) => e[1] !== 'yhat') }));
+test('"needs an input" stays at the piece, not on a wire', () => {
+  const g = edit(initialGraph(), (g) => ({ edges: g.edges.filter((e) => e[1] !== 'diff.a') }));
   const { a, p } = placed(g);
-  const msg = a.issues.find((i) => i.at.node === 'yhat')?.message;
-  expect(msg).toBe('The output needs an input.');
-  expect(p.byNode.get('yhat')).toContain(msg);
+  const msg = a.issues.find((i) => i.at.node === 'diff')?.message;
+  expect(msg).toBe('Subtract needs both of its inputs connected.');
+  expect(p.byNode.get('diff')).toContain(msg);
   expect(p.byEdge.size).toBe(0);
 });
 
@@ -119,13 +121,13 @@ test('a cycle stays at its node', () => {
 
 test('a duplicate id stays at the node', () => {
   const g0 = initialGraph();
-  const yhat = g0.nodes.find((n) => n.id === 'yhat');
-  if (!yhat) throw new Error('no yhat');
-  const g = edit(g0, (g) => ({ nodes: [...g.nodes, yhat] }));
+  const act = g0.nodes.find((n) => n.id === 'act1');
+  if (!act) throw new Error('no act1');
+  const g = edit(g0, (g) => ({ nodes: [...g.nodes, act] }));
   const { a, p } = placed(g);
   const dup = a.issues.find((i) => i.message.startsWith('Two nodes'));
   expect(dup).toBeDefined();
-  expect(p.byNode.get('yhat')).toContain(dup?.message);
+  expect(p.byNode.get('act1')).toContain(dup?.message);
   expect(p.byEdge.size).toBe(0);
 });
 
@@ -179,10 +181,12 @@ function skipGraph(): Graph {
       ['lin2', 'add1.a'],
       ['lin1', 'add1.b'],
       ['add1', 'lin3'],
-      ['lin3', 'yhat'],
-      ['yhat', 'loss.pred'],
-      ['y', 'loss.target'],
+      ['lin3', 'diff.a'],
+      ['y', 'diff.b'],
+      ['diff', 'err'],
+      ['err', 'loss'],
     ],
+    predictions: ['lin3'],
   });
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.graph;

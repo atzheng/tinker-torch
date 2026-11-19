@@ -1,7 +1,8 @@
 /**
  * Drag-and-drop on the canvas, built on Pointer Events (`gestures/drag.ts`), never the HTML5 API.
- * Two gestures: a palette piece dragged onto a wire (insert), a piece (swap) or the loss
- * (weight penalty); and a wire dragged from a piece's output port to an input port (connect).
+ * Two gestures: a palette piece dragged onto a wire (insert) or a piece (swap), or a ready-made
+ * group (a macro) dropped on a wire or on empty canvas (insert its primitives); and a wire dragged
+ * from a piece's output port to an input port (connect).
  *
  * The pure half (`resolveDrop`, `editForDrop`) is unit tested in Node. The small store half holds
  * the gesture in progress so the palette (ghost), the canvas (highlights, preview line) and the
@@ -11,9 +12,9 @@ import {
   CORE_PIECES,
   connect,
   inputPortsOf,
+  insertMacro,
   insertOnWire,
   rewireEdge,
-  setPenalty,
   swapPiece,
   type EditResult,
   type Graph,
@@ -38,10 +39,9 @@ export function wireSource(p: DragPayload): NodeId | undefined {
 export type DropTarget =
   | { kind: 'wire'; edge: number }
   | { kind: 'node'; id: NodeId }
-  | { kind: 'port'; node: NodeId; port: PortRef };
-
-/** Whether a node of this type has an output port (everything but a loss). */
-export const hasOutputPort = (type: string): boolean => type !== 'loss';
+  | { kind: 'port'; node: NodeId; port: PortRef }
+  /** Empty canvas: a ready-made group goes in free-standing. */
+  | { kind: 'free' };
 
 /** Position of an output port (right edge, middle) in abstract units. */
 export function outputPortAt(layout: LayerLayout, id: NodeId): [number, number] | undefined {
@@ -75,11 +75,9 @@ function distToSegment(px: number, py: number, a: readonly number[], b: readonly
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
-/** Whether a palette entry can go onto a wire (needs an input and an output). */
+/** Whether a palette entry can go onto a wire: a piece with an input (every piece has an output), or a ready-made group. */
 export function insertable(entry: PaletteEntry): boolean {
-  if (entry.family === 'penalties') return false;
-  const body = entry.make();
-  return 'type' in body && body.type !== 'input' && body.type !== 'target' && body.type !== 'loss';
+  return entry.kind === 'macro' || inputPortsOf(entry.make().type).length > 0;
 }
 
 /**
@@ -97,7 +95,7 @@ export function resolveDrop(
   at: { x: number; y: number },
   hitPx: number = HIT_MIN_PX,
 ): DropTarget | null {
-  const outputs = new Set(graph.nodes.filter((n) => hasOutputPort(n.type)).map((n) => n.id));
+  const outputs = new Set(graph.nodes.map((n) => n.id));
   const shapes = layerHitShapes(layout, scale, widths, outputs);
   const nodeOf = (s: HitShape | undefined): NodeId | undefined =>
     s?.kind === 'node' ? s.id : s?.kind === 'port' ? s.node : undefined;
@@ -138,8 +136,7 @@ export function resolveDrop(
   const id = nodeOf(hit);
   if (id !== undefined) {
     const node = graph.nodes.find((n) => n.id === id);
-    if (!node) return null;
-    if (entry.family === 'penalties') return node.type === 'loss' ? { kind: 'node', id } : null;
+    if (!node || entry.kind === 'macro') return null;
     return CORE_PIECES[node.type].family === entry.family ? { kind: 'node', id } : null;
   }
   if (!insertable(entry)) return null;
@@ -157,7 +154,8 @@ export function resolveDrop(
       }
     }
   }
-  return best;
+  // A ready-made group needs no wire: anywhere else on the canvas puts it in free-standing.
+  return best ?? (entry.kind === 'macro' ? { kind: 'free' } : null);
 }
 
 /** The pure edit a drop stands for, or null when the pair makes no edit. */
@@ -173,10 +171,12 @@ export function editForDrop(
   if (payload.kind === 'rewire') {
     return target.kind === 'port' ? rewireEdge(graph, payload.edge, 'to', target.port, opts) : null;
   }
-  const made = payload.entry.make();
-  if (!('type' in made)) {
-    return target.kind === 'node' ? setPenalty(graph, target.id, made, opts) : null;
+  const entry = payload.entry;
+  if (entry.kind === 'macro') {
+    if (target.kind === 'wire') return insertMacro(graph, entry.key, { edge: target.edge });
+    return target.kind === 'free' ? insertMacro(graph, entry.key) : null;
   }
+  const made = entry.make();
   if (target.kind === 'wire') return insertOnWire(graph, target.edge, made, opts);
   if (target.kind === 'node') return swapPiece(graph, target.id, made, opts);
   return null;
@@ -264,7 +264,7 @@ export const dnd = {
 /**
  * Every wire and piece a palette entry could be dropped on or tapped onto, for the highlights
  * shown while an entry is dragged or armed. Mirrors `resolveDrop`: wires for pieces that have an
- * input and an output, pieces of the same family (the loss for a penalty).
+ * input and an output (or any wire for a ready-made group), pieces of the same family.
  */
 export function dropCandidates(
   entry: PaletteEntry,
@@ -273,12 +273,8 @@ export function dropCandidates(
   const edges = new Set<number>();
   const nodes = new Set<NodeId>();
   if (insertable(entry)) graph.edges.forEach((_, i) => edges.add(i));
-  for (const n of graph.nodes) {
-    if (
-      entry.family === 'penalties' ? n.type === 'loss' : CORE_PIECES[n.type].family === entry.family
-    ) {
-      nodes.add(n.id);
-    }
+  if (entry.kind === 'piece') {
+    for (const n of graph.nodes) if (CORE_PIECES[n.type].family === entry.family) nodes.add(n.id);
   }
   return { edges, nodes };
 }

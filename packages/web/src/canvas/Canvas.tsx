@@ -34,7 +34,6 @@ import {
   placeInspector,
   placeIssues,
   type InspectorPlacement,
-  wireOfNode,
   type Transform,
 } from './pure.js';
 import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
@@ -220,7 +219,6 @@ export function Canvas() {
         analysis.issues,
         new Set(layout.wires.map((w) => w.edge)),
         new Set(graph.nodes.map((n) => n.id)),
-        (id) => wireOfNode(graph, analysis, id),
       ),
     [analysis, layout, graph],
   );
@@ -241,8 +239,8 @@ export function Canvas() {
   // Drag and drop: the palette and the port handles ask the canvas what is under the pointer.
   useEffect(() => {
     return dnd.setHandler({
-      resolve: (payload: DragPayload, cx, cy) =>
-        resolveDrop(
+      resolve: (payload: DragPayload, cx, cy) => {
+        const target = resolveDrop(
           payload,
           graph,
           layout,
@@ -250,7 +248,13 @@ export function Canvas() {
           t.scale,
           toAbstract(cx, cy),
           coarse ? 32 : 20,
-        ),
+        );
+        if (target?.kind !== 'free') return target;
+        // "Free" (a ready-made group on empty canvas) only counts inside the drawing.
+        const r = ref.current?.getBoundingClientRect();
+        const inside = r && cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+        return inside ? target : null;
+      },
       commit: (payload, target) => {
         const edit = editForDrop(graph, payload, target, { locked: lockedIds() });
         if (!edit) return;
@@ -435,7 +439,9 @@ export function Canvas() {
       </svg>
       {armed && (
         <div className="tk-armed" data-testid="armed-hint" role="status">
-          {`Tap a highlighted wire or piece to place ${armed.label}.`}
+          {armed.kind === 'macro'
+            ? `Tap a wire or empty canvas to add ${armed.label}.`
+            : `Tap a highlighted wire or piece to place ${armed.label}.`}
         </div>
       )}
       {graph.nodes.length === 0 ? (

@@ -1,8 +1,7 @@
 /// <reference types="node" />
-import { v2 } from '@tinker/core';
+import { type Graph, parseGraph } from '@tinker/core';
 import type { DataInfo, HostParams } from '@tinker/core';
 
-type Graph = v2.Graph;
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -37,7 +36,7 @@ export function fixtureNames(): string[] {
 export function loadFixture(name: string): { fx: Fixture; graph: Graph; data: DataInfo } {
   const fx = JSON.parse(readFileSync(`${dir}${name}.json`, 'utf8')) as Fixture;
   // v1 fixture graphs are migrated by parseGraph; v2 ones are read as written
-  const parsed = v2.parseGraph(fx.graph);
+  const parsed = parseGraph(fx.graph);
   if (!parsed.ok) throw new Error(parsed.error);
   const input = parsed.graph.nodes.find((n) => n.type === 'input');
   const columns = input?.type === 'input' ? input.columns : [];

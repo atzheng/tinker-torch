@@ -1,5 +1,5 @@
 import { nn } from '@jax-js/jax';
-import type { v2 } from '@tinker/core';
+import type { NodeOf } from '@tinker/core';
 import { safeSigmoid } from './activation.js';
 import type { EnginePiece } from './types.js';
 
@@ -8,7 +8,7 @@ import type { EnginePiece } from './types.js';
  * fuses it, the loss reads the link's input instead and this piece is skipped in the loss pass
  * (unless something else needs it). Consumes `inputs.in`.
  */
-export const link: EnginePiece<v2.NodeOf<'link'>> = {
+export const link: EnginePiece<NodeOf<'link'>> = {
   forward(node, inputs) {
     const z = inputs['in'];
     if (!z) throw new Error('A Link piece is missing its input.');

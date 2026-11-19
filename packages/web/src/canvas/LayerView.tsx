@@ -2,14 +2,14 @@ import { useRef, useState, type ComponentType } from 'react';
 import type { Analysis, Graph, HostParams, LayerLayout, Node } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
-import { dnd, hasOutputPort, inputPortAt, outputPortAt, wireSource, type DndState } from './dnd.js';
+import { dnd, inputPortAt, outputPortAt, wireSource, type DndState } from './dnd.js';
 import { edgeIndexOf, layerHitShapes } from './pure.js';
 import { inputPortsOf, resolveEdge } from '@tinker/core';
 import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
 import { useStore } from '../state/store.js';
-import { roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
+import { PinBadge, pinRolesOf, roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 
 export type LayerViewProps = {
@@ -64,7 +64,7 @@ export function layerProps(
 export function LayerView(p: LayerViewProps) {
   const { graph, analysis, layout, scale } = p;
   const hitPx = p.coarse ? 32 : 20;
-  const outputs = new Set(graph.nodes.filter((n) => hasOutputPort(n.type)).map((n) => n.id));
+  const outputs = new Set(graph.nodes.map((n) => n.id));
   const shapes = layerHitShapes(layout, scale, analysis.edgeWidth, outputs);
   const target = p.drag?.target ?? null;
   const dropEdge = target?.kind === 'wire' ? target.edge : -1;
@@ -146,7 +146,7 @@ export function LayerView(p: LayerViewProps) {
             transform={`translate(${box.x} ${box.y})`}
             data-testid={`node-${node.id}`}
             data-type={node.type}
-            data-role={roleOfNode(node)}
+            data-role={roleOfNode(node, graph)}
             data-locked={locked.has(node.id)}
             data-selected={selected}
             data-error={p.errorNodes.has(node.id)}
@@ -183,12 +183,15 @@ export function LayerView(p: LayerViewProps) {
               rx={NODE_RADIUS + 4}
             />
             <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
+            {pinRolesOf(node, graph).map((role, k) => (
+              <PinBadge key={role} role={role} w={box.w} slot={k} />
+            ))}
             {locked.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
         );
       })}
       {graph.nodes.map((node) => {
-        const at = hasOutputPort(node.type) ? outputPortAt(layout, node.id) : undefined;
+        const at = outputPortAt(layout, node.id);
         const shape = shapes.find((s) => s.kind === 'port' && s.node === node.id);
         if (!at || !shape) return null;
         return (

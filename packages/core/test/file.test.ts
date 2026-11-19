@@ -13,6 +13,7 @@ import {
   type Graph,
 } from '../src/index.js';
 
+/** A version 1 document on purpose: opening it goes through the migration. */
 function graph(): Graph {
   const r = parseGraph({
     version: 1,
@@ -44,14 +45,14 @@ describe('save and load round trip', () => {
   test('graph and params come back the same, and the text is byte-stable', () => {
     const g = graph();
     const a = analyse(g, sample(g.data).info);
-    const host = initParams(g, a, 5);
+    const host = initParams(a, 5);
     const text = serializeFile(g, paramsToJson(host));
     const parsed = parseFileText(text);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(serializeGraph(parsed.file.graph)).toBe(serializeGraph(g));
     expect(parsed.file.params).toBeDefined();
-    const back = paramsFromJson(parsed.file.params, parsed.file.graph, a);
+    const back = paramsFromJson(parsed.file.params, a);
     expect(back.dropped).toEqual([]);
     for (const id of Object.keys(host)) {
       expect(Array.from(back.params[id]?.W ?? [])).toEqual(Array.from(host[id]?.W ?? []));
@@ -68,7 +69,7 @@ describe('save and load round trip', () => {
   test('params for a resized layer are dropped, not an error', () => {
     const g = graph();
     const a = analyse(g, sample(g.data).info);
-    const json = paramsToJson(initParams(g, a, 1));
+    const json = paramsToJson(initParams(a, 1));
     const bigger = parseGraph(JSON.parse(serializeGraph(g).replace('"out": 3', '"out": 4')));
     if (!bigger.ok) throw new Error(bigger.error);
     const text = serializeFile(bigger.graph, json);
@@ -76,7 +77,7 @@ describe('save and load round trip', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const a2 = analyse(r.file.graph, sample(r.file.graph.data).info);
-    const back = paramsFromJson(r.file.params, r.file.graph, a2);
+    const back = paramsFromJson(r.file.params, a2);
     expect(back.dropped.sort()).toEqual(['lin1', 'lin2']);
   });
 });
@@ -89,7 +90,7 @@ describe('malformed files give one sentence', () => {
     ['a string', 'hi'],
     ['no kind', { ...good, kind: undefined }],
     ['wrong kind', { ...good, kind: 'other' }],
-    ['wrong version', { ...good, version: 2 }],
+    ['wrong version', { ...good, version: 3 }],
     ['no version', { ...good, version: undefined }],
     ['no graph', { ...good, graph: undefined }],
     ['invalid graph', { ...good, graph: { version: 1, nodes: 'x' } }],

@@ -2,37 +2,52 @@
 // two architectures on a sine, and that repeated overlays leave no live buffers behind.
 import { installProbe } from '@tinker/engine/probe';
 import { expect, test, vi } from 'vitest';
-import { analyse, biasVariance, grid1d, sample, truth, type Graph } from '@tinker/core';
+import {
+  analyse,
+  biasVariance,
+  grid1d,
+  parseGraph,
+  parsePort,
+  sample,
+  truth,
+  type Graph,
+} from '@tinker/core';
 import sine from '../src/presets/sine.json';
-import { adaptEngine } from '../src/legacyEngine.js';
 import { runResample } from '../src/results/resampleRun.js';
 
 installProbe();
 vi.setConfig({ testTimeout: 120_000 });
 const { createEngine } = await import('@tinker/engine');
-const engine = adaptEngine(await createEngine()); // temporary v1 -> v2 adapter (tinker-8xw.4)
+const engine = await createEngine();
 
-const base = (sine as unknown as { graph: Graph }).graph;
+// The bundled preset is a version 1 document: it opens through the migration.
+const parsed = parseGraph((sine as unknown as { graph: unknown }).graph);
+if (!parsed.ok) throw new Error(parsed.error);
+const base: Graph = parsed.graph;
 
 /** The sine preset with `width` hidden tanh units, or no hidden layer (a straight line) for 0. */
 function graphOf(width: number, n: number): Graph {
   const data = { ...base.data, n, val: 0, noise: 0.2 };
-  const nodes = base.nodes.filter((x) => width > 0 || (x.id !== 'act1' && x.id !== 'lin2'));
-  const edges =
+  const hidden = ['act1', 'lin2'];
+  const nodes = base.nodes.filter((x) => width > 0 || !hidden.includes(x.id));
+  const edges: Graph['edges'] =
     width > 0
       ? base.edges
-      : ([
-          ['x', 'lin1'],
-          ['lin1', 'yhat'],
-          ['yhat', 'loss.pred'],
-          ['y', 'loss.target'],
-        ] as Graph['edges']);
+      : [
+          ...base.edges.filter(
+            ([f, t]) => !hidden.includes(parsePort(f).node) && !hidden.includes(parsePort(t).node),
+          ),
+          ['lin1', 'loss_diff.a'],
+        ];
   return {
     ...base,
     data,
-    nodes: nodes.map((x) => (x.id === 'lin1' ? { ...x, out: width > 0 ? width : 1 } : x)),
+    nodes: nodes.map((x) =>
+      x.id === 'lin1' && x.type === 'linear' ? { ...x, out: width > 0 ? width : 1 } : x,
+    ),
     edges,
-  } as Graph;
+    predictions: width > 0 ? base.predictions : ['lin1'],
+  };
 }
 
 function bv(g: Graph, steps: number) {

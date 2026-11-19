@@ -60,7 +60,7 @@ export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: str
   if (!after.analysis.trainable) {
     return { ok: true, message: 'The saved weights were not loaded because the graph has issues.' };
   }
-  const { params, dropped } = paramsFromJson(file.params, file.graph, after.analysis);
+  const { params, dropped } = paramsFromJson(file.params, after.analysis);
   if (!after.loadHost(params)) {
     return {
       ok: true,

@@ -40,27 +40,31 @@ export type GraphSlice = {
   clearError: () => void;
 };
 
-/** The SPEC "Graph format" example. */
+/** The SPEC "Graph format" example, in graph v2: a network pinned as ŷ and the squared-error group pinned as L. */
 export function initialGraph(): Graph {
   const parsed = parseGraph({
-    version: 1,
+    version: 2,
     nodes: [
       { id: 'x', type: 'input', columns: ['x1'] },
       { id: 'lin1', type: 'linear', out: 4, bias: true },
       { id: 'act1', type: 'activation', fn: 'relu' },
       { id: 'lin2', type: 'linear', out: 1, bias: true },
-      { id: 'yhat', type: 'output', link: 'identity' },
       { id: 'y', type: 'target' },
-      { id: 'loss', type: 'loss', fn: 'squared_error', penalty: { kind: 'l2', lambda: 0.0 } },
+      { id: 'diff', type: 'subtract' },
+      { id: 'err', type: 'square' },
+      { id: 'loss', type: 'mean' },
     ],
     edges: [
       ['x', 'lin1'],
       ['lin1', 'act1'],
       ['act1', 'lin2'],
-      ['lin2', 'yhat'],
-      ['yhat', 'loss.pred'],
-      ['y', 'loss.target'],
+      ['lin2', 'diff.a'],
+      ['y', 'diff.b'],
+      ['diff', 'err'],
+      ['err', 'loss'],
     ],
+    predictions: ['lin2'],
+    loss: 'loss',
     data: { set: 'sine', n: 40, noise: 0.2, val: 0.3, seed: 7 },
     train: { optimizer: 'sgd', lr: 0.03, batch: 'full', seed: 11 },
   });

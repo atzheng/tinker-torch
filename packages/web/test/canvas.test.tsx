@@ -75,7 +75,7 @@ const fillOpacities = (id: string) =>
   Array.from(must(id).querySelectorAll('rect[fill]')).map((r) => r.getAttribute('fill-opacity'));
 
 test('the SPEC example draws every piece and width labels 1, 4, 4, 1', () => {
-  for (const id of ['x', 'lin1', 'act1', 'lin2', 'yhat', 'y', 'loss']) {
+  for (const id of ['x', 'lin1', 'act1', 'lin2', 'y', 'diff', 'err', 'loss']) {
     expect(q(`node-${id}`)).not.toBeNull();
   }
   const label = (i: number) => must(`wire-label-${i}`).textContent;
@@ -90,8 +90,8 @@ test('lin2 out = 2 turns the wire red with the sentence; undo clears it', () => 
   act(() => void s().apply(setLinearOut(s().graph, 'lin2', 2)));
   const a = analyse(s().graph, s().dataInfo);
   const issue = a.issues[0];
-  expect(issue?.message).toContain('width 1');
-  const edge = s().graph.edges.findIndex((e) => e[0] === 'yhat'); // the wire into the loss
+  expect(issue?.message).toContain('same width');
+  const edge = s().graph.edges.findIndex((e) => e[0] === 'y'); // the wire into diff.b, where the widths disagree
   expect(must(`wire-${edge}`).getAttribute('data-error')).toBe('true');
   expect(must(`issue-wire-${edge}`).textContent).toBe(issue?.message);
   act(() => s().undo());
@@ -252,7 +252,7 @@ test('number box: undo while the box has a draft resyncs it to the store value',
 
 test('wire inspector shows the same sentences as the callout on that wire', () => {
   act(() => void s().apply(setLinearOut(s().graph, 'lin2', 2)));
-  const edge = s().graph.edges.findIndex((e) => e[0] === 'yhat');
+  const edge = s().graph.edges.findIndex((e) => e[0] === 'y');
   tap(must(`wire-label-${edge}`));
   expect(must('inspector-issues').textContent).toBe(must(`issue-wire-${edge}`).textContent);
 });

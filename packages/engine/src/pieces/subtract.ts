@@ -1,8 +1,8 @@
-import type { v2 } from '@tinker/core';
+import type { NodeOf } from '@tinker/core';
 import type { EnginePiece } from './types.js';
 
 /** a - b, same shape. Consumes both inputs. */
-export const subtract: EnginePiece<v2.NodeOf<'subtract'>> = {
+export const subtract: EnginePiece<NodeOf<'subtract'>> = {
   forward(_node, inputs) {
     const a = inputs['a'];
     const b = inputs['b'];

@@ -27,6 +27,7 @@ export function FitPlot2D() {
   const set = useStore((s) => s.graph.data.set);
   const host = useStore((s) => s.host);
   const predictGrid = useStore((s) => s.predictGrid);
+  const noPrediction = useStore((s) => s.graph.predictions.length === 0);
   const [showTruth, setShowTruth] = useState(false);
   const classification = dataset.info.kind !== 'regression';
 
@@ -254,6 +255,11 @@ export function FitPlot2D() {
         <ResampleButton />
       </div>
       <ResampleReadout />
+      {noPrediction && (
+        <p className={styles.readout} data-testid="no-prediction">
+          No prediction selected.
+        </p>
+      )}
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Fit plot" />
         <AxisLabels x="$x_1$" y="$x_2$" />
