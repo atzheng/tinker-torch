@@ -49,6 +49,16 @@ export function zoomAbout(
   return { scale, tx: cx - (cx - t.tx) * k, ty: cy - (cy - t.ty) * k };
 }
 
+/**
+ * Zoom factor of one Ctrl/Cmd+wheel event: exponential in the pixel delta (line and page deltas
+ * are converted), capped at 1.25 either way so one mouse notch is about a quarter step while a
+ * trackpad pinch, which sends many small deltas, stays smooth.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
+  const px = deltaY * (deltaMode === 1 ? 16 : deltaMode === 2 ? 400 : 1);
+  return Math.min(1.25, Math.max(1 / 1.25, Math.exp(-px * 0.01)));
+}
+
 type Pt = readonly [number, number];
 
 /** The transform of a two-finger gesture: pinch distance zooms, the midpoint's movement pans. */

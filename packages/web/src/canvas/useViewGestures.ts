@@ -1,6 +1,8 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import type { Transform } from './pure.js';
-import { pinchView, zoomAbout } from './viewport.js';
+import { pinchView, wheelZoomFactor, zoomAbout } from './viewport.js';
+
+const OVERLAYS = '.tk-inspector-pos, .tk-callout, .tk-toast, .tk-global-issues';
 
 export type ViewGestureOptions = {
   /** Only the neuron view pans and zooms. */
@@ -91,16 +93,21 @@ export function useViewGestures(ref: RefObject<HTMLElement | null>, o: ViewGestu
     };
     const wheel = (ev: WheelEvent) => {
       const { min, max, clamp, set, current } = opts.current;
+      // Overlays (inspector, callouts, toast) scroll on their own.
+      if (ev.target instanceof Element && ev.target.closest(OVERLAYS)) return;
       ev.preventDefault();
       const t = current();
+      let next: Transform;
       if (ev.ctrlKey || ev.metaKey) {
         const [x, y] = local(ev);
-        set(clamp(zoomAbout(t, Math.exp(-ev.deltaY * 0.01), x, y, min, max)));
+        next = clamp(zoomAbout(t, wheelZoomFactor(ev.deltaY, ev.deltaMode), x, y, min, max));
       } else {
         const dx = ev.shiftKey && ev.deltaX === 0 ? ev.deltaY : ev.deltaX;
         const dy = ev.shiftKey && ev.deltaX === 0 ? 0 : ev.deltaY;
-        set(clamp({ ...t, tx: t.tx - dx, ty: t.ty - dy }));
+        next = clamp({ ...t, tx: t.tx - dx, ty: t.ty - dy });
       }
+      // A wheel that changes nothing must not count as a user move (the Reset button).
+      if (next.scale !== t.scale || next.tx !== t.tx || next.ty !== t.ty) set(next);
     };
 
     el.addEventListener('pointerdown', down, true);

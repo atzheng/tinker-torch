@@ -146,7 +146,8 @@ export function Canvas() {
     [isNeuron, fit, layout.size, view, coarse],
   );
   const [userView, setUserView] = useState<Transform | null>(null);
-  useEffect(() => setUserView(null), [grain]);
+  const loadEpoch = useStore((st) => st.loadEpoch);
+  useEffect(() => setUserView(null), [grain, loadEpoch]);
   const clampT = (x: Transform) => clampView(x, layout.size, view, HEADER_H);
   const t: Transform = useMemo(
     () => (isNeuron && userView ? clampView(userView, layout.size, view, HEADER_H) : base),

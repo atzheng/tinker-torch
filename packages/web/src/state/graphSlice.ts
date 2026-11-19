@@ -23,6 +23,8 @@ export type GraphSlice = {
   canRedo: boolean;
   /** Message of the last refused edit, for the toast. Cleared by the next ok edit or `clearError`. */
   error: string | null;
+  /** Bumped when a different graph is loaded (`loadGraph`, or `apply` with a preset); not by edits. */
+  loadEpoch: number;
   /**
    * Apply a pure edit. An ok result becomes the current graph and is pushed on the history
    * (redo is cleared). An error result leaves the graph alone and sets `error`.
@@ -71,6 +73,7 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
   get,
 ) => ({
   graph: initialGraph(),
+  loadEpoch: 0,
   past: [],
   future: [],
   pastPresets: [],
@@ -91,7 +94,9 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       pastPresets: [...pastPresets, current].slice(-HISTORY_LIMIT),
       future: [],
       futurePresets: [],
-      ...(preset !== undefined ? { preset, promptDismissed: false } : {}),
+      ...(preset !== undefined
+        ? { preset, promptDismissed: false, loadEpoch: get().loadEpoch + 1 }
+        : {}),
       canUndo: true,
       canRedo: false,
       error: null,
@@ -144,6 +149,7 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
     const graph = reparsed.ok ? reparsed.graph : loaded;
     set({
       graph,
+      loadEpoch: get().loadEpoch + 1,
       past: [],
       future: [],
       pastPresets: [],
