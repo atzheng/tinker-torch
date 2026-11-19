@@ -29,7 +29,9 @@ test('frozen inert params are merged back into the live host and return bit for 
   expect(s().canTrain).toBe(true);
   expect(s().analysis.paramNodes).toContain('spare');
   // The spare feeds no loss, so give it distinctive weights a fresh init could not reproduce.
-  expect(s().loadHost({ spare: { W: [0.123456789], b: [-0.75] } })).toBe(true);
+  expect(
+    s().loadHost({ spare: { W: new Float32Array([0.123456789]), b: new Float32Array([-0.75]) } }),
+  ).toBe(true);
   s().stepOnce();
   const before = s().host?.spare;
   expect(before?.W).toBeDefined();
