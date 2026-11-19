@@ -31,12 +31,13 @@
 
   /* 2-D fit plots: diverging ramp for probability (orange = class 0, blue = class 1), sequential
      ramp (viridis stops) for regression. Colour-blind safe; no red/green. */
-  --div-neg: #e8a25f;
+  --div-neg: #f0b273;
   --div-mid: #f3f1ee;
-  --div-pos: #5b93e0;
+  --div-pos: #2a62c4;
   --seq-0: #440154;
   --seq-1: #21918c;
   --seq-2: #fde725;
+  --point-halo: #ffffff;
 
   --radius: 6px;
   --gap: 8px;
@@ -69,12 +70,13 @@
     --pin-2: #e58fc6;
     --pin-3: #e6c84a;
 
-    --div-neg: #a85a1a;
+    --div-neg: #e8964a;
     --div-mid: #2c313b;
-    --div-pos: #2f68c0;
+    --div-pos: #2a5cb8;
     --seq-0: #440154;
     --seq-1: #21918c;
     --seq-2: #fde725;
+    --point-halo: #0f1218;
   }
 }
 
