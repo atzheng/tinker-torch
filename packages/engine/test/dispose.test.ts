@@ -3,7 +3,7 @@ import { installProbe } from '../src/probe.js';
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, test } from 'vitest';
-import { loadFixture, toBatch, toHostParams } from './util.js';
+import { loadFixture, toBatch, toHostParams, predict0 } from './util.js';
 
 installProbe();
 const { createEngine } = await import('../src/index.js');
@@ -45,7 +45,7 @@ function cycle(s: ReturnType<typeof setup>): void {
   const params = engine.fromHost(model, toHostParams(s.fx.params));
   let state = engine.startTraining(model, params, 1);
   for (let i = 0; i < 2; i++) state = engine.step(model, state, s.batch).state;
-  engine.predict(model, state.params, s.batch.x, s.batch.n);
+  predict0(engine, model, state.params, s.batch.x, s.batch.n);
   engine.evaluate(model, state.params, s.batch);
   engine.lossGrid(
     model,
@@ -96,7 +96,7 @@ describe('disposeModel', () => {
       fromHost: () => engine.fromHost(model, toHostParams(s.fx.params)),
       startTraining: () => engine.startTraining(model, engine.clone(params), 1),
       step: () => engine.step(model, state, s.batch),
-      predict: () => engine.predict(model, params, s.batch.x, s.batch.n),
+      predict: () => predict0(engine, model, params, s.batch.x, s.batch.n),
       evaluate: () => engine.evaluate(model, params, s.batch),
       lossGrid: () =>
         engine.lossGrid(model, params, s.batch, s.axes, Float32Array.of(0), Float32Array.of(1)),
@@ -118,7 +118,7 @@ describe('disposeModel', () => {
     const b = engine.compile(s.graph, s.data);
     engine.disposeModel(a);
     const p = engine.fromHost(b, toHostParams(s.fx.params));
-    expect(engine.predict(b, p, s.batch.x, s.batch.n)).toHaveLength(s.batch.n);
+    expect(predict0(engine, b, p, s.batch.x, s.batch.n)).toHaveLength(s.batch.n);
     engine.dispose(p);
     engine.disposeModel(b);
   });

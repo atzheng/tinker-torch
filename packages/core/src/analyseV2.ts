@@ -388,6 +388,12 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     const pin: Pin = { role: 'prediction', index };
     const s = shape[node];
     if (s === undefined) continue;
+    if ([...ancestors([node])].some((id) => byId.get(id)?.type === 'target')) {
+      issues.push({
+        at: { node, pin },
+        message: `A prediction cannot depend on the target, but "${node}" does.`,
+      });
+    }
     const n = byId.get(node);
     const softmax = n?.type === 'link' && n.fn === 'softmax';
     const want = softmax ? data.numClasses : 1;

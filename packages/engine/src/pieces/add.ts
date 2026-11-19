@@ -1,9 +1,8 @@
-import type { NodeOf } from '@tinker/core';
+import type { v2 } from '@tinker/core';
 import type { EnginePiece } from './types.js';
 
 /** Elementwise a + b (skip connection). Consumes `inputs.a` and `inputs.b`. */
-export const add: EnginePiece<NodeOf<'add'>> = {
-  implemented: true,
+export const add: EnginePiece<v2.NodeOf<'add'>> = {
   forward(_node, inputs) {
     const a = inputs['a'];
     const b = inputs['b'];

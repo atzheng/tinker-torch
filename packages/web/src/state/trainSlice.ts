@@ -12,7 +12,8 @@ import {
   type Graph,
   type HostParams,
 } from '@tinker/core';
-import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engine';
+import type { Model, ParamAxis, Params, TrainState } from '@tinker/engine';
+import type { Engine } from '../legacyEngine.js';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
 import type { Store } from './store.js';

@@ -1,6 +1,6 @@
 import { nn, numpy as np } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
-import type { ActivationFn, NodeOf } from '@tinker/core';
+import type { v2 } from '@tinker/core';
 import type { EnginePiece } from './types.js';
 
 /**
@@ -11,7 +11,7 @@ export function safeSigmoid(x: JArray): JArray {
   return np.tanh(x.mul(0.5)).add(1).mul(0.5);
 }
 
-const FNS: Record<ActivationFn, (x: JArray) => JArray> = {
+const FNS: Record<v2.ActivationFn, (x: JArray) => JArray> = {
   sigmoid: safeSigmoid,
   tanh: (x) => np.tanh(x),
   // jax-js built-ins (owner decision, tinker-e1h.2): relu'(0) = 0.5 and gelu in its tanh form.
@@ -20,8 +20,7 @@ const FNS: Record<ActivationFn, (x: JArray) => JArray> = {
 };
 
 /** Consumes `inputs.in`. */
-export const activation: EnginePiece<NodeOf<'activation'>> = {
-  implemented: true,
+export const activation: EnginePiece<v2.NodeOf<'activation'>> = {
   forward(node, inputs) {
     const x = inputs['in'];
     if (!x) throw new Error('An Activation piece is missing its input.');
