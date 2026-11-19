@@ -1,8 +1,8 @@
-/** The 12 synthetic generators and their true functions (CONTRACTS.md section 6). */
+/** The synthetic generators and their true functions (CONTRACTS.md section 6). */
 import type { DatasetName } from '../common.js';
 import type { Rng } from '../rng.js';
 
-export type SetKind = 'regression' | 'binary';
+export type SetKind = 'regression' | 'binary' | 'multiclass';
 
 export type SetSpec = {
   name: DatasetName;
@@ -10,13 +10,21 @@ export type SetSpec = {
   d: number;
   /** Per column, in raw units. */
   domain: [lo: number, hi: number][];
+  /** Multiclass only: the number of classes k >= 3 (binary has 2, regression 1). */
+  numClasses?: number;
+  /** Feature names; default x1, x2, ... A real dataset fills these. */
+  featureNames?: string[];
+  /** Target name; default 'y'. */
+  targetName?: string;
+  /** Classification: one name per class in label order; default 'class 0', 'class 1', ... */
+  classNames?: string[];
   /**
-   * Regression: f*(x). Classification: P(y=1|x) of the clean generator.
-   * `x` is one row of raw inputs.
+   * Regression: f*(x). Binary: P(y=1|x) of the clean generator. Multiclass: the class index (an
+   * integer 0..k-1) of the clean generator. `x` is one row of raw inputs.
    */
   f: (x: readonly number[]) => number;
   /**
-   * Classification only: a smooth signed field that is positive where the truth is class 1 and
+   * Binary only: a smooth signed field that is positive where the truth is class 1 and
    * zero on the decision boundary (for contouring; `f` itself jumps for most sets).
    */
   margin?: (x: readonly number[]) => number;
@@ -47,6 +55,55 @@ function distToHalfCircle(px: number, py: number, cx: number, cy: number, upper:
   const dy = (upper ? 1 : -1) * (py - cy);
   if (dy >= 0) return Math.abs(Math.hypot(dx, dy) - 1);
   return Math.min(Math.hypot(dx - 1, dy), Math.hypot(dx + 1, dy));
+}
+
+/** Three Gaussian blobs on a circle of radius 1.5, at 90, 210 and 330 degrees. */
+export const BLOBS3_CENTERS: [number, number][] = [0, 1, 2].map((c) => {
+  const a = Math.PI / 2 + (2 * Math.PI * c) / 3;
+  return [1.5 * Math.cos(a), 1.5 * Math.sin(a)];
+});
+
+function nearest(x: readonly number[], centers: readonly [number, number][]): number {
+  let best = 0;
+  let bd = Infinity;
+  centers.forEach(([cx, cy], i) => {
+    const d = (at(x, 0) - cx) ** 2 + (at(x, 1) - cy) ** 2;
+    if (d < bd) {
+      bd = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/** Three spiral arms: arm c is r = SPIRAL_R t at angle 2 pi c / 3 + SPIRAL_TWIST t, t in [0.1, 1]. */
+export const SPIRAL_R = 1.8;
+export const SPIRAL_TWIST = 4;
+export const SPIRAL_T0 = 0.1;
+export function spiralPoint(arm: number, t: number): [number, number] {
+  const a = (2 * Math.PI * arm) / 3 + SPIRAL_TWIST * t;
+  return [SPIRAL_R * t * Math.cos(a), SPIRAL_R * t * Math.sin(a)];
+}
+const SPIRAL_STEPS = 120;
+const SPIRAL_PTS: [number, number][][] = [0, 1, 2].map((arm) =>
+  Array.from({ length: SPIRAL_STEPS + 1 }, (_, i) =>
+    spiralPoint(arm, SPIRAL_T0 + ((1 - SPIRAL_T0) * i) / SPIRAL_STEPS),
+  ),
+);
+/** The arm whose polyline is nearest the point (the clean generator's most probable class). */
+function nearestArm(px: number, py: number): number {
+  let best = 0;
+  let bd = Infinity;
+  SPIRAL_PTS.forEach((pts, arm) => {
+    for (const [qx, qy] of pts) {
+      const d = (px - qx) ** 2 + (py - qy) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = arm;
+      }
+    }
+  });
+  return best;
 }
 
 export const MOONS_OUTER = { cx: 0, cy: 0 };
@@ -144,6 +201,26 @@ export const SETS: Record<DatasetName, SetSpec> = {
       );
     },
   },
+  blobs3: {
+    name: 'blobs3',
+    kind: 'multiclass',
+    numClasses: 3,
+    d: 2,
+    domain: [
+      [-3, 3],
+      [-3, 3],
+    ],
+    // Equal-variance Gaussians: the most probable class is the nearest centre.
+    f: (x) => nearest(x, BLOBS3_CENTERS),
+  },
+  spiral3: {
+    name: 'spiral3',
+    kind: 'multiclass',
+    numClasses: 3,
+    d: 2,
+    domain: D2,
+    f: (x) => nearestArm(at(x, 0), at(x, 1)),
+  },
 };
 
 // ---------------------------------------------------------------- spread constant s
@@ -193,7 +270,7 @@ function uniform(rng: Rng, lo: number, hi: number): number {
 }
 
 /**
- * Draws n rows. Classification rows alternate label 0, 1, 0, 1, ... so every contiguous
+ * Draws n rows. Classification rows cycle through the labels 0, 1, (2, ...) so every contiguous
  * slice (the train and validation parts) is balanced to within one point.
  * Regression x is uniform on the domain; y = f*(x) + noise * s * eps.
  */
@@ -216,7 +293,22 @@ export function generate(set: DatasetName, n: number, noise: number, rng: Rng): 
 
   const jitter = noise * 0.5;
   for (let i = 0; i < n; i++) {
-    const label = i % 2;
+    const label = i % (spec.numClasses ?? 2);
+    if (set === 'blobs3') {
+      const [cx, cy] = BLOBS3_CENTERS[label] ?? [0, 0];
+      const sd = BLOB_STD * (0.5 + noise);
+      rows.push({ x: [cx + sd * rx.normal(), cy + sd * rx.normal()], y: label });
+      continue;
+    }
+    if (set === 'spiral3') {
+      const t = uniform(rx, SPIRAL_T0, 1);
+      const [qx, qy] = spiralPoint(label, t);
+      rows.push({
+        x: [Math.fround(qx + jitter * rn.normal()), Math.fround(qy + jitter * rn.normal())],
+        y: label,
+      });
+      continue;
+    }
     let px: number;
     let py: number;
     let sd = jitter;

@@ -480,7 +480,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
           : `This dataset's target has width 1, so the prediction needs width 1, but "${node}" has width ${s.width}.`,
       });
     }
-    if (softmax && data.kind !== 'binary') {
+    if (softmax && data.kind === 'regression') {
       issues.push({
         at: { node, pin },
         message:
@@ -495,10 +495,18 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     const n = byId.get(id);
     if (n?.type !== 'log_loss' && n?.type !== 'cross_entropy') continue;
     const label = n.type === 'log_loss' ? 'Log loss' : 'Cross-entropy';
-    if (data.kind !== 'binary') {
+    if (n.type === 'log_loss' && data.kind !== 'binary') {
       issues.push({
         at: { node: id },
-        message: `${label} needs a dataset with two classes, but this dataset is regression.`,
+        message:
+          data.kind === 'multiclass'
+            ? `Log loss needs a dataset with two classes, but this dataset has ${data.numClasses}; use cross-entropy with a softmax.`
+            : 'Log loss needs a dataset with two classes, but this dataset is regression.',
+      });
+    } else if (n.type === 'cross_entropy' && data.kind === 'regression') {
+      issues.push({
+        at: { node: id },
+        message: 'Cross-entropy needs a dataset with classes, but this dataset is regression.',
       });
     }
     const pred = wireOf(id, 'pred');

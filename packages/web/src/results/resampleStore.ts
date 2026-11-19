@@ -4,7 +4,7 @@
  * and clears it when the graph or the data change. Only plain numbers and Float32Arrays live here.
  */
 import { create } from 'zustand';
-import { biasVariance, grid1d, grid2d, truth } from '@tinker/core';
+import { biasVariance, grid1d, grid2d, truthProbs } from '@tinker/core';
 import { plotIndex } from '../state/plotPrediction.js';
 import { useStore } from '../state/store.js';
 import type { ResampleRequest, ResampleResponse } from './resampleRun.js';
@@ -18,6 +18,8 @@ export type OverlayResult = {
   /** 1 for a curve per copy, 2 for a surface per copy. */
   d: 1 | 2;
   gridN: number;
+  /** Values per grid point in `curves` and `mean`: 1, or the number of classes (multi-class). */
+  k: number;
   curves: Float32Array[];
   /** Pointwise average of `curves`. */
   mean: Float32Array;
@@ -104,7 +106,9 @@ export function runOverlay(): void {
     if (!r.ok) return fail(r.message);
     // the plotted range: the grid spans the domain, so the plain mean over it is the average over x
     const grid = d === 1 ? grid1d(dataset.domain, gridN) : grid2d(dataset.domain, gridN);
-    const bv = biasVariance(r.curves, truth(graph.data.set, grid.xRaw));
+    const multi = dataset.info.kind === 'multiclass';
+    const k = multi ? dataset.info.numClasses : 1;
+    const bv = biasVariance(r.curves, truthProbs(graph.data.set, grid.xRaw));
     if (bv.k === 0) return fail('Every copy diverged. Try a smaller learning rate.');
     useOverlay.setState({
       status: 'done',
@@ -112,10 +116,12 @@ export function runOverlay(): void {
       result: {
         d,
         gridN,
+        k,
         curves: r.curves,
         mean: bv.mean,
-        bias2: bv.bias2,
-        variance: bv.variance,
+        // summed over the k class probabilities of a point, averaged over the grid
+        bias2: bv.bias2 * k,
+        variance: bv.variance * k,
         used: bv.k,
         diverged: r.diverged,
         steps,
