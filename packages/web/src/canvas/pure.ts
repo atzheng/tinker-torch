@@ -47,6 +47,28 @@ export function edgeIndexOf(graph: Graph, from: PortRef, to: PortRef): number {
   return graph.edges.findIndex((e) => e[0] === from && e[1] === to);
 }
 
+/**
+ * Whether an edge or unit selection still fits the graph and its widths. Wire and node
+ * selections are always live here (`useSelection` checks those). Pure; the store uses it to
+ * clear a selection when an edit changes widths, so undo or a regrow cannot resurrect it.
+ */
+export function neuronSelectionLive(
+  sel:
+    | { kind: 'edge'; node: NodeId; i: number; j: number }
+    | { kind: 'unit'; node: NodeId; index: number },
+  graph: Graph,
+  analysis?: Analysis,
+): boolean {
+  const node = graph.nodes.find((n) => n.id === sel.node);
+  if (!node) return false;
+  if (sel.kind === 'unit') {
+    return sel.index >= 0 && !(node.type === 'linear' && sel.index >= node.out);
+  }
+  if (node.type !== 'linear' || sel.i < 0 || sel.j < 0 || sel.j >= node.out) return false;
+  const inW = analysis?.inWidth[node.id];
+  return !analysis || (inW !== undefined && sel.i < inW);
+}
+
 export type PlacedIssues = {
   /** Issues drawn at a wire (that has geometry). */
   byEdge: Map<number, string[]>;

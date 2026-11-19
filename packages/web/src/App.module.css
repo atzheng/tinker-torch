@@ -28,6 +28,14 @@
 .canvas {
   grid-area: canvas;
   background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+/* The canvas fills what the prompt line leaves. */
+.canvasBody {
+  flex: 1;
+  min-height: 0;
+  position: relative;
 }
 .results {
   grid-area: results;

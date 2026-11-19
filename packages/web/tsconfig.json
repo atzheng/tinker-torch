@@ -8,6 +8,6 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src", "test", "vite.config.ts"],
+  "include": ["src", "src/presets/*.json", "test", "vite.config.ts"],
   "references": [{ "path": "../core" }, { "path": "../engine" }]
 }

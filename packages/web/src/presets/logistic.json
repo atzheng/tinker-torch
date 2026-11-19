@@ -1,0 +1,54 @@
+{
+  "kind": "tinker",
+  "version": 1,
+  "title": "Logistic regression on blobs",
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "x",
+        "type": "input",
+        "columns": ["x1", "x2"]
+      },
+      {
+        "id": "lin1",
+        "type": "linear",
+        "out": 1,
+        "bias": true
+      },
+      {
+        "id": "yhat",
+        "type": "output",
+        "link": "sigmoid"
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "loss",
+        "type": "loss",
+        "fn": "log_loss"
+      }
+    ],
+    "edges": [
+      ["x", "lin1"],
+      ["lin1", "yhat"],
+      ["yhat", "loss.pred"],
+      ["y", "loss.target"]
+    ],
+    "data": {
+      "set": "blobs",
+      "n": 60,
+      "noise": 0.3,
+      "val": 0.3,
+      "seed": 7
+    },
+    "train": {
+      "optimizer": "sgd",
+      "lr": 0.1,
+      "batch": "full",
+      "seed": 11
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand';
 import { parseGraph, type EditResult, type Graph } from '@tinker/core';
+import type { ActivePreset, PresetSlice } from './presetSlice.js';
 
 export type { EditResult };
 
@@ -12,6 +13,12 @@ export type GraphSlice = {
   past: Graph[];
   /** Graphs undone, most recently undone last. */
   future: Graph[];
+  /**
+   * The preset (title, prompt, locked) that went with each entry of `past` and `future`, same
+   * order and length: undo and redo restore the preset together with the graph.
+   */
+  pastPresets: (ActivePreset | null)[];
+  futurePresets: (ActivePreset | null)[];
   canUndo: boolean;
   canRedo: boolean;
   /** Message of the last refused edit, for the toast. Cleared by the next ok edit or `clearError`. */
@@ -20,11 +27,13 @@ export type GraphSlice = {
    * Apply a pure edit. An ok result becomes the current graph and is pushed on the history
    * (redo is cleared). An error result leaves the graph alone and sets `error`.
    * Returns the result so the caller can read `select`.
+   * `preset` (a file load): the preset that goes with the new graph (null for none); left out,
+   * the current preset stays. Either way it is saved in the history with the graph.
    */
-  apply: (edit: EditResult) => EditResult;
+  apply: (edit: EditResult, preset?: ActivePreset | null) => EditResult;
   undo: () => void;
   redo: () => void;
-  /** Replace the graph (load file, preset) and clear the history. */
+  /** Replace the graph and clear the history and the preset (a new graph). */
   loadGraph: (graph: Graph) => void;
   clearError: () => void;
 };
@@ -57,24 +66,32 @@ export function initialGraph(): Graph {
   return parsed.graph;
 }
 
-export const createGraphSlice: StateCreator<GraphSlice, [], [], GraphSlice> = (set, get) => ({
+export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], GraphSlice> = (
+  set,
+  get,
+) => ({
   graph: initialGraph(),
   past: [],
   future: [],
+  pastPresets: [],
+  futurePresets: [],
   canUndo: false,
   canRedo: false,
   error: null,
-  apply: (edit) => {
+  apply: (edit, preset) => {
     if (!edit.ok) {
       set({ error: edit.error });
       return edit;
     }
-    const { graph, past } = get();
+    const { graph, past, pastPresets, preset: current } = get();
     const nextPast = [...past, graph].slice(-HISTORY_LIMIT);
     set({
       graph: edit.graph,
       past: nextPast,
+      pastPresets: [...pastPresets, current].slice(-HISTORY_LIMIT),
       future: [],
+      futurePresets: [],
+      ...(preset !== undefined ? { preset, promptDismissed: false } : {}),
       canUndo: true,
       canRedo: false,
       error: null,
@@ -82,27 +99,37 @@ export const createGraphSlice: StateCreator<GraphSlice, [], [], GraphSlice> = (s
     return edit;
   },
   undo: () => {
-    const { graph, past, future } = get();
+    const { graph, past, future, pastPresets, futurePresets, preset } = get();
     const prev = past[past.length - 1];
     if (!prev) return;
     const nextPast = past.slice(0, -1);
+    const prevPreset = pastPresets[pastPresets.length - 1] ?? null;
     set({
       graph: prev,
       past: nextPast,
+      pastPresets: pastPresets.slice(0, -1),
       future: [...future, graph],
+      futurePresets: [...futurePresets, preset],
+      preset: prevPreset,
+      ...(prevPreset !== preset ? { promptDismissed: false } : {}),
       canUndo: nextPast.length > 0,
       canRedo: true,
       error: null,
     });
   },
   redo: () => {
-    const { graph, past, future } = get();
+    const { graph, past, future, pastPresets, futurePresets, preset } = get();
     const next = future[future.length - 1];
     if (!next) return;
     const nextFuture = future.slice(0, -1);
+    const nextPreset = futurePresets[futurePresets.length - 1] ?? null;
     set({
       graph: next,
       past: [...past, graph],
+      pastPresets: [...pastPresets, preset],
+      futurePresets: futurePresets.slice(0, -1),
+      preset: nextPreset,
+      ...(nextPreset !== preset ? { promptDismissed: false } : {}),
       future: nextFuture,
       canUndo: true,
       canRedo: nextFuture.length > 0,
@@ -110,6 +137,17 @@ export const createGraphSlice: StateCreator<GraphSlice, [], [], GraphSlice> = (s
     });
   },
   loadGraph: (graph) =>
-    set({ graph, past: [], future: [], canUndo: false, canRedo: false, error: null }),
+    set({
+      graph,
+      past: [],
+      future: [],
+      pastPresets: [],
+      futurePresets: [],
+      preset: null,
+      promptDismissed: false,
+      canUndo: false,
+      canRedo: false,
+      error: null,
+    }),
   clearError: () => set({ error: null }),
 });
