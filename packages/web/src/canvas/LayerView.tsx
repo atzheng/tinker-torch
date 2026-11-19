@@ -97,6 +97,8 @@ export function layerProps(
 /** Padding of a region's shading around a piece, and its stroke width along a wire (abstract units). */
 const REGION_PAD = 10;
 const REGION_WIRE = 30;
+/** The inert cover starts just under the piece name (baseline 19, descenders to 23). */
+const NAME_COVER_Y = 25;
 
 /**
  * Subtle shading behind the pieces for the model and objective regions (`analysis.region`): a
@@ -355,13 +357,14 @@ export function LayerView(p: LayerViewProps) {
             {p.analysis.inert.includes(node.id) && (
               <>
                 <title>Not connected: wire it into the model or the loss to use it.</title>
-                {/* Inside the box, in the secondary lines' place (the widths mean nothing until it is wired). */}
+                {/* Inside the box, under the name: it hides the glyph or heat map and the secondary
+                    lines (the widths mean nothing until it is wired) so the note reads cleanly. */}
                 <rect
                   className="tk-inert-cover"
                   x={2}
-                  y={box.h - 26}
+                  y={NAME_COVER_Y}
                   width={box.w - 4}
-                  height={22}
+                  height={box.h - NAME_COVER_Y - 3}
                 />
                 <text
                   className="tk-inert-note"

@@ -122,28 +122,30 @@ export function NodeShell(p: NodeShellProps) {
           </text>
         ),
       )}
-      {p.slot ??
-        (p.badge ? (
-          <g className="tk-badge" transform={`translate(${w - PAD - 10} ${h / 2 + 4})`}>
-            <circle r={10} />
-            <SvgTex
-              src={p.glyph ?? ''}
-              box={{ x: -10, y: -10, width: 20, height: 20 }}
-              fontSize={13}
-              align="center"
-              className="tk-badge-tex"
-            />
-          </g>
-        ) : (
-          p.glyph !== undefined && (
-            <SvgTex
-              src={p.glyph}
-              box={slotBox(w, h)}
-              fontSize={Math.min(name.size, p.glyph.length > 4 ? 13 : 15)}
-              align="end"
-            />
-          )
-        ))}
+      <g className="tk-slot">
+        {p.slot ??
+          (p.badge ? (
+            <g className="tk-badge" transform={`translate(${w - PAD - 10} ${h / 2 + 4})`}>
+              <circle r={10} />
+              <SvgTex
+                src={p.glyph ?? ''}
+                box={{ x: -10, y: -10, width: 20, height: 20 }}
+                fontSize={13}
+                align="center"
+                className="tk-badge-tex"
+              />
+            </g>
+          ) : (
+            p.glyph !== undefined && (
+              <SvgTex
+                src={p.glyph}
+                box={slotBox(w, h)}
+                fontSize={Math.min(name.size, p.glyph.length > 4 ? 13 : 15)}
+                align="end"
+              />
+            )
+          ))}
+      </g>
       {p.children}
       {Array.from({ length: p.inPorts }, (_, k) => (
         <circle
