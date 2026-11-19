@@ -169,10 +169,16 @@ export function insertOnWire(
  * Puts a new piece on the canvas with no wires (a source piece to start from, or a Sum, Weight or
  * Bias to wire up by hand). `at` is the top-left corner of its box in layout units (kept within the same bounds as
  * `moveNodes`); left out, the automatic layout places it. Selects the new node. One edit, so one
- * undo step. Refused for a Weights tap (it needs the Linear it reads).
+ * undo step. Any piece may be placed; it is inert until wired into what a ŷ or L pin needs (analyse).
+ * A Weights tap reads the first Linear (refused when there is none).
  */
 export function addPiece(g: Graph, piece: NodeBody, at?: readonly [number, number]): EditResult {
-  if (piece.type === 'weights') return fail('A Weights tap needs the Linear it reads.');
+  if (piece.type === 'weights') {
+    // A Weights tap must name a Linear (graph rule): it reads the first one; the wire is re-aimed by editing `of`.
+    const lin = g.nodes.find((n) => n.type === 'linear');
+    if (!lin) return fail('A Weights tap reads a Linear piece; add a Linear first.');
+    piece = { ...piece, of: lin.id };
+  }
   const id = freshId(g, piece.type);
   const node = { id, ...withFreshColumn(g, piece) } as Node;
   let positions = g.positions;
@@ -547,7 +553,12 @@ function namer(used: Set<string>): Namer {
  * The wire it was dropped on stays. Selects the group's result node. Nothing existing changes, so
  * locks do not apply.
  */
-export function insertMacro(g: Graph, key: string, at?: { edge: number }): EditResult {
+export function insertMacro(
+  g: Graph,
+  key: string,
+  at?: { edge: number },
+  pos?: readonly [number, number],
+): EditResult {
   const entry = PALETTE.find((p) => p.kind === 'macro' && p.key === key);
   if (entry?.kind !== 'macro') return fail(`There is no ready-made group called "${key}".`);
   const wire = at === undefined ? undefined : resolveAll(g)[at.edge];
@@ -580,9 +591,49 @@ export function insertMacro(g: Graph, key: string, at?: { edge: number }): EditR
     edges.push(...sub.edges);
     loss ??= sub.out;
   }
-  const parsed = parseGraph({ ...g, nodes, edges, loss });
+  let positions = g.positions;
+  if (pos && at === undefined) {
+    if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) {
+      return fail('A piece can only be placed at a position given as numbers.');
+    }
+    positions = { ...g.positions, ...groupPositions(sub.nodes, sub.edges, pos, nodes.length) };
+  }
+  const parsed = parseGraph({ ...g, nodes, edges, loss, ...(positions ? { positions } : {}) });
   if (!parsed.ok) return fail(parsed.error);
   return { ok: true, graph: parsed.graph, select: sub.out };
+}
+
+/** Positions for a free-standing group: columns by depth along its own wires, `at` the top-left, clamped like `moveNodes`. */
+function groupPositions(
+  sub: readonly Node[],
+  edges: readonly Edge[],
+  at: readonly [number, number],
+  nodeCount: number,
+): Record<NodeId, [number, number]> {
+  const depth: Record<NodeId, number> = Object.create(null) as Record<NodeId, number>;
+  for (const n of sub) depth[n.id] = 0;
+  for (let pass = 0; pass < sub.length; pass++) {
+    for (const [a, b] of edges) {
+      const from = parsePort(a).node;
+      const to = parsePort(b).node;
+      if (depth[from] !== undefined && depth[to] !== undefined) {
+        depth[to] = Math.max(depth[to] ?? 0, (depth[from] ?? 0) + 1);
+      }
+    }
+  }
+  const rows: Record<number, number> = {};
+  const [maxX, maxY] = positionLimits(nodeCount);
+  const out: Record<NodeId, [number, number]> = {};
+  for (const n of sub) {
+    const d = depth[n.id] ?? 0;
+    const r = rows[d] ?? 0;
+    rows[d] = r + 1;
+    out[n.id] = [
+      Math.min(maxX, Math.max(LAYOUT.pad, at[0] + d * (LAYOUT.boxW + LAYOUT.layerGap))),
+      Math.min(maxY, Math.max(LAYOUT.pad, at[1] + r * (LAYOUT.boxH + LAYOUT.rowGap))),
+    ];
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ pin edits

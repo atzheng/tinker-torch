@@ -309,6 +309,7 @@ export function LayerView(p: LayerViewProps) {
             data-locked={locked.has(node.id)}
             data-selected={selected}
             data-error={p.errorNodes.has(node.id)}
+            data-inert={p.analysis.inert.includes(node.id)}
             data-drop={dropNode === node.id}
             data-valid={cand?.nodes.has(node.id) === true}
             className={p.fresh?.has(node.id) ? 'tk-node tk-fadein' : 'tk-node'}
@@ -351,6 +352,19 @@ export function LayerView(p: LayerViewProps) {
               rx={NODE_RADIUS + 4}
             />
             <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
+            {p.analysis.inert.includes(node.id) && (
+              <>
+                <title>Not connected: wire it into the model or the loss to use it.</title>
+                <text
+                  className="tk-inert-note"
+                  data-testid={`inert-${node.id}`}
+                  x={0}
+                  y={box.h + 14}
+                >
+                  not connected
+                </text>
+              </>
+            )}
             {locked.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
         );

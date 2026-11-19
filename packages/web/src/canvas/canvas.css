@@ -106,6 +106,19 @@ path.tk-hit {
 .tk-node[data-error='true'] {
   --piece-stroke: var(--error);
 }
+.tk-node[data-inert='true']:not([data-selected='true'])
+  > :not(.tk-ring):not(.tk-hit):not(.tk-inert-note) {
+  opacity: 0.55;
+}
+.tk-node[data-inert='true'] .tk-body {
+  stroke-dasharray: 4 3;
+}
+/* A diagnostic (flat, muted, monospace): this piece is outside what the roles need, so it is not trained. */
+.tk-inert-note {
+  fill: var(--diag-fg);
+  font: 11px var(--font-mono);
+  pointer-events: none;
+}
 .tk-node[data-selected='true'] {
   --piece-stroke: var(--accent);
 }

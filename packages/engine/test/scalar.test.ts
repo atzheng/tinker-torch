@@ -207,3 +207,42 @@ test('compiling and training 200 scalar models leaves no buffers behind', () => 
     expect(engine.liveArrays(), name).toBe(baseline);
   }
 });
+
+test('unwired (inert) pieces change nothing: same losses and parameters, no params of their own, flat buffers', () => {
+  const { fx, graph, data } = loadFixture('scalar_adam_5steps');
+  const parsed = parseGraph({
+    ...graph,
+    nodes: [
+      ...graph.nodes,
+      { id: 'lone_in', type: 'input', columns: ['x1'] },
+      { id: 'lone_lin', type: 'linear', out: 3, bias: true },
+      { id: 'lone_sub', type: 'subtract' },
+      { id: 'lone_ce', type: 'cross_entropy' },
+      { id: 'lone_col', type: 'column', name: 'x1' },
+    ],
+    edges: [...graph.edges, ['lone_in', 'lone_lin']],
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+  const withInert = parsed.graph;
+  const batch = toBatch(fx);
+  const run = (g: Graph) => {
+    const model = engine.compile(g, data);
+    let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 1);
+    const losses: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      const r = engine.step(model, state, batch);
+      state = r.state;
+      losses.push(r.loss);
+    }
+    const params = engine.toHost(state.params);
+    engine.dispose(state);
+    return { losses, params };
+  };
+  const a = run(graph);
+  const baseline = engine.liveArrays();
+  const b = run(withInert);
+  expect(b.losses).toEqual(a.losses);
+  expect(b.params).toEqual(a.params);
+  expect(Object.keys(b.params)).not.toContain('lone_lin');
+  expect(engine.liveArrays()).toBe(baseline);
+});

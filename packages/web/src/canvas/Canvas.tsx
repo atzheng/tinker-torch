@@ -19,7 +19,7 @@ import {
   pinCanLandOn,
   inputEndAt,
   outputPortAt,
-  placeable,
+  insertable,
   resolveDrop,
   wireSource,
   type DragPayload,
@@ -677,11 +677,9 @@ export function Canvas() {
       </svg>
       {armed && (
         <div className="tk-armed" data-testid="armed-hint" role="status">
-          {armed.kind === 'macro'
+          {armed.kind === 'macro' || insertable(armed)
             ? `Tap a wire or empty canvas to add ${armed.label}.`
-            : placeable(armed)
-              ? `Tap empty canvas to place ${armed.label}.`
-              : `Tap a highlighted wire or piece to place ${armed.label}.`}
+            : `Tap empty canvas to place ${armed.label}.`}
         </div>
       )}
       {graph.nodes.length === 0 ? (

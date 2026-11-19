@@ -62,6 +62,8 @@ export type Analysis = {
   region: Record<NodeId, Region>;
   /** `order` restricted to the model region: what predict() runs (dropout off). */
   modelOrder: NodeId[];
+  /** Pieces no role needs (not ancestors of a ŷ or L pin, nor a Linear a tap reads): their own issues do not block. Empty while no pin resolves. In node order. */
+  inert: NodeId[];
   /** Weights taps: the dashed parameter wire from a Linear to the Weights node reading it. */
   paramWires: { linear: NodeId; weights: NodeId }[];
   /** Link nodes that feed a matching loss (sigmoid -> log_loss, softmax -> cross_entropy): the engine may fuse them. */
@@ -203,6 +205,12 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   const paramType = record<string>();
   const computed = new Set<NodeId>();
   const visiting = new Set<NodeId>();
+  // Issues found while working out a piece's own shape. They block only when the piece is live (see `liveSet`).
+  const pieceIssues = new Set<Issue>();
+  const nodeIssue = (issue: Issue): void => {
+    issues.push(issue);
+    pieceIssues.add(issue);
+  };
   let loopHit = false; // set when a shape lookup re-enters a node that is still being computed
 
   function shapeOf(id: NodeId): Shape | undefined {
@@ -254,21 +262,21 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     if (node.type === 'input') {
       const dup = node.columns.filter((c, i) => node.columns.indexOf(c) !== i);
       if (dup.length > 0) {
-        issues.push({
+        nodeIssue({
           at: { node: id },
           message: `Input lists ${[...new Set(dup)].map((c) => `"${c}"`).join(', ')} more than once; switch each column on only once.`,
         });
       }
       const unknown = node.columns.filter((c) => !data.columns.includes(c));
       if (unknown.length > 0) {
-        issues.push({
+        nodeIssue({
           at: { node: id },
           message: `Input uses ${unknown.map((c) => `"${c}"`).join(', ')}, which this dataset does not have.`,
         });
       }
     }
     if (node.type === 'column' && !data.columns.includes(node.name)) {
-      issues.push({
+      nodeIssue({
         at: { node: id },
         message: `Column uses "${node.name}", which this dataset does not have.`,
       });
@@ -276,14 +284,14 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     if (node.type === 'weights') {
       const target = byId.get(node.of);
       if (!target) {
-        issues.push({
+        nodeIssue({
           at: { node: id },
           message: `Weights reads "${node.of}", which is not a piece in this graph.`,
         });
         return;
       }
       if (target.type !== 'linear') {
-        issues.push({
+        nodeIssue({
           at: { node: id },
           message: `Weights must read a Linear piece, but "${node.of}" is not one.`,
         });
@@ -293,7 +301,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
       if (ctx.weightShape(node.of) === undefined) {
         // Otherwise the root cause is at the Linear's input and has its own issue.
         if (loopHit) {
-          issues.push({
+          nodeIssue({
             at: { node: id },
             message: `"${id}" reads the weights of "${node.of}", which depends on "${id}" itself.`,
           });
@@ -304,7 +312,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     const r = (piece.outShape as ShapeFn)(node, inS, ctx);
     if (missing) {
       // The piece's own sentence ("Linear needs an input.") from the registry.
-      issues.push({
+      nodeIssue({
         at: { node: id },
         message: 'error' in r ? r.error : `${node.type} has an input that is not connected.`,
       });
@@ -312,7 +320,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     }
     if (unknownUpstream) return;
     if (mismatch) {
-      issues.push({ at: { node: id, edge: mismatch.edge }, message: mismatch.message });
+      nodeIssue({ at: { node: id, edge: mismatch.edge }, message: mismatch.message });
       return;
     }
     if ('error' in r) {
@@ -321,7 +329,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
         const b = wireOf(id, 'b');
         if (b) at.edge = b.index;
       }
-      issues.push({ at, message: r.error });
+      nodeIssue({ at, message: r.error });
       return;
     }
     shape[id] = r;
@@ -411,6 +419,35 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     else if (lossSet.has(id)) region[id] = 'objective';
   }
   const modelOrder = order.filter((id) => region[id] === 'model');
+  // Live = what the roles need, plus a Linear read through a Weights tap and everything feeding that
+  // Linear (the tap needs its input width). Every other piece is inert: its own issues do not block.
+  const liveSet = new Set<NodeId>(needed);
+  for (let grew = roots.length > 0; grew;) {
+    grew = false;
+    for (const id of [...liveSet]) {
+      const n = byId.get(id);
+      const t = n?.type === 'weights' ? byId.get(n.of) : undefined;
+      if (t?.type !== 'linear') continue;
+      for (const a of ancestors([t.id])) {
+        if (!liveSet.has(a)) {
+          liveSet.add(a);
+          grew = true;
+        }
+      }
+    }
+  }
+  if (roots.length > 0) {
+    for (let i = issues.length - 1; i >= 0; i--) {
+      const issue = issues[i];
+      const at = issue?.at.node;
+      if (issue && pieceIssues.has(issue) && at !== undefined && !liveSet.has(at))
+        issues.splice(i, 1);
+    }
+  }
+  const inert =
+    roots.length > 0
+      ? nodes.filter((n) => done.has(n.id) && !liveSet.has(n.id)).map((n) => n.id)
+      : [];
   const inOrder = new Set(order);
   // Safety net: trainable must never hold with a missing shape.
   if (issues.length === 0) {
@@ -589,6 +626,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     lossNode,
     region,
     modelOrder,
+    inert,
     paramWires,
     fusable,
     issues,

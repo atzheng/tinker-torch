@@ -134,14 +134,14 @@ test('a weight pill is at least 32 px each way and sized by a fixed text', () =>
   expect(fmtWeight(100)).toBe('100');
 });
 
-test('a Column, Sum, Weight or Bias dropped on empty canvas is placed there; other pieces are not', () => {
+test('every piece and group dropped on empty canvas is placed there', () => {
   const g = scalar();
   const a = analyse(g, info);
   const layout = layoutLayers(g, a);
   const empty = { x: layout.size[0] + 200, y: layout.size[1] + 200 };
   const drop = (key: string) =>
     resolveDrop({ kind: 'palette', entry: entry(key) }, g, layout, a.edgeWidth, 0.6, empty);
-  for (const key of ['column', 'input', 'target', 'sum', 'scalew', 'bias']) {
+  for (const key of PALETTE.map((e) => e.key)) {
     expect(placeable(entry(key))).toBe(true);
     const t = drop(key);
     expect(t?.kind).toBe('free');
@@ -149,11 +149,6 @@ test('a Column, Sum, Weight or Bias dropped on empty canvas is placed there; oth
     expect(at?.[0]).toBe(Math.round((empty.x - LAYOUT.boxW / 2) / 8) * 8);
     expect(at?.[1]).toBe(Math.round((empty.y - LAYOUT.boxH / 2) / 8) * 8);
   }
-  expect(drop('linear')).toBeNull();
-  expect(drop('activation')).toBeNull();
-  expect(placeable(entry('weights'))).toBe(false);
-  // a ready-made group still goes in free-standing, without a position
-  expect(drop('loss_squared_error')).toEqual({ kind: 'free' });
 });
 
 test('dropping a Column on empty canvas is one edit: a new unconnected node at the drop spot', () => {

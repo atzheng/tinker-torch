@@ -14,6 +14,7 @@ import {
   serializeGraph,
   setColumns,
   setLinearOut,
+  addPiece,
   insertMacro,
   setSetting,
   swapPiece,
@@ -766,5 +767,75 @@ describe('pin edits', () => {
     const g = base();
     ok(setLoss(g, 'err'));
     ok(addPrediction(g, 'act1'));
+  });
+});
+
+describe('placing any palette entry anywhere (tinker-l6y)', () => {
+  const before = analyse(base(), { columns: ['x1'], kind: 'regression', numClasses: 1 });
+  const data = { columns: ['x1'], kind: 'regression' as const, numClasses: 1 };
+
+  test.each(PALETTE.filter((e) => e.kind === 'piece').map((e) => [e.key, e] as const))(
+    'piece %s drops unwired at the drop point, inert, one edit',
+    (_key, entry) => {
+      if (entry.kind !== 'piece') return;
+      const g = base();
+      const r = ok(addPiece(g, entry.make(), [304, 200]));
+      expect(r.edges).toEqual(g.edges);
+      expect(r.nodes).toHaveLength(g.nodes.length + 1);
+      const id = r.nodes[r.nodes.length - 1]?.id ?? '';
+      expect(r.positions?.[id]).toEqual([304, 200]);
+      const a = analyse(r, data);
+      expect(a.trainable).toBe(before.trainable);
+      expect(a.issues).toEqual(before.issues);
+      expect(a.inert).toContain(id);
+      expect(a.paramNodes).toEqual(before.paramNodes);
+      expect(a.totalParams).toBe(before.totalParams);
+      // The input graph is untouched (undo restores it).
+      expect(g.nodes).toHaveLength(r.nodes.length - 1);
+    },
+  );
+
+  test('a Weights tap reads the first Linear; with no Linear it is refused', () => {
+    const r = ok(addPiece(base(), { type: 'weights', of: '' }, [200, 200]));
+    expect(r.nodes.find((n) => n.type === 'weights' && n.of === 'lin1')).toBeDefined();
+    const noLin = base((j) => {
+      j.nodes = j.nodes.filter((n: Loose) => n.type !== 'linear');
+      j.edges = [];
+      j.predictions = [];
+      j.loss = null;
+    });
+    expect(err(addPiece(noLin, { type: 'weights', of: '' }))).toMatch(/Linear/);
+  });
+
+  test.each(PALETTE.filter((e) => e.kind === 'macro').map((e) => [e.key] as const))(
+    'macro %s drops free-standing at the drop point',
+    (key) => {
+      const g = base();
+      const r = ok(insertMacro(g, key, undefined, [400, 120]));
+      const added = r.nodes.filter((n) => !g.nodes.some((m) => m.id === n.id));
+      expect(added.length).toBeGreaterThan(0);
+      for (const n of added) {
+        const pos = r.positions?.[n.id];
+        expect(pos?.[0]).toBeGreaterThanOrEqual(400);
+        expect(pos?.[1]).toBeGreaterThanOrEqual(120);
+      }
+      expect(analyse(r, data).trainable).toBe(true);
+      if (key === 'weight_penalty') {
+        expect(r.loss).toBe('total'); // fed from L, so it takes the pin and is live
+      } else {
+        // The existing L stays, so the group is not needed yet and training is unaffected.
+        expect(r.loss).toBe(g.loss);
+        expect(analyse(r, data).inert.length).toBeGreaterThan(0);
+      }
+    },
+  );
+
+  test('wiring an unwired piece into the loss makes it live', () => {
+    const g = ok(addPiece(base(), { type: 'scale', c: 2 }, [304, 200]));
+    const id = g.nodes[g.nodes.length - 1]?.id ?? '';
+    expect(analyse(g, data).inert).toContain(id);
+    const wired = ok(connect(g, 'loss', id));
+    const moved = ok(setLoss(wired, id));
+    expect(analyse(moved, data).inert).not.toContain(id);
   });
 });

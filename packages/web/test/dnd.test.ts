@@ -65,13 +65,28 @@ test('a palette piece over a wire label targets that wire; a piece with no input
   });
 });
 
-test('dropping a piece on empty canvas cancels; a ready-made group goes in free-standing', () => {
+test('every palette entry dropped on empty canvas goes in free-standing at the drop point', () => {
   const { g, a, layout } = setup();
   const at = { x: -500, y: -500 };
-  expect(resolveDrop(palette('activation'), g, layout, a.edgeWidth, SCALE, at)).toBeNull();
-  expect(resolveDrop(palette('loss_huber'), g, layout, a.edgeWidth, SCALE, at)).toEqual({
-    kind: 'free',
-  });
+  for (const entry of PALETTE) {
+    const t = resolveDrop({ kind: 'palette', entry }, g, layout, a.edgeWidth, SCALE, at);
+    expect(t, entry.key).toEqual({ kind: 'free', at: [-552, -528] });
+  }
+});
+
+test('editForDrop puts every piece and group on empty canvas, positioned, as one edit', () => {
+  const g = initialGraph();
+  for (const entry of PALETTE) {
+    const r = editForDrop(g, { kind: 'palette', entry }, { kind: 'free', at: [480, 320] });
+    if (!r?.ok) {
+      // the only refusals: a Weights tap needs a Linear; the penalty needs a Linear
+      expect(['weights', 'weight_penalty'], entry.key).toContain(entry.key);
+      continue;
+    }
+    expect(r.graph.nodes.length, entry.key).toBeGreaterThan(g.nodes.length);
+    const added = r.graph.nodes.filter((n) => !g.nodes.some((m) => m.id === n.id));
+    for (const n of added) expect(r.graph.positions?.[n.id], `${entry.key} ${n.id}`).toBeDefined();
+  }
 });
 
 test('every wire label resolves to its own wire, including the two that meet at the loss', () => {

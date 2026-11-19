@@ -28,7 +28,6 @@ import {
   type EditResult,
   type Graph,
   type LayerLayout,
-  type NodeBody,
   type NodeId,
   type PaletteEntry,
   type PortRef,
@@ -107,18 +106,12 @@ export function inputEndAt(
   return inputPortAt(layout, id, k, ports.length, above, ends.length + 1);
 }
 
-/** Pieces that can be dropped on empty canvas besides the source pieces: the ones a model of scalars is wired from. */
-const SCALAR_PIECES: readonly string[] = ['sum', 'scalew', 'bias'];
-
 /**
- * Whether a palette entry stands on its own when dropped on empty canvas: a source piece (no input
- * port: Column, Input, Target) to start a graph from, or a Sum, Weight or Bias to wire up by hand.
- * Any other piece needs a wire or a piece to land on.
+ * Whether a palette entry stands on its own when dropped on empty canvas: every piece and every
+ * ready-made group does (unwired, it is inert until wired in; `analyse` says which pieces are).
  */
 export function placeable(entry: PaletteEntry): boolean {
-  if (entry.kind !== 'piece') return false;
-  const type = entry.make().type;
-  return (inputPortsOf(type).length === 0 && type !== 'weights') || SCALAR_PIECES.includes(type);
+  return entry.kind === 'piece' || entry.kind === 'macro';
 }
 
 /** Top-left of a source piece dropped with its centre at `at`, on the 8-unit grid. */
@@ -234,9 +227,7 @@ export function resolveDrop(
     }
   }
   if (best) return best;
-  // A ready-made group needs no wire: anywhere else on the canvas puts it in free-standing, and so
-  // does a source piece or a scalar piece, where it was dropped.
-  if (entry.kind === 'macro') return { kind: 'free' };
+  // Anywhere else on the canvas puts any piece or group in free-standing, where it was dropped.
   return placeable(entry) ? { kind: 'free', at: placeAt(at) } : null;
 }
 
@@ -259,26 +250,22 @@ export function pinCanLandOn(
  */
 function placeFree(
   graph: Graph,
-  piece: NodeBody,
+  add: (g: Graph, at?: readonly [number, number]) => EditResult,
   at: readonly [number, number] | undefined,
   boxes: Readonly<Record<NodeId, { x: number; y: number }>> | undefined,
 ): EditResult {
   const dx = at ? Math.max(0, LAYOUT.pad - at[0]) : 0;
   const dy = at ? Math.max(0, LAYOUT.pad - at[1]) : 0;
   const placed = Object.keys(graph.positions ?? {}).filter((id) => boxes?.[id] !== undefined);
-  if (!at || !boxes || (dx === 0 && dy === 0) || placed.length === 0) {
-    return addPiece(graph, piece, at);
-  }
-  const added = addPiece(graph, piece);
-  if (!added.ok || added.select === undefined) return added;
+  if (!at || !boxes || (dx === 0 && dy === 0) || placed.length === 0) return add(graph, at);
   const moves: Record<NodeId, [number, number]> = {};
   for (const id of placed) {
     const b = boxes[id];
     if (b) moves[id] = [b.x + dx, b.y + dy];
   }
-  moves[added.select] = [at[0] + dx, at[1] + dy];
-  const moved = moveNodes(added.graph, moves);
-  return moved.ok ? { ...moved, select: added.select } : moved;
+  const moved = moveNodes(graph, moves);
+  if (!moved.ok) return moved;
+  return add(moved.graph, [at[0] + dx, at[1] + dy]);
 }
 
 /** The pure edit a drop stands for, or null when the pair makes no edit. */
@@ -306,13 +293,21 @@ export function editForDrop(
   const entry = payload.entry;
   if (entry.kind === 'macro') {
     if (target.kind === 'wire') return insertMacro(graph, entry.key, { edge: target.edge });
-    return target.kind === 'free' ? insertMacro(graph, entry.key) : null;
+    return target.kind === 'free'
+      ? placeFree(
+          graph,
+          (g, at) => insertMacro(g, entry.key, undefined, at),
+          target.at,
+          opts?.boxes,
+        )
+      : null;
   }
   const made = entry.make();
   if (target.kind === 'wire') return insertOnWire(graph, target.edge, made, opts);
   if (target.kind === 'node') return swapPiece(graph, target.id, made, opts);
-  if (target.kind === 'free' && placeable(entry))
-    return placeFree(graph, made, target.at, opts?.boxes);
+  if (target.kind === 'free' && placeable(entry)) {
+    return placeFree(graph, (g, at) => addPiece(g, made, at), target.at, opts?.boxes);
+  }
   return null;
 }
 
