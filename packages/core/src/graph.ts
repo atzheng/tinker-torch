@@ -155,6 +155,11 @@ const graphSchema = z.strictObject({
   loss: z.string({ error: NODE_REF }).nullable().default(null),
   data: dataSchema,
   train: trainSchema,
+  positions: z
+    .record(z.string(), z.tuple([z.number().finite(), z.number().finite()]), {
+      error: 'must map node names to [x, y] pairs',
+    })
+    .optional(),
 });
 
 export type Node = z.infer<typeof nodeSchema>;
@@ -174,6 +179,12 @@ export type Graph = {
   loss: PortRef | null;
   data: DataConfig;
   train: TrainConfig;
+  /**
+   * Where the user put pieces in the layer view (CONTRACTS.md section 2): the top-left corner of a
+   * piece's box in layout units. A node without an entry sits where the automatic layout puts it.
+   * Absent when no piece was moved. Entries for nodes that do not exist are dropped on parse.
+   */
+  positions?: Record<NodeId, [number, number]>;
 };
 
 // ---------------------------------------------------------------- ports
@@ -259,6 +270,17 @@ export function resolvePin(nodes: readonly Node[], ref: PortRef): ResolvedPin {
     return { ok: false, error: `The pin "${ref}" must point at the output "out" of "${node}".` };
   }
   return { ok: true, at: { node, port: 'out' } };
+}
+
+/** The entries of `positions` that name a node in `ids`, as a prototype-free record; undefined when none are left. */
+function prunePositions(
+  positions: Record<string, [number, number]> | undefined,
+  ids: ReadonlySet<string>,
+): Record<NodeId, [number, number]> | undefined {
+  if (!positions) return undefined;
+  const out: Record<NodeId, [number, number]> = {};
+  for (const [id, xy] of Object.entries(positions)) if (ids.has(id)) out[id] = [xy[0], xy[1]];
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 // ---------------------------------------------------------------- parse
@@ -382,6 +404,7 @@ export function parseGraphWithMap(
     const r = resolvePin(nodes, g.loss);
     if (!r.ok) return { ok: false, error: r.error };
   }
+  const positions = prunePositions(g.positions, seen);
   return {
     ok: true,
     idMap: null,
@@ -393,6 +416,7 @@ export function parseGraphWithMap(
       loss: g.loss,
       data: g.data,
       train: g.train,
+      ...(positions ? { positions } : {}),
     },
   };
 }
@@ -431,6 +455,16 @@ function pick(obj: object, keys: string[]): Record<string, unknown> {
   return out;
 }
 
+/** `positions` in node order (so the text is stable), for pieces that exist; nothing when none. */
+function positionsOut(graph: Graph): { positions?: Record<string, [number, number]> } {
+  const out: Record<string, [number, number]> = {};
+  for (const n of graph.nodes) {
+    const xy = graph.positions?.[n.id];
+    if (xy) out[n.id] = [xy[0], xy[1]];
+  }
+  return Object.keys(out).length > 0 ? { positions: out } : {};
+}
+
 /** Two-space JSON with a stable key order. Always writes version 2. */
 export function serializeGraph(graph: Graph): string {
   return JSON.stringify(
@@ -442,6 +476,7 @@ export function serializeGraph(graph: Graph): string {
       loss: graph.loss,
       data: pick(graph.data, ['set', 'n', 'noise', 'val', 'seed', 'standardize']),
       train: pick(graph.train, ['optimizer', 'lr', 'batch', 'seed']),
+      ...positionsOut(graph),
     },
     null,
     2,

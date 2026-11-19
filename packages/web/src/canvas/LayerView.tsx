@@ -9,6 +9,7 @@ import {
   pinHitRect,
   pinKey,
   pinsOf,
+  placePins,
   pointsToPath,
   type PinRole,
 } from './pure.js';
@@ -42,6 +43,20 @@ export type LayerViewProps = {
   drag?: DndState | null;
   /** Wires and pieces a dragged or armed palette entry (or a wire drag) could land on. */
   candidates?: { edges: ReadonlySet<number>; nodes: ReadonlySet<string> } | null;
+  /**
+   * Moving a piece (CONTRACTS.md section 10, "Moving pieces"): a press on a piece body that goes
+   * past the slop is a move, not a tap. `start` at the slop, `move` with the pointer's movement
+   * since the press in client pixels, `end` on release (commit), `cancel` on pointercancel.
+   * Left out, pieces only select.
+   */
+  mover?: {
+    start: (id: string) => void;
+    move: (id: string, dx: number, dy: number) => void;
+    end: (id: string, dx: number, dy: number) => void;
+    cancel: () => void;
+  };
+  /** The piece being moved, drawn lifted. */
+  moving?: string | null;
 };
 
 /** Props for a piece's layer drawing, from the analysis and the weights. */
@@ -179,6 +194,7 @@ export function LayerView(p: LayerViewProps) {
       if (!have.has(pinKey(role, sel.id))) pinMarks.push({ role, node: sel.id, ghost: true });
     }
   }
+  const spots = placePins(layout.nodes, pinMarks, graph.positions !== undefined);
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
   return (
     <g data-testid="layer-view">
@@ -264,8 +280,17 @@ export function LayerView(p: LayerViewProps) {
             tabIndex={0}
             aria-label={`${node.type} ${node.id}`}
             aria-pressed={selected}
+            data-moving={p.moving === node.id}
             onPointerDown={pointerDownWith({
               onTap: () => p.select({ kind: 'node', id: node.id }),
+              ...(p.mover
+                ? {
+                    onStart: () => p.mover?.start(node.id),
+                    onMove: (pt) => p.mover?.move(node.id, pt.dx, pt.dy),
+                    onEnd: (pt) => p.mover?.end(node.id, pt.dx, pt.dy),
+                    onCancel: () => p.mover?.cancel(),
+                  }
+                : {}),
             })}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -337,7 +362,8 @@ export function LayerView(p: LayerViewProps) {
             role={role}
             node={node}
             box={box}
-            hit={pinHitRect(box, role, scale)}
+            at={spots.get(key)}
+            hit={pinHitRect(box, role, scale, spots.get(key))}
             ghost={ghost}
             selected={!ghost && sel?.kind === 'pin' && sel.role === role && sel.node === node}
             error={!ghost && p.errorPins?.has(key) === true}

@@ -223,7 +223,72 @@ function labelAnchor(points: [number, number][]): [number, number] {
   return best;
 }
 
-function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
+type Rect = { x: number; y: number; w: number; h: number };
+
+const overlaps = (a: Rect, b: Rect, m: number): boolean =>
+  a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
+
+/** Whether the segment p-q (axis-parallel) passes through the box inflated by `m`. */
+function segmentHits(p: [number, number], q: [number, number], b: Rect, m: number): boolean {
+  const x0 = Math.min(p[0], q[0]);
+  const x1 = Math.max(p[0], q[0]);
+  const y0 = Math.min(p[1], q[1]);
+  const y1 = Math.max(p[1], q[1]);
+  return x0 < b.x + b.w + m && x1 > b.x - m && y0 < b.y + b.h + m && y1 > b.y - m;
+}
+
+/**
+ * Route of a wire that touches a manually placed (or displaced) piece, where the column gaps and
+ * lanes no longer apply. Forward (destination right of the source by more than two stubs): out,
+ * one vertical, in, with the vertical at the first of a few candidate x positions (mid-gap first)
+ * where no other piece is crossed. Otherwise (backwards, or too close): a stub right of the source,
+ * a run above or below both pieces, a stub left of the destination. Not a full path search: when
+ * nothing is free the mid-gap route is used.
+ */
+function manualRoute(a: Rect, b: Rect, y1: number, obstacles: Rect[]): [number, number][] {
+  const x0 = a.x + a.w;
+  const y0 = a.y + a.h / 2;
+  const x1 = b.x;
+  const stub = LAYOUT.lane;
+  const free = (pts: [number, number][]) => {
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const p = pts[k];
+      const q = pts[k + 1];
+      if (p && q && obstacles.some((o) => segmentHits(p, q, o, 2))) return false;
+    }
+    return true;
+  };
+  if (x1 - x0 >= 2 * stub) {
+    const xs = [0.5, 0.25, 0.75, 0.1, 0.9].map((f) => x0 + (x1 - x0) * f);
+    const routes = xs.map((xm): [number, number][] => [
+      [x0, y0],
+      [xm, y0],
+      [xm, y1],
+      [x1, y1],
+    ]);
+    return routes.find(free) ?? routes[0] ?? [];
+  }
+  const above = Math.min(a.y, b.y) - LAYOUT.lane;
+  const below = Math.max(a.y + a.h, b.y + b.h) + LAYOUT.lane;
+  const mid = (y0 + y1) / 2;
+  const prefer = Math.abs(mid - above) <= Math.abs(mid - below) ? [above, below] : [below, above];
+  const routes = prefer.map((yv): [number, number][] => [
+    [x0, y0],
+    [x0 + stub, y0],
+    [x0 + stub, yv],
+    [x1 - stub, yv],
+    [x1 - stub, y1],
+    [x1, y1],
+  ]);
+  return routes.find(free) ?? routes[0] ?? [];
+}
+
+function layoutCore(
+  g: Graph,
+  plan: (n: Node) => Plan,
+  gap: number,
+  fixed?: Record<NodeId, [number, number]>,
+): Core {
   const { nodes, byId, edges } = prepare(g);
   const col = assignColumns(nodes, byId, edges);
   const row = assignRows(nodes, byId, edges, col);
@@ -286,6 +351,38 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
     };
   }
 
+  // Manual positions (layer view only): a placed piece goes exactly where it was put. A piece with
+  // no position stays where the columns put it, unless that overlaps a placed piece or an earlier
+  // displaced one: it then moves down in steps of one row until it is clear. Graph order, so the
+  // result is deterministic. Wires touching a placed or displaced piece are routed by `manualRoute`.
+  const manual = new Set<NodeId>();
+  if (fixed) {
+    for (const n of nodes) {
+      const xy = fixed[n.id];
+      const b = boxes[n.id];
+      if (xy && b) {
+        b.x = Math.max(LAYOUT.pad, xy[0]);
+        b.y = Math.max(LAYOUT.pad, xy[1]);
+        manual.add(n.id);
+      }
+    }
+    if (manual.size > 0) {
+      const settled: Rect[] = [...manual].flatMap((id) => (boxes[id] ? [boxes[id]] : []));
+      for (const n of nodes) {
+        const b = boxes[n.id];
+        if (!b || manual.has(n.id)) continue;
+        const start = b.y;
+        let guard = 0;
+        while (settled.some((o) => overlaps(b, o, LAYOUT.rowGap / 2)) && guard++ < 200) {
+          b.y += b.h + LAYOUT.rowGap;
+        }
+        if (b.y !== start) manual.add(n.id);
+        // Only displaced pieces are obstacles for later ones; untouched ones never overlap each other.
+        if (b.y !== start) settled.push(b);
+      }
+    }
+  }
+
   // Wires into a variadic port enter at different heights along that port's band, ordered by where
   // they come from (top source first, ties by edge index), so k wires neither overlap nor cross.
   const slotOf = new Map<number, [slot: number, count: number]>();
@@ -322,8 +419,13 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
     const ca = col[e.from] ?? 0;
     const cb = col[e.to] ?? 0;
     const gapR = (colX[ca] ?? 0) + (colW[ca] ?? 0) + gap / 2;
-    const points: [number, number][] = [];
-    if (cb - ca === 1) {
+    let points: [number, number][] = [];
+    if (manual.has(e.from) || manual.has(e.to)) {
+      const obstacles = nodes.flatMap((n) =>
+        n.id === e.from || n.id === e.to || !boxes[n.id] ? [] : [boxes[n.id] as Rect],
+      );
+      points = manualRoute(a, b, y1, obstacles);
+    } else if (cb - ca === 1) {
       points.push([x0, y0], [gapR, y0], [gapR, y1], [x1, y1]);
     } else {
       const gapL = (colX[cb] ?? 0) - gap / 2;
@@ -332,7 +434,21 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
     }
     wires.push({ edge: e.index, points, labelAt: labelAnchor(points) });
   }
-  return { boxes, wires, size: [width, height] };
+  if (manual.size === 0) return { boxes, wires, size: [width, height] };
+  // With manual positions the drawing is as large as what is actually there (pieces and routes).
+  let right = 0;
+  let bottom = 0;
+  for (const b of Object.values(boxes)) {
+    right = Math.max(right, b.x + b.w);
+    bottom = Math.max(bottom, b.y + b.h);
+  }
+  for (const w of wires) {
+    for (const [px, py] of w.points) {
+      right = Math.max(right, px);
+      bottom = Math.max(bottom, py);
+    }
+  }
+  return { boxes, wires, size: [right + LAYOUT.pad, bottom + LAYOUT.pad] };
 }
 
 /**
@@ -353,7 +469,7 @@ const boxPlan = (): Plan => ({ w: LAYOUT.boxW, h: LAYOUT.boxH, unit: null, count
 
 /** Columns by longest path; the target sits beside the prediction, below it; skip wires run above everything. */
 export function layoutLayers(g: Graph, _a: Analysis): LayerLayout {
-  const core = layoutCore(g, boxPlan, LAYOUT.layerGap);
+  const core = layoutCore(g, boxPlan, LAYOUT.layerGap, g.positions);
   return { nodes: core.boxes, wires: core.wires, size: core.size };
 }
 

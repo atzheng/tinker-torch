@@ -1,6 +1,12 @@
 import type { StateCreator } from 'zustand';
 import type { NodeId, PortRef } from '@tinker/core';
 import { PIN_LIMIT, type Pin } from '../results/pinsModel.js';
+import {
+  DEFAULT_ORDER,
+  DEFAULT_WEIGHTS,
+  type PanelId,
+  type PanelWeights,
+} from '../results/panelLayout.js';
 
 /**
  * What the inspector shows. A wire is identified by its endpoints, not its edge index: indices
@@ -47,6 +53,14 @@ export type ViewSlice = {
   /** Add a pin; refused (false) when PIN_LIMIT pins exist. */
   addPin: (pin: Pin) => boolean;
   removePin: (id: string) => void;
+  /**
+   * Results panels (tinker-ong): top to bottom, and each one's share of the column. View state of
+   * this session only: not in the graph, not in files, not in the undo history.
+   */
+  panelOrder: PanelId[];
+  panelWeights: PanelWeights;
+  setPanelOrder: (order: PanelId[]) => void;
+  setPanelWeights: (weights: PanelWeights) => void;
 };
 
 export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set) => ({
@@ -75,4 +89,8 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
     return ok;
   },
   removePin: (id) => set((s) => ({ pins: s.pins.filter((p) => p.id !== id) })),
+  panelOrder: [...DEFAULT_ORDER],
+  panelWeights: { ...DEFAULT_WEIGHTS },
+  setPanelOrder: (panelOrder) => set({ panelOrder }),
+  setPanelWeights: (panelWeights) => set({ panelWeights }),
 });
