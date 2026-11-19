@@ -1,18 +1,24 @@
 import { expect, test } from 'vitest';
 import { analyse, layoutNeurons, LAYOUT, parseGraph, type Graph } from '@tinker/core';
 import { useStore } from '../src/state/store.js';
-import { LAYER_MIN_SCALE, layerBaseView } from '../src/canvas/viewport.js';
+import { LAYER_FIT_MIN_SCALE, LAYER_MIN_SCALE, layerBaseView } from '../src/canvas/viewport.js';
 
 test('layerBaseView: fit when names are legible, else the floor, overflow left-aligned', () => {
   const view = { w: 800, h: 500 };
   const small = { ...fitTransform([400, 200], { w: 800, h: 456 }), ty: 100 };
   expect(layerBaseView(small, [400, 200], view, 44).scale).toBe(small.scale);
   const wide = fitTransform([2400, 200], { w: 800, h: 456 });
-  expect(wide.scale).toBeLessThan(LAYER_MIN_SCALE);
+  expect(wide.scale).toBeLessThan(LAYER_FIT_MIN_SCALE);
   const t = layerBaseView(wide, [2400, 200], view, 44);
   expect(t.scale).toBe(LAYER_MIN_SCALE);
   expect(t.tx).toBe(24);
   expect(t.ty).toBeGreaterThan(44);
+  // between 8 px and 11 px names the fit is still the start view
+  const mid = { scale: (LAYER_FIT_MIN_SCALE + LAYER_MIN_SCALE) / 2, tx: 5, ty: 60 };
+  expect(layerBaseView(mid, [1000, 200], view, 44)).toEqual(mid);
+  expect(
+    layerBaseView({ ...mid, scale: LAYER_FIT_MIN_SCALE - 0.01 }, [1000, 200], view, 44).scale,
+  ).toBe(LAYER_MIN_SCALE);
   expect(LAYER_MIN_SCALE * 15).toBeCloseTo(11, 6);
 });
 import { fitTransform } from '../src/canvas/pure.js';

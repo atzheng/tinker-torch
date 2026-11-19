@@ -325,8 +325,12 @@ export function Canvas() {
     const box = layout.nodes[selection.node];
     if (box) {
       const [cx, cy] = pinCentre(box, selection.role);
+      // A ŷ pin sits over the Target and the Subtract inputs below it: open the inspector above.
+      const above = selection.role === 'pred' && py(cy) - 20 >= 230;
       anchor = placeInspector(
-        { cx: px(cx), top: py(cy) - 16, bottom: py(cy) + 16 },
+        above
+          ? { cx: px(cx), top: py(cy) - 20, bottom: view.h + 1000 }
+          : { cx: px(cx), top: py(cy) - 16, bottom: py(cy) + 16 },
         view,
         INSPECTOR_W,
       );

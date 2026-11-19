@@ -1,5 +1,6 @@
 import { useStore } from '../state/store.js';
 import { plotIndex, predictionNodes } from '../state/plotPrediction.js';
+import { clearOverlay } from './resampleStore.js';
 import styles from './Results.module.css';
 
 /**
@@ -21,7 +22,10 @@ export function PredictionPicker() {
         data-testid="prediction-picker"
         aria-label="Prediction shown in the plot"
         value={current}
-        onChange={(e) => set(e.target.value)}
+        onChange={(e) => {
+          set(e.target.value);
+          clearOverlay(); // the copies were of the previous prediction
+        }}
       >
         {nodes.map((id) => (
           <option key={id} value={id}>

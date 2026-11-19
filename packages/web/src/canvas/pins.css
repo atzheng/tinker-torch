@@ -36,6 +36,9 @@
   stroke-width: 1.5;
   stroke-dasharray: 5 3;
 }
+.tk-pin:focus {
+  outline: none; /* the ring is the focus indicator, not the 32 px hit rectangle */
+}
 .tk-pin:focus-visible .tk-pin-ring {
   stroke: var(--focus-ring);
   stroke-width: 2;
