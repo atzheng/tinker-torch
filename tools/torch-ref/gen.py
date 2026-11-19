@@ -332,6 +332,8 @@ def widths_v2(nodes, edges, d):
             w[i] = len(n["columns"])
         elif t == "target":
             w[i] = 1
+        elif t == "column":
+            w[i] = 1
         elif t in ("weights", "mean", "norm"):
             w[i] = None
         elif t in ("add", "subtract"):
@@ -354,6 +356,19 @@ class ModelV2(nn.Module):
     def __init__(self, nodes, edges, params, w, src, dropout_mask=None):
         super().__init__()
         self.nodes, self.src, self.mask = nodes, src, dropout_mask
+        self.nodes_by_id = {n["id"]: n for n in nodes}
+        # every wire into a node's input port, in edge order (a Sum takes several into `in`)
+        self.wires = {}
+        for a, b in edges:
+            dst, _, port = b.partition(".")
+            self.wires.setdefault((dst, port or "in"), []).append(a.split(".")[0])
+        # scalar parameters (scalew W [1, 1], bias b [1]) are plain tensors, in HostParams layout
+        self.scal = nn.ParameterDict()
+        for n in nodes:
+            if n["type"] == "scalew":
+                self.scal[n["id"]] = nn.Parameter(torch.tensor(params[n["id"]]["W"]).reshape(1, 1))
+            elif n["type"] == "bias":
+                self.scal[n["id"]] = nn.Parameter(torch.tensor(params[n["id"]]["b"]))
         self.lins = nn.ModuleDict()
         for n in nodes:
             if n["type"] == "linear":
@@ -380,6 +395,14 @@ class ModelV2(nn.Module):
                 v[i] = y
             elif t == "linear":
                 v[i] = self.lins[i](get())
+            elif t == "column":
+                v[i] = x[:, [int(n["name"][1:]) - 1]]
+            elif t == "scalew":
+                v[i] = get() * self.scal[i]
+            elif t == "bias":
+                v[i] = get() + self.scal[i]
+            elif t == "sum":
+                v[i] = torch.stack([v[a] for a in self.wires[(i, "in")]]).sum(0)
             elif t == "weights":
                 v[i] = self.lins[n["of"]].weight.T  # W in HostParams layout [in, out]
             elif t == "norm":
@@ -441,6 +464,12 @@ class ModelV2(nn.Module):
                     tb = torch.zeros_like(m.bias)
                 e["b"] = tb.detach().flatten().tolist()
             out[i] = e
+        for i, p in self.scal.items():
+            t = p if what == "params" else p.grad
+            if t is None:
+                t = torch.zeros_like(p)
+            key = "W" if self.nodes_by_id[i]["type"] == "scalew" else "b"
+            out[i] = {key: t.detach().flatten().tolist()}
         return out
 
 
@@ -464,6 +493,11 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
             if nd["bias"]:
                 e["b"] = rng.uniform(-s, s, size=o).tolist()
             params[nd["id"]] = e
+        elif nd["type"] in ("scalew", "bias"):
+            # scalar models start at the scale of nn.Linear(d, 1): uniform on +-1/sqrt(d)
+            sc = 1.0 / math.sqrt(max(1, d))
+            key = "W" if nd["type"] == "scalew" else "b"
+            params[nd["id"]] = {key: rng.uniform(-sc, sc, size=1).tolist()}
     mask = None
     if mask_for:
         dn = next(k for k in nodes if k["type"] == "dropout")
@@ -503,7 +537,7 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
     graph = {
         "version": 2, "nodes": nodes, "edges": edges,
         "predictions": predictions, "loss": loss_id,
-        "data": {"set": "blobs" if ytype == "cls" else {1: "sine", 2: "plane"}[d],
+        "data": {"set": "blobs" if ytype == "cls" else {1: "sine", 2: "plane", 3: "plane"}[d],
                  "n": 40, "noise": 0.1, "val": 0.25, "seed": 1, "standardize": False},
         "train": {"optimizer": optimizer or "sgd", "lr": lr, "batch": "full", "seed": 1},
     }
@@ -631,6 +665,51 @@ def v2_cases(add):
         n=8, steps=300)
 
 
+def scalar_cases(add, check_linear):
+    """Scalar-piece graphs (Column, Weight, Bias, Sum). Each column x_i is scaled by its own Weight,
+    the weighted columns are added by one Sum and an optional Bias shifts the result; the squared
+    error is built from primitives. d = 3 has no dataset of its own: the graph names "plane" and the
+    engine tests take the columns x1..x3 from the batch."""
+
+    def regression(d, bias=True, fn=None, raw=()):
+        nodes = [TARGET]
+        edges = []
+        for i in range(1, d + 1):
+            nodes.append(n_(f"c{i}", "column", name=f"x{i}"))
+            if i in raw:  # a column wired straight into the Sum, no Weight
+                edges.append([f"c{i}", "s"])
+            else:
+                nodes.append(n_(f"w{i}", "scalew"))
+                edges += [[f"c{i}", f"w{i}"], [f"w{i}", "s"]]
+        nodes.append(n_("s", "sum"))
+        last = "s"
+        if bias:
+            nodes.append(n_("b", "bias"))
+            edges.append([last, "b"])
+            last = "b"
+        if fn:
+            nodes.append(act("a", fn))
+            edges.append([last, "a"])
+            last = "a"
+        nodes += [n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")]
+        edges += [[last, "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]]
+        return nodes, edges, last
+
+    for name, kw, d, extra in (
+        ("scalar_regression_d1", {}, 1, {}),
+        ("scalar_regression_d3", {}, 3, {}),
+        ("scalar_regression_d3_nobias", {"bias": False}, 3, {}),
+        ("scalar_sum_two_cols", {"bias": False, "raw": (2,)}, 2, {}),
+        ("scalar_activation_after_sum", {"fn": "tanh"}, 2, {}),
+        ("scalar_adam_5steps", {}, 3, {"optimizer": "adam", "lr": 0.05, "n": 8}),
+    ):
+        nodes, edges, last = regression(d, **kw)
+        add(name, nodes, edges, [last], "loss", d=d, **extra)
+
+    # the same numbers as a plain Linear: x @ W + b with W = [w1..wd] as a column (torch weight.T)
+    check_linear(3)
+
+
 def main():
     cases = []
     seed = [100]
@@ -715,6 +794,26 @@ def main():
         cases.append(make_case_v2(name, seed[0], nodes, edges, predictions, loss_id, **kw))
 
     v2_cases(add2)
+
+    def check_linear(d):
+        """scalar_regression_d{d} must equal nn.Linear(d, 1) with weight = [w_i] and bias = b."""
+        fx = next(c for c in cases if c["name"] == f"scalar_regression_d{d}")
+        x = torch.tensor(fx["batch"]["x"]).reshape(fx["batch"]["n"], d)
+        y = torch.tensor(fx["batch"]["y"]).reshape(-1, 1)
+        lin_ = nn.Linear(d, 1)
+        lin_.weight.data = torch.tensor([[fx["params"][f"w{i}"]["W"][0] for i in range(1, d + 1)]])
+        lin_.bias.data = torch.tensor(fx["params"]["b"]["b"])
+        pred = lin_(x)
+        loss_ = ((pred - y) ** 2).mean()
+        loss_.backward()
+        assert np.allclose(pred.detach().flatten().tolist(), fx["expect"]["pred"], atol=1e-12)
+        assert abs(loss_.item() - fx["expect"]["loss"]) < 1e-12
+        gw = lin_.weight.grad.flatten().tolist()
+        want = [fx["expect"]["grads"][f"w{i}"]["W"][0] for i in range(1, d + 1)]
+        assert np.allclose(gw, want, atol=1e-12)
+        assert abs(lin_.bias.grad.item() - fx["expect"]["grads"]["b"]["b"][0]) < 1e-12
+
+    scalar_cases(add2, check_linear)
 
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)

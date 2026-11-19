@@ -16,6 +16,7 @@ import type { Array as JArray } from '@jax-js/jax';
 import * as optax from '@jax-js/optax';
 import {
   analyse,
+  isVariadicPort,
   ownsParams,
   type Analysis,
   type Graph,
@@ -160,7 +161,13 @@ export function compile(graph: Graph, data: DataInfo): Model {
     const r = resolveEdge(graph.nodes, e);
     if (!r.ok) continue;
     const ports = wired.get(r.to.node) ?? new Map<string, NodeId>();
-    if (!ports.has(r.to.port)) ports.set(r.to.port, r.from.node);
+    const toType = byId.get(r.to.node)?.type;
+    if (toType !== undefined && isVariadicPort(toType, r.to.port)) {
+      // a variadic port keeps every wire, in edge order: `in`, `in#1`, `in#2`, ... (a repeated source is an issue)
+      let key = r.to.port;
+      for (let k = 1; ports.has(key); k++) key = `${r.to.port}#${k}`;
+      ports.set(key, r.from.node);
+    } else if (!ports.has(r.to.port)) ports.set(r.to.port, r.from.node);
     wired.set(r.to.node, ports);
   }
 
@@ -298,7 +305,7 @@ function walk(
   const values = new Map<NodeId, JArray>();
   const remaining = new Map(plan.uses);
   const layerLeft = new Map(plan.layerUses);
-  let xLeft = plan.steps.filter((s) => s.node.type === 'input').length;
+  let xLeft = plan.steps.filter((s) => s.node.type === 'input' || s.node.type === 'column').length;
   let yLeft = plan.steps.filter((s) => s.node.type === 'target').length;
   if (xLeft === 0) x.dispose();
   if (y && yLeft === 0) y.dispose();
