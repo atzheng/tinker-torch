@@ -14,7 +14,7 @@ export const LOSS_LABEL: Record<LossFn, string> = {
 /** Layer drawing: the shared node in the loss role, badge L; the loss name (and delta) is its secondary info, a penalty its tag. */
 export const lossPiece: WebPiece<'loss'> = {
   Layer: ({ node, w, h, scale }) => {
-    const lines = [LOSS_LABEL[node.fn]];
+    const lines: string[] = [];
     const extra = [
       node.fn === 'huber' ? `δ=${node.delta ?? 1}` : '',
       node.penalty ? `${node.penalty.kind.toUpperCase()} ${node.penalty.lambda}` : '',
@@ -28,9 +28,9 @@ export const lossPiece: WebPiece<'loss'> = {
         w={w}
         h={h}
         scale={scale}
-        name="Loss"
+        name={LOSS_LABEL[node.fn]}
         glyph="L"
-        secondary={lines}
+        secondary={lines.length ? lines : undefined}
         inPorts={2}
         outPort={false}
       >

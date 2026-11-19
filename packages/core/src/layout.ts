@@ -40,6 +40,8 @@ export const LAYOUT = {
   /** Width of a column of unit circles, and the vertical pitch of the circles. */
   unitW: 36,
   unitPitch: 44,
+  /** Height reserved above a unit column for the piece's name (neuron view). */
+  unitLabelH: 20,
   /** Space between rows. */
   rowGap: 24,
   /** Distance between skip-wire lanes, and outer margin. */
@@ -325,7 +327,7 @@ export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
 
   const unitPlan = (kind: NeuronUnitKind, count: number): Plan => ({
     w: LAYOUT.unitW,
-    h: count * LAYOUT.unitPitch,
+    h: LAYOUT.unitLabelH + count * LAYOUT.unitPitch,
     unit: kind,
     count,
   });
@@ -364,7 +366,10 @@ export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
     if (!b || p.unit === null) continue;
     const pts: [number, number][] = [];
     for (let i = 0; i < p.count; i++) {
-      const pt: [number, number] = [b.x + b.w / 2, b.y + (i + 0.5) * LAYOUT.unitPitch];
+      const pt: [number, number] = [
+        b.x + b.w / 2,
+        b.y + LAYOUT.unitLabelH + (i + 0.5) * LAYOUT.unitPitch,
+      ];
       pts.push(pt);
       units.push({ node: n.id, index: i, kind: p.unit, x: pt[0], y: pt[1] });
     }
