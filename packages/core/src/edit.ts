@@ -625,3 +625,42 @@ export function setColumns(
     g.edges,
   );
 }
+
+/**
+ * Puts pieces where the user dragged them (CONTRACTS.md section 2, `positions`): `moves` maps a
+ * node id to the new top-left corner of its box, in layout units, clamped to 0 or more. One edit,
+ * so one undo step, however many pieces. Only `positions` changes (nodes and edges keep their
+ * identity), and a locked piece may be moved: a lock protects what a piece computes, not where it
+ * sits. Refuses an unknown piece or a value that is not a finite number.
+ */
+export function moveNodes(
+  g: Graph,
+  moves: Readonly<Record<NodeId, readonly [number, number]>>,
+): EditResult {
+  const positions: Record<NodeId, [number, number]> = { ...g.positions };
+  for (const [id, xy] of Object.entries(moves)) {
+    if (!findNode(g, id)) return noNode(id);
+    if (!Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) {
+      return fail('A piece can only be moved to a position given as numbers.');
+    }
+    positions[id] = [Math.max(0, xy[0]), Math.max(0, xy[1])];
+  }
+  return { ok: true, graph: { ...g, positions } };
+}
+
+/**
+ * Gives pieces back to the automatic layout: removes the saved positions of `ids`, or of every
+ * piece when `ids` is left out. Refused when none of them had one.
+ */
+export function clearPositions(g: Graph, ids?: readonly NodeId[]): EditResult {
+  const drop = new Set(ids ?? Object.keys(g.positions ?? {}));
+  const kept = Object.entries(g.positions ?? {}).filter(([id]) => !drop.has(id));
+  if (kept.length === Object.keys(g.positions ?? {}).length) {
+    return fail('No piece has been moved by hand.');
+  }
+  const { positions: _old, ...rest } = g;
+  return {
+    ok: true,
+    graph: kept.length > 0 ? { ...rest, positions: Object.fromEntries(kept) } : rest,
+  };
+}
