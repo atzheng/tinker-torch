@@ -4,6 +4,7 @@ import { Palette } from './palette/Palette.js';
 import { PromptLine } from './presets/PromptLine.js';
 import { FitPlot } from './results/FitPlot.js';
 import { LossCurves } from './results/LossCurves.js';
+import { LossSurface } from './results/LossSurface.js';
 import { TopBar } from './topbar/TopBar.js';
 import { TrainingBar } from './trainbar/TrainingBar.js';
 
@@ -28,6 +29,7 @@ export function App() {
         <section className={`${styles.region} ${styles.results}`} data-region="results">
           <FitPlot />
           <LossCurves />
+          <LossSurface />
         </section>
         <footer className={`${styles.region} ${styles.train}`} data-region="training-bar">
           <TrainingBar />

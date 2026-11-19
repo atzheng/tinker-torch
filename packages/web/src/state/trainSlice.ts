@@ -12,7 +12,7 @@ import {
   type Graph,
   type HostParams,
 } from '@tinker/core';
-import type { Engine, Model, TrainState } from '@tinker/engine';
+import type { Engine, Model, ParamAxis, TrainState } from '@tinker/engine';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
 import type { Store } from './store.js';
@@ -85,6 +85,17 @@ export type TrainSlice = {
    * engine (about 2 ms), so callers keep n fixed per dataset (a constant grid).
    */
   predictGrid: (x: Float32Array, n: number) => Float32Array | null;
+  /**
+   * Training loss (mean loss plus penalty over the whole training set, dropout off) of the current
+   * model with the two parameters `axes` set to a[i] and b[j] and every other parameter as it is;
+   * [a.length, b.length] row-major, or null when there is no compiled model or the call fails.
+   * Used by the loss-surface view (tinker-ran.3); callers keep the grid size fixed.
+   */
+  lossSurface: (
+    axes: [ParamAxis, ParamAxis],
+    a: Float32Array,
+    b: Float32Array,
+  ) => Float32Array | null;
   setSpeed: (n: number) => void;
   /** Commit a learning rate (one undo step). Committed on release or blur by the UI. */
   setLearningRate: (lr: number) => void;
@@ -451,6 +462,17 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       if (!engine || !model || !state) return null;
       try {
         return engine.predict(model, state.params, x, n);
+      } catch {
+        return null;
+      }
+    },
+    lossSurface: (axes, a, b) => {
+      const { engine, model, state } = rt;
+      if (!engine || !model || !state) return null;
+      const { dataset } = get();
+      try {
+        const batch = { x: dataset.xTrain, y: dataset.yTrain, n: dataset.nTrain };
+        return engine.lossGrid(model, state.params, batch, axes, a, b);
       } catch {
         return null;
       }
