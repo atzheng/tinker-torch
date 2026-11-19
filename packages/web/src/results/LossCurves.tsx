@@ -3,6 +3,7 @@ import { decimatePath, linearScale, logScale, logTicks, niceTicks } from '../plo
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { MARGINS, drawAxes, drawLegend } from '../plot/draw.js';
 import { lossRange } from '../plot/loss.js';
+import { isMiniBatch } from '../state/trainSlice.js';
 import { useStore } from '../state/store.js';
 import styles from './Results.module.css';
 
@@ -12,6 +13,7 @@ export function LossCurves() {
   const best = useStore((s) => s.best);
   const restoreBest = useStore((s) => s.restoreBest);
   const canRestore = useStore((s) => s.canTrain);
+  const miniBatch = useStore((s) => isMiniBatch(s.graph.train.batch, s.dataset.nTrain));
   const [log, setLog] = useState(false);
 
   const draw: DrawFn = (ctx, w, h, c) => {
@@ -23,6 +25,7 @@ export function LossCurves() {
     drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(0, r.stepMax, 4), yTicks, 'step', 'loss');
     drawLegend(ctx, c, m, [
       { label: 'train', color: c.train, kind: 'line' },
+      ...(miniBatch ? [{ label: 'batch', color: c.train, kind: 'line' as const, alpha: 0.3 }] : []),
       { label: 'val', color: c.val, kind: 'line' },
       ...(best ? [{ label: 'best', color: c.val, kind: 'ring' as const }] : []),
     ]);
@@ -52,9 +55,10 @@ export function LossCurves() {
       );
       ctx.stroke();
     };
-    ctx.globalAlpha = 0.75;
+    ctx.globalAlpha = miniBatch ? 0.3 : 0.75;
     series((i) => history[i]?.train ?? Number.NaN, c.train);
     ctx.globalAlpha = 1;
+    if (miniBatch) series((i) => history[i]?.trainFull ?? Number.NaN, c.train);
     series((i) => history[i]?.val ?? Number.NaN, c.val);
 
     if (best && (!log || best.val > 0)) {
@@ -78,7 +82,7 @@ export function LossCurves() {
     ctx.restore();
   };
 
-  const ref = usePlotCanvas(draw, [history, best, log]);
+  const ref = usePlotCanvas(draw, [history, best, log, miniBatch]);
   return (
     <div className={styles.panel} data-testid="loss-curves">
       <div className={styles.head}>

@@ -40,7 +40,7 @@
 .results {
   grid-area: results;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); /* fit plot above, loss curves below */
+  grid-auto-rows: minmax(0, 1fr); /* fit, loss curves, loss surface (two-parameter models) */
   gap: 1px;
 }
 .train {

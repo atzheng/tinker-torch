@@ -4,28 +4,16 @@ import { fitYRange, linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { MARGINS, drawAxes, drawLegend, type LegendItem } from '../plot/draw.js';
 import { useStore } from '../state/store.js';
+import { FitPlot2D } from './FitPlot2D.js';
 import styles from './Results.module.css';
 
 /** Number of grid points for the model curve. Fixed: every new n makes the engine retrace. */
 export const GRID_N = 200;
 
-/** Fit plot: 1-D data with the model curve. 2-D data shows a placeholder until the 2-D fit plots exist. */
+/** Fit plot: 1-D data with the model curve. 2-D data goes to FitPlot2D. */
 export function FitPlot() {
   const d = useStore((s) => s.dataset.info.columns.length);
-  return d === 1 ? <FitPlot1D /> : <FitPlot2DPlaceholder />;
-}
-
-function FitPlot2DPlaceholder() {
-  return (
-    <div className={styles.panel} data-testid="fit-plot">
-      <div className={styles.head}>
-        <span className={styles.title}>Fit</span>
-      </div>
-      <div className={styles.plot}>
-        <div className="placeholder">2-D fit plot</div>
-      </div>
-    </div>
-  );
+  return d === 1 ? <FitPlot1D /> : <FitPlot2D />;
 }
 
 function FitPlot1D() {
