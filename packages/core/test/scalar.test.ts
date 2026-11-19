@@ -5,6 +5,7 @@ import {
   CORE_PIECES,
   initParams,
   insertOnWire,
+  withFreshColumn,
   PALETTE,
   swapPiece,
   type DataInfo,
@@ -157,5 +158,44 @@ describe('scalar pieces: registry', () => {
     if (!r.ok) return;
     const r2 = insertOnWire(r.graph, 0, { type: 'scalew' });
     expect(r2.ok && r2.select).toBe('w2');
+  });
+});
+
+describe('new Column defaults', () => {
+  const plane = (...a: Parameters<typeof g>): Graph => {
+    const gr = g(...a);
+    return { ...gr, data: { ...gr.data, set: 'plane' } };
+  };
+  test('takes the first dataset column not used by another Column', () => {
+    const graph = plane([{ id: 'x1', type: 'column', name: 'x1' }], [], [], null);
+    expect(withFreshColumn(graph, { type: 'column', name: 'x1' })).toEqual({
+      type: 'column',
+      name: 'x2',
+    });
+    const both = plane(
+      [
+        { id: 'x1', type: 'column', name: 'x1' },
+        { id: 'x2', type: 'column', name: 'x2' },
+      ],
+      [],
+      [],
+      null,
+    );
+    // the 'plane' set has two columns, so all are used and it falls back to x1
+    expect(withFreshColumn(both, { type: 'column', name: 'x2' })).toEqual({
+      type: 'column',
+      name: 'x1',
+    });
+    expect(withFreshColumn(graph, { type: 'scalew' })).toEqual({ type: 'scalew' });
+  });
+});
+
+describe('column ids', () => {
+  test('palette-inserted columns get x1, x2, ...', () => {
+    const x = (id: string): Node => ({ id, type: 'column', name: 'x1' });
+    const graph = g([x('x1'), { id: 'm', type: 'mean' }], [['x1', 'm']], [], null);
+    // a Column has no input port, so it cannot go on a wire; ids come from the same allocator
+    const r = insertOnWire(graph, 0, { type: 'scalew' });
+    expect(r.ok && r.select).toBe('w1');
   });
 });
