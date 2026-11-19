@@ -70,28 +70,28 @@ describe('positions in the graph', () => {
   });
 
   test('survive file save and load; a removed node drops its position on re-parse', () => {
-    const m = mv(chain(), { act1: [300, 10], lin2: [10, 10] });
+    const m = mv(chain(), { act1: [300, 50], lin2: [60, 50] });
     const f = parseFileText(serializeFile(m));
-    expect(f.ok && f.file.graph.positions).toEqual({ act1: [300, 10], lin2: [10, 10] });
+    expect(f.ok && f.file.graph.positions).toEqual({ act1: [300, 50], lin2: [60, 50] });
     const cut = parseGraph({
       ...m,
       nodes: m.nodes.filter((n) => n.id !== 'act1'),
       edges: [],
       predictions: [],
     });
-    expect(cut.ok && cut.graph.positions).toEqual({ lin2: [10, 10] });
+    expect(cut.ok && cut.graph.positions).toEqual({ lin2: [60, 50] });
   });
 });
 
 describe('moveNodes and clearPositions', () => {
-  test('one edit, pure, keeps nodes and edges, clamps at 0', () => {
+  test('one edit, pure, keeps nodes and edges, clamps at the margin', () => {
     const g = chain();
     const m = mv(g, { lin1: [-5, 40], lin2: [100, 100] });
     expect(g.positions).toBeUndefined();
     expect(m.nodes).toBe(g.nodes);
     expect(m.edges).toBe(g.edges);
-    expect(m.positions).toEqual({ lin1: [0, 40], lin2: [100, 100] });
-    expect(mv(m, { lin1: [7, 8] }).positions).toEqual({ lin1: [7, 8], lin2: [100, 100] });
+    expect(m.positions).toEqual({ lin1: [LAYOUT.pad, 40], lin2: [100, 100] });
+    expect(mv(m, { lin1: [70, 80] }).positions).toEqual({ lin1: [70, 80], lin2: [100, 100] });
   });
 
   test('refuses an unknown piece and non-finite numbers', () => {
@@ -104,9 +104,9 @@ describe('moveNodes and clearPositions', () => {
   test('clearPositions removes some or all, and refuses when nothing was moved', () => {
     const g = chain();
     expect(clearPositions(g).ok).toBe(false);
-    const m = mv(g, { lin1: [1, 1], lin2: [2, 2] });
+    const m = mv(g, { lin1: [31, 31], lin2: [32, 32] });
     const one = clearPositions(m, ['lin1']);
-    expect(one.ok && one.graph.positions).toEqual({ lin2: [2, 2] });
+    expect(one.ok && one.graph.positions).toEqual({ lin2: [32, 32] });
     const all = clearPositions(m);
     expect(all.ok && 'positions' in all.graph).toBe(false);
   });

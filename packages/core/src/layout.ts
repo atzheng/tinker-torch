@@ -361,8 +361,8 @@ function layoutCore(
       const xy = fixed[n.id];
       const b = boxes[n.id];
       if (xy && b) {
-        b.x = Math.max(0, xy[0]);
-        b.y = Math.max(0, xy[1]);
+        b.x = Math.max(LAYOUT.pad, xy[0]);
+        b.y = Math.max(LAYOUT.pad, xy[1]);
         manual.add(n.id);
       }
     }

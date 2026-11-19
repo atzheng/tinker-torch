@@ -29,6 +29,7 @@ import {
 } from './graph.js';
 import { CORE_PIECES, PALETTE, sameShape } from './registry.js';
 import type { Namer } from './macros.js';
+import { LAYOUT } from './layout.js';
 
 export type EditResult = { ok: true; graph: Graph; select?: NodeId } | { ok: false; error: string };
 
@@ -628,7 +629,7 @@ export function setColumns(
 
 /**
  * Puts pieces where the user dragged them (CONTRACTS.md section 2, `positions`): `moves` maps a
- * node id to the new top-left corner of its box, in layout units, clamped to 0 or more. One edit,
+ * node id to the new top-left corner of its box, in layout units, clamped to `LAYOUT.pad` or more. One edit,
  * so one undo step, however many pieces. Only `positions` changes (nodes and edges keep their
  * identity), and a locked piece may be moved: a lock protects what a piece computes, not where it
  * sits. Refuses an unknown piece or a value that is not a finite number.
@@ -643,7 +644,7 @@ export function moveNodes(
     if (!Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) {
       return fail('A piece can only be moved to a position given as numbers.');
     }
-    positions[id] = [Math.max(0, xy[0]), Math.max(0, xy[1])];
+    positions[id] = [Math.max(LAYOUT.pad, xy[0]), Math.max(LAYOUT.pad, xy[1])];
   }
   return { ok: true, graph: { ...g, positions } };
 }
