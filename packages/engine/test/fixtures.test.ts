@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { parseGraph } from '@tinker/core';
+import { v2 } from '@tinker/core';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
@@ -76,7 +76,7 @@ for (const file of files) {
   test(`${file} parses and is shape-consistent`, () => {
     const fx = JSON.parse(readFileSync(dir + file, 'utf8')) as Fixture;
     expect(fx.name + '.json').toBe(file);
-    const parsed = parseGraph(fx.graph);
+    const parsed = v2.parseGraph(fx.graph); // version 1 fixtures are migrated
     expect(parsed.ok ? 'ok' : parsed.error).toBe('ok');
     const { n } = fx.batch;
     const input = fx.graph.nodes.find((x) => x.type === 'input') as unknown as {

@@ -1,36 +1,48 @@
-// Graph + Analysis -> Model: the graph walked into jitted predict / loss / step functions.
+// Graph v2 + Analysis -> Model: the DAG walked into jitted predict / loss / step functions.
 //
 // Ownership (jax-js: functions consume their array arguments, `.ref` adds a reference). Every
 // jitted function below CONSUMES all its array arguments; callers pass `tree.ref(...)` for what
 // they keep. Jitted functions are built lazily on first use and cached on the model.
+//
+// Two plans are made at compile time from the analysis:
+//   - predict: `analysis.modelOrder`, outputs = the nodes carrying the ŷ pins (dropout off);
+//   - loss: `analysis.order` restricted to what the L pin needs, output = the L node (a scalar).
+// Stable fusion happens while making the loss plan: for every pair in `analysis.fusable` (a
+// sigmoid link feeding a log loss, a softmax link feeding a cross-entropy) the loss node reads the
+// link's INPUT (the logits) and computes the logsumexp / log-softmax form; the link itself is only
+// evaluated in the loss pass if something else uses it. The graph and the predict plan stay semantic.
 import { jit, numpy as np, random, tree, valueAndGrad } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import * as optax from '@jax-js/optax';
-import { analyse, resolveEdge } from '@tinker/core';
-import type {
-  Analysis,
-  Batch,
-  DataInfo,
-  Graph,
-  HostParams,
-  Node,
-  NodeId,
-  OutputLink,
-} from '@tinker/core';
-import { CORE_PIECES } from '@tinker/core';
+import { v2 } from '@tinker/core';
+import type { Batch, DataInfo, HostParams } from '@tinker/core';
 import { treeToHost } from './convert.js';
-import type { LayerShape, ParamTree } from './convert.js';
-import { LOSSES } from './losses.js';
+import type { Layer, LayerShape, ParamTree } from './convert.js';
 import { OPTIMIZERS } from './optim.js';
-import { PENALTY_IMPLEMENTED, penaltyTerm } from './penalty.js';
 import { ENGINE_PIECES } from './pieces/index.js';
 import type { PieceCtx } from './pieces/index.js';
 import type { Model } from './types.js';
 
+type NodeId = string;
+type Node = v2.Node;
 type Mode = 'predict' | 'loss';
+/** One node of a plan: the node and, per input port, the node that feeds it. */
 type Step = { node: Node; ports: [port: string, src: NodeId][] };
 
-type PredictFn = (params: ParamTree, x: JArray) => JArray;
+/** What one pass runs. */
+type Plan = {
+  steps: Step[];
+  /** Consumer counts per node (a node that is an output counts once more). */
+  uses: Map<NodeId, number>;
+  /** The nodes whose values the pass returns, in order. */
+  outputs: NodeId[];
+  /** Loss nodes whose `pred` is the logits of a fused link. */
+  fused: Set<NodeId>;
+  /** How many times each Linear's parameters are read (its own forward pass plus Weights taps). */
+  layerUses: Map<NodeId, number>;
+};
+
+type PredictFn = (params: ParamTree, x: JArray) => JArray[];
 type LossFn = (params: ParamTree, x: JArray, y: JArray) => JArray;
 type StepFn = (
   params: ParamTree,
@@ -42,17 +54,13 @@ type StepFn = (
 
 /** Private compiled state behind a Model. */
 export type Internals = {
-  graph: Graph;
-  analysis: Analysis;
+  graph: v2.Graph;
+  analysis: v2.Analysis;
   dataColumns: readonly string[];
-  /** Shapes of the linear nodes on the loss path. */
+  /** Shapes of the Linears with live parameters (`analysis.paramNodes`). */
   shapes: Map<NodeId, LayerShape>;
-  predNode: NodeId;
   lossNode: NodeId;
-  link: OutputLink;
-  steps: Step[];
-  /** Consumer counts per node, by mode (the loss, or the final result in predict mode, counts too). */
-  uses: Record<Mode, Map<NodeId, number>>;
+  plans: Record<Mode, Plan>;
   predictFn(): PredictFn;
   evalFn(): LossFn;
   stepFn(): StepFn;
@@ -90,76 +98,86 @@ export function disposeCompiled(model: Model): void {
   m.disposables.clear();
 }
 
-/** Throws one plain sentence when a piece, loss, penalty or optimizer is still a placeholder. */
-function assertImplemented(graph: Graph, nodes: Node[]): void {
-  for (const node of nodes) {
-    if (!ENGINE_PIECES[node.type].implemented) {
-      throw new Error(`The ${node.type} piece is not implemented yet.`);
-    }
-    if (node.type === 'loss') {
-      if (!LOSSES[node.fn].implemented)
-        throw new Error(`The ${node.fn} loss is not implemented yet.`);
-      if (node.penalty && !PENALTY_IMPLEMENTED) {
-        throw new Error('The weight penalty is not implemented yet.');
-      }
-    }
+/** The nodes of `steps` that `outputs` depend on, following `ports` backwards. */
+function neededFrom(outputs: NodeId[], ports: Map<NodeId, Map<string, NodeId>>): Set<NodeId> {
+  const need = new Set<NodeId>();
+  const todo = [...outputs];
+  while (todo.length > 0) {
+    const id = todo.pop() as NodeId;
+    if (need.has(id)) continue;
+    need.add(id);
+    for (const src of ports.get(id)?.values() ?? []) todo.push(src);
+  }
+  return need;
+}
+
+function makePlan(
+  order: NodeId[],
+  byId: Map<NodeId, Node>,
+  ports: Map<NodeId, Map<string, NodeId>>,
+  outputs: NodeId[],
+  fused: Set<NodeId>,
+): Plan {
+  const need = neededFrom(outputs, ports);
+  const steps: Step[] = [];
+  const uses = new Map<NodeId, number>();
+  const layerUses = new Map<NodeId, number>();
+  for (const id of order) {
+    const node = byId.get(id);
+    if (!node || !need.has(id)) continue;
+    const own = [...(ports.get(id) ?? new Map<string, NodeId>())];
+    steps.push({ node, ports: own });
+    for (const [, src] of own) uses.set(src, (uses.get(src) ?? 0) + 1);
+    if (node.type === 'linear') layerUses.set(id, (layerUses.get(id) ?? 0) + 1);
+    if (node.type === 'weights') layerUses.set(node.of, (layerUses.get(node.of) ?? 0) + 1);
+  }
+  for (const o of outputs) uses.set(o, (uses.get(o) ?? 0) + 1);
+  return { steps, uses, outputs, fused, layerUses };
+}
+
+/** Throws Error(first issue) when the graph is not trainable. Borrows its arguments. */
+export function compile(graph: v2.Graph, data: DataInfo): Model {
+  const analysis = v2.analyse(graph, data);
+  if (!analysis.trainable || analysis.lossNode === null) {
+    throw new Error(analysis.issues[0]?.message ?? 'This graph cannot be trained.');
   }
   if (!OPTIMIZERS[graph.train.optimizer].implemented) {
     throw new Error(`The ${graph.train.optimizer} optimizer is not implemented yet.`);
   }
-}
-
-/** Throws Error(first issue) when the graph is not trainable. Borrows its arguments. */
-export function compile(graph: Graph, data: DataInfo): Model {
-  const analysis = analyse(graph, data);
-  if (!analysis.trainable || analysis.lossNode === null || analysis.predNode === null) {
-    throw new Error(analysis.issues[0]?.message ?? 'This graph cannot be trained.');
-  }
   const byId = new Map<NodeId, Node>();
   for (const n of graph.nodes) if (!byId.has(n.id)) byId.set(n.id, n);
-  const nodes: Node[] = [];
-  for (const id of analysis.order) {
-    const n = byId.get(id);
-    if (n) nodes.push(n);
-  }
-  assertImplemented(graph, nodes);
 
-  const inOrder = new Set(analysis.order);
+  // Who feeds each input port. analyse keeps the first wire of a doubly fed port; an untrainable
+  // graph never gets here.
   const wired = new Map<NodeId, Map<string, NodeId>>();
   for (const e of graph.edges) {
-    const r = resolveEdge(graph.nodes, e);
-    if (!r.ok || !inOrder.has(r.from.node) || !inOrder.has(r.to.node)) continue;
+    const r = v2.resolveEdge(graph.nodes, e);
+    if (!r.ok) continue;
     const ports = wired.get(r.to.node) ?? new Map<string, NodeId>();
-    // analysis uses the lowest edge index for a doubly-fed port; an untrainable graph never gets here
     if (!ports.has(r.to.port)) ports.set(r.to.port, r.from.node);
     wired.set(r.to.node, ports);
   }
-  const steps: Step[] = nodes.map((node) => ({
-    node,
-    ports: [...(wired.get(node.id) ?? new Map<string, NodeId>())],
-  }));
 
-  const usesFor = (mode: Mode): Map<NodeId, number> => {
-    const u = new Map<NodeId, number>();
-    for (const s of steps) {
-      if (mode === 'predict' && (s.node.type === 'loss' || s.node.type === 'target')) continue;
-      for (const [, src] of s.ports) u.set(src, (u.get(src) ?? 0) + 1);
-    }
-    if (mode === 'predict')
-      u.set(analysis.predNode ?? '', (u.get(analysis.predNode ?? '') ?? 0) + 1);
-    return u;
+  // Loss plan: fuse each link into the loss it feeds (the loss reads the link's input).
+  const lossPorts = new Map<NodeId, Map<string, NodeId>>();
+  for (const [id, p] of wired) lossPorts.set(id, new Map(p));
+  const fused = new Set<NodeId>();
+  for (const { link, loss } of analysis.fusable) {
+    const logits = wired.get(link)?.get('in');
+    if (logits === undefined) continue;
+    lossPorts.get(loss)?.set('pred', logits);
+    fused.add(loss);
+  }
+  const plans: Record<Mode, Plan> = {
+    predict: makePlan(analysis.modelOrder, byId, wired, analysis.predictions, new Set()),
+    loss: makePlan(analysis.order, byId, lossPorts, [analysis.lossNode], fused),
   };
 
   const shapes = new Map<NodeId, LayerShape>();
-  for (const node of nodes) {
-    const w = analysis.inWidth[node.id];
-    if (node.type !== 'linear' || w === undefined) continue;
-    const s = CORE_PIECES.linear.paramShapes(node, w);
-    if (s.W) shapes.set(node.id, { W: s.W, ...(s.b ? { b: s.b } : {}) });
+  for (const id of analysis.paramNodes) {
+    const s = analysis.paramShapes[id];
+    if (s?.W) shapes.set(id, { W: s.W, ...(s.b ? { b: s.b } : {}) });
   }
-
-  const pred = byId.get(analysis.predNode);
-  const link: OutputLink = pred?.type === 'output' ? pred.link : 'identity';
 
   let predictFn: PredictFn | null = null;
   let evalFn: LossFn | null = null;
@@ -171,24 +189,22 @@ export function compile(graph: Graph, data: DataInfo): Model {
     analysis,
     dataColumns: data.columns,
     shapes,
-    predNode: analysis.predNode,
     lossNode: analysis.lossNode,
-    link,
-    steps,
+    plans,
     disposables: new Set(),
     disposed: false,
-    uses: { predict: usesFor('predict'), loss: usesFor('loss') },
     predictFn() {
       // jit consumes params and x
       predictFn ??= jit((params: ParamTree, x: JArray) =>
-        walk(self, params, x, null, 'predict', { train: false, masks: null }),
+        walk(self, 'predict', params, x, null, { train: false, masks: null }),
       ) as unknown as PredictFn;
       self.disposables.add(predictFn as unknown as { dispose(): void });
       return predictFn;
     },
     evalFn() {
-      evalFn ??= jit((params: ParamTree, x: JArray, y: JArray) =>
-        walk(self, params, x, y, 'loss', { train: false, masks: null }),
+      evalFn ??= jit(
+        (params: ParamTree, x: JArray, y: JArray) =>
+          walk(self, 'loss', params, x, y, { train: false, masks: null })[0] as JArray,
       ) as unknown as LossFn;
       self.disposables.add(evalFn as unknown as { dispose(): void });
       return evalFn;
@@ -207,8 +223,9 @@ export function compile(graph: Graph, data: DataInfo): Model {
           // The masks are sampled outside valueAndGrad: random ops traced under it leave one
           // constant buffer per compiled model that jit never frees.
           const [newKey, masks] = sampleMasks(self, key, x.shape[0] ?? 0);
-          const [loss, grads] = valueAndGrad((p: ParamTree, xx: JArray, yy: JArray, mm: Masks) =>
-            walk(self, p, xx, yy, 'loss', { train: true, masks: mm }),
+          const [loss, grads] = valueAndGrad(
+            (p: ParamTree, xx: JArray, yy: JArray, mm: Masks) =>
+              walk(self, 'loss', p, xx, yy, { train: true, masks: mm })[0] as JArray,
           )(tree.ref(params), x, y, masks);
           const [updates, newOpt] = optimizer.update(grads, optState);
           const newParams = optax.applyUpdates(params, updates) as ParamTree;
@@ -236,13 +253,13 @@ type Masks = Record<NodeId, JArray>;
 type WalkOpts = { train: boolean; masks: Masks | null };
 
 /**
- * Splits `key` (consumed) into the next key and one subkey per Dropout node on the loss path, and
+ * Splits `key` (consumed) into the next key and one subkey per Dropout node of the loss plan, and
  * samples the keep masks for a batch of `n` rows. Returns [next key, masks].
  */
 function sampleMasks(m: Internals, key: JArray, n: number): [JArray, Masks] {
   const masks: Masks = {};
   let k = key;
-  for (const s of m.steps) {
+  for (const s of m.plans.loss.steps) {
     if (s.node.type !== 'dropout' || s.node.p <= 0) continue;
     const width = m.analysis.inWidth[s.node.id] ?? 0;
     // np.unstack consumes the parent key (destructuring the split would leak it, docs/spike.md)
@@ -255,35 +272,37 @@ function sampleMasks(m: Internals, key: JArray, n: number): [JArray, Masks] {
 }
 
 /**
- * Forward pass in topological order. Consumes `params`, `x`, `y` and `opts.masks` (y may be null in
- * predict mode). 'predict' returns the post-link prediction [n, width]; 'loss' returns the mean loss
- * plus the weight penalty (taken from `tree.ref(params)` before the walk).
- * A value feeding several consumers is `.ref`ed for all but the last.
+ * Forward pass of one plan, in topological order. Consumes `params`, `x`, `y` and `opts.masks`
+ * (`y` is null in a predict pass: a Target then reads zeros). Returns one array per plan output:
+ * the ŷ values `[n, width]` in pin order (predict), or the scalar L (loss). A value feeding several
+ * consumers is `.ref`ed for all but the last; a Linear's parameters likewise per read (its own
+ * forward pass and each Weights tap); parameters the pass never reads are disposed.
  */
 function walk(
   m: Internals,
+  mode: Mode,
   params: ParamTree,
   x: JArray,
   y: JArray | null,
-  mode: Mode,
   opts: WalkOpts,
-): JArray {
+): JArray[] {
+  const plan = m.plans[mode];
+  const n = x.shape[0] ?? 0;
   const masks = new Map(Object.entries(opts.masks ?? {}));
-  const lossStep = mode === 'loss' ? m.steps.find((s) => s.node.type === 'loss') : undefined;
-  const pen = lossStep?.node.type === 'loss' ? lossStep.node.penalty : undefined;
-  const penalty = pen && pen.lambda > 0 ? penaltyTerm(pen, tree.ref(params)) : null;
   const values = new Map<NodeId, JArray>();
-  const remaining = new Map(m.uses[mode]);
-  let xLeft = m.steps.filter((s) => s.node.type === 'input').length;
-  let yLeft = mode === 'loss' ? m.steps.filter((s) => s.node.type === 'target').length : 0;
+  const remaining = new Map(plan.uses);
+  const layerLeft = new Map(plan.layerUses);
+  let xLeft = plan.steps.filter((s) => s.node.type === 'input').length;
+  let yLeft = plan.steps.filter((s) => s.node.type === 'target').length;
+  if (xLeft === 0) x.dispose();
+  if (y && yLeft === 0) y.dispose();
   const ctx: PieceCtx = {
     train: opts.train,
-    rawOutput: mode === 'loss',
-    link: m.link,
     dataColumns: m.dataColumns,
+    fused: (id) => plan.fused.has(id),
     takeX: () => (--xLeft > 0 ? x.ref : x),
     takeY: () => {
-      if (!y) throw new Error('This pass has no target.');
+      if (!y) return np.zeros([n]);
       return --yLeft > 0 ? y.ref : y;
     },
     dropoutMask: (id) => {
@@ -304,41 +323,51 @@ function walk(
     values.delete(id);
     return v;
   };
-  let result: JArray | null = null;
-  for (const s of m.steps) {
+  const takeLayer = (id: NodeId): Layer => {
+    const l = Object.hasOwn(params, id) ? params[id] : undefined;
+    const left = layerLeft.get(id);
+    if (!l || left === undefined) throw new Error(`Internal error: "${id}" has no parameters.`);
+    if (left > 1) {
+      layerLeft.set(id, left - 1);
+      return l.b ? { W: l.W.ref, b: l.b.ref } : { W: l.W.ref };
+    }
+    layerLeft.delete(id);
+    return l;
+  };
+  for (const s of plan.steps) {
     const { node } = s;
-    if (mode === 'predict' && (node.type === 'target' || node.type === 'loss')) continue;
     const inputs: Record<string, JArray> = {};
     for (const [port, src] of s.ports) inputs[port] = take(src);
-    const layer = node.type === 'linear' ? params[node.id] : undefined;
+    const layer =
+      node.type === 'linear'
+        ? takeLayer(node.id)
+        : node.type === 'weights'
+          ? takeLayer(node.of)
+          : undefined;
     // The piece table is indexed by node.type; TypeScript cannot correlate the two here.
     const piece = ENGINE_PIECES[node.type] as unknown as {
-      forward(
-        n: Node,
-        i: Record<string, JArray>,
-        l: ParamTree[string] | undefined,
-        c: PieceCtx,
-      ): JArray;
+      forward(n: Node, i: Record<string, JArray>, l: Layer | undefined, c: PieceCtx): JArray;
     };
-    const out = piece.forward(node, inputs, layer, ctx);
-    if (node.type === 'loss' || (mode === 'predict' && node.id === m.predNode)) {
-      result = out;
-      break;
-    }
-    values.set(node.id, out);
+    values.set(node.id, piece.forward(node, inputs, layer, ctx));
   }
-  if (!result) throw new Error('Internal error: the graph produced no result.');
+  const out = plan.outputs.map(take);
   for (const v of values.values()) v.dispose();
   if (xLeft > 0) x.dispose();
   if (y && yLeft > 0) y.dispose();
   for (const mk of masks.values()) mk.dispose();
-  return penalty ? result.add(penalty) : result;
+  // parameters this pass never reads (e.g. a Linear only the loss uses, in a predict pass)
+  for (const [id, l] of Object.entries(params)) {
+    if (plan.layerUses.has(id)) continue;
+    l.W.dispose();
+    l.b?.dispose();
+  }
+  return out;
 }
 
 /**
  * Test-only (CONTRACTS.md section 11, "Dropout fixtures"; not part of `Engine`): the training
  * forward and backward with dropout ON and the given keep masks instead of sampling. Borrows
- * `params`. Returns the post-link prediction, the objective (mean loss plus penalty) and the gradients.
+ * `params`. Returns the first ŷ pin's values (post-link, empty with no ŷ), the objective L and the gradients.
  */
 export function debugTrainPass(
   model: Model,
@@ -359,14 +388,17 @@ export function debugTrainPass(
   };
   const first = batchArrays(m, batch);
   first.y.dispose();
-  const pred = walk(m, tree.ref(params), first.x, null, 'predict', {
+  const preds = walk(m, 'predict', tree.ref(params), first.x, null, {
     train: true,
     masks: hostMasks(),
   });
-  const predHost = Float32Array.from(pred.dataSync() as Float32Array);
+  const [pred, ...rest] = preds;
+  for (const r of rest) r.dispose();
+  const predHost = pred ? Float32Array.from(pred.dataSync() as Float32Array) : new Float32Array(0);
   const { x, y } = batchArrays(m, batch);
-  const [loss, grads] = valueAndGrad((p: ParamTree, xx: JArray, yy: JArray) =>
-    walk(m, p, xx, yy, 'loss', { train: true, masks: hostMasks() }),
+  const [loss, grads] = valueAndGrad(
+    (p: ParamTree, xx: JArray, yy: JArray) =>
+      walk(m, 'loss', p, xx, yy, { train: true, masks: hostMasks() })[0] as JArray,
   )(tree.ref(params), x, y);
   const lossValue = loss.item();
   const host = treeToHost(grads as ParamTree);

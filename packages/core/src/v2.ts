@@ -5,3 +5,4 @@ export * from './macros.js';
 export * from './migrate.js';
 export * from './file.js';
 export * from './analyseV2.js';
+export * from './paramsV2.js';

@@ -2,7 +2,7 @@
 // section 4). The probe must be installed before jax-js loads, hence the dynamic import.
 import { installProbe } from '../src/probe.js';
 import { expect, test } from 'vitest';
-import { loadFixture, toBatch, toHostParams } from './util.js';
+import { loadFixture, toBatch, toHostParams, predict0 } from './util.js';
 
 installProbe();
 const { createEngine } = await import('../src/index.js');
@@ -25,7 +25,7 @@ test('10,000 steps (with predict, evaluate, clone and diverged steps) leave the 
     state = r.state;
     expect(r.diverged).toBe(false);
     if (i % 10 === 0) engine.evaluate(model, state.params, batch);
-    if (i % 25 === 0) engine.predict(model, state.params, batch.x, batch.n);
+    if (i % 25 === 0) predict0(engine, model, state.params, batch.x, batch.n);
     if (i % 100 === 0) engine.dispose(engine.clone(state.params));
     if (i % 500 === 0) state = diverge(state);
   };
@@ -59,7 +59,7 @@ test('a graph with dropout (key splitting, diverged steps) leaves the live buffe
     const r = engine.step(model, state, i % 50 === 0 ? bad : batch);
     state = r.state;
     if (i % 10 === 0) engine.evaluate(model, state.params, batch);
-    if (i % 25 === 0) engine.predict(model, state.params, batch.x, batch.n);
+    if (i % 25 === 0) predict0(engine, model, state.params, batch.x, batch.n);
   };
   for (let i = 1; i <= 60; i++) once(i);
   const baseline = engine.liveArrays();
@@ -138,7 +138,7 @@ test('failing calls (params of another model) leak no buffers', async () => {
   const state = engine.startTraining(model, engine.fromHost(model, toHostParams(a.fx.params)), 1);
   const bad = { ...state, params: foreign };
   const fail = () => {
-    expect(() => engine.predict(model, foreign, batch.x, batch.n)).toThrow();
+    expect(() => predict0(engine, model, foreign, batch.x, batch.n)).toThrow();
     expect(() => engine.evaluate(model, foreign, batch)).toThrow();
     expect(() => engine.step(model, bad, batch)).toThrow();
   };

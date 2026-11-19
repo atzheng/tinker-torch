@@ -3,8 +3,8 @@
 import { init, numpy as np, random, tree } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import type * as optax from '@jax-js/optax';
-import { CORE_NAME, initParams } from '@tinker/core';
-import type { Batch, DataInfo, Graph, HostParams, NodeId } from '@tinker/core';
+import { CORE_NAME, v2 } from '@tinker/core';
+import type { Batch, DataInfo, HostParams, NodeId } from '@tinker/core';
 import {
   batchArrays,
   checkBatch,
@@ -61,13 +61,13 @@ export function createEngine(): Promise<Engine> {
 
 function makeEngine(): Engine {
   const engine: Engine = {
-    compile(graph: Graph, data: DataInfo): Model {
+    compile(graph: v2.Graph, data: DataInfo): Model {
       return compile(graph, data);
     },
 
     init(model, seed) {
       const m = internals(model);
-      return engine.fromHost(model, initParams(m.graph, m.analysis, seed));
+      return engine.fromHost(model, v2.initParams(m.analysis, seed));
     },
 
     /** Borrows `host`: the values are copied. Throws when it does not fit the model. */
@@ -185,22 +185,27 @@ function makeEngine(): Engine {
       return { state: next, loss, diverged: false };
     },
 
-    /** Borrows `model` and `params`. Dropout off; post-link; [n, width] row-major. */
+    /**
+     * Borrows `model` and `params`. Dropout off. One `[n, width]` row-major array per ŷ pin, in pin
+     * order, each the value at the pinned node (after its link, if it is one); empty when the graph
+     * has no ŷ pin.
+     */
     predict(model, params, x, n) {
       const m = internals(model);
       const t = peekParams(params);
       checkBatch(m, x, null, n);
       checkTree(m, t);
+      if (m.plans.predict.outputs.length === 0) return [];
       const xa = np.array(Float32Array.from(x), {
         shape: [n, m.dataColumns.length],
         dtype: np.float32,
       });
       const pRef = tree.ref(t);
-      const out = guarded([pRef, xa], () => m.predictFn()(pRef, xa));
-      return Float32Array.from(out.dataSync() as Float32Array);
+      const outs = guarded([pRef, xa], () => m.predictFn()(pRef, xa));
+      return outs.map((o) => Float32Array.from(o.dataSync() as Float32Array));
     },
 
-    /** Borrows `params`. Mean loss plus penalty, dropout off. */
+    /** Borrows `params`. The L pin's value (a single number), dropout off. */
     evaluate(model, params, batch) {
       const m = internals(model);
       const t = peekParams(params);
