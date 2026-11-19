@@ -1,6 +1,7 @@
 import styles from './App.module.css';
 import { Canvas } from './canvas/Canvas.js';
 import { Palette } from './palette/Palette.js';
+import { PromptLine } from './presets/PromptLine.js';
 import { FitPlot } from './results/FitPlot.js';
 import { LossCurves } from './results/LossCurves.js';
 import { TopBar } from './topbar/TopBar.js';
@@ -19,7 +20,10 @@ export function App() {
           <Palette />
         </nav>
         <main className={`${styles.region} ${styles.canvas}`} data-region="canvas">
-          <Canvas />
+          <PromptLine />
+          <div className={styles.canvasBody}>
+            <Canvas />
+          </div>
         </main>
         <section className={`${styles.region} ${styles.results}`} data-region="results">
           <FitPlot />

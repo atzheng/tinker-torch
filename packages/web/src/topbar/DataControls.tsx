@@ -159,10 +159,6 @@ export function DataControls() {
         />
         <span>Standardise</span>
       </label>
-      {/* Enabled by the neuron view bead (switches layer and neuron grain). */}
-      <button type="button" data-testid="grain-toggle" disabled title="Grain">
-        Grain
-      </button>
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { inputPortsOf } from '@tinker/core';
 import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
+import { useStore } from '../state/store.js';
+import { LockBadge } from './drawings/LockBadge.js';
 
 export type LayerViewProps = {
   graph: Graph;
@@ -28,7 +30,7 @@ export type LayerViewProps = {
 };
 
 /** Props for a piece's layer drawing, from the analysis and the weights. */
-function layerProps(
+export function layerProps(
   node: Node,
   box: { w: number; h: number },
   analysis: Analysis,
@@ -62,6 +64,8 @@ export function LayerView(p: LayerViewProps) {
   const target = p.drag?.target ?? null;
   const dropEdge = target?.kind === 'wire' ? target.edge : -1;
   const dropNode = target?.kind === 'node' ? target.id : target?.kind === 'port' ? target.node : '';
+  const lockedList = useStore((s) => s.preset?.locked);
+  const locked = new Set(lockedList ?? []);
   const sel = p.selection;
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
   return (
@@ -140,6 +144,7 @@ export function LayerView(p: LayerViewProps) {
             />
             <rect className="tk-ring" x={-4} y={-4} width={box.w + 8} height={box.h + 8} rx={12} />
             <Layer {...layerProps(node, box, analysis, p.weights)} />
+            {locked.has(node.id) && <LockBadge x={box.w - 8} y={8} />}
           </g>
         );
       })}
