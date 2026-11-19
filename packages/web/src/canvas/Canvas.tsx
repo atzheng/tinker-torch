@@ -307,8 +307,9 @@ export function Canvas() {
   const moveTo = (id: string, dx: number, dy: number) => {
     const s0 = moveStart.current;
     if (!s0 || s0.id !== id) return null;
-    const x = Math.max(LAYOUT.pad, snap(s0.x + dx / tRef.current.scale));
-    const y = Math.max(LAYOUT.pad, snap(s0.y + dy / tRef.current.scale));
+    // Snap the movement, not the result: an off-grid piece moved less than a grid step stays put.
+    const x = Math.max(LAYOUT.pad, s0.x + snap(dx / tRef.current.scale));
+    const y = Math.max(LAYOUT.pad, s0.y + snap(dy / tRef.current.scale));
     return { id, x, y, from: s0 };
   };
   const mover = {

@@ -661,13 +661,21 @@ export function moveNodes(
   g: Graph,
   moves: Readonly<Record<NodeId, readonly [number, number]>>,
 ): EditResult {
+  // No further than two spare columns and rows past a drawing with every piece in its own column
+  // and row, so a far drag cannot make the drawing (and the fit) grow without limit.
+  const spare = g.nodes.length + 2;
+  const maxX = LAYOUT.pad + spare * (LAYOUT.boxW + LAYOUT.layerGap);
+  const maxY = LAYOUT.pad + spare * (LAYOUT.boxH + LAYOUT.rowGap);
   const positions: Record<NodeId, [number, number]> = { ...g.positions };
   for (const [id, xy] of Object.entries(moves)) {
     if (!findNode(g, id)) return noNode(id);
     if (!Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) {
       return fail('A piece can only be moved to a position given as numbers.');
     }
-    positions[id] = [Math.max(LAYOUT.pad, xy[0]), Math.max(LAYOUT.pad, xy[1])];
+    positions[id] = [
+      Math.min(maxX, Math.max(LAYOUT.pad, xy[0])),
+      Math.min(maxY, Math.max(LAYOUT.pad, xy[1])),
+    ];
   }
   return { ok: true, graph: { ...g, positions } };
 }

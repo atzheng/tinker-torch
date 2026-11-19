@@ -179,3 +179,14 @@ describe('layout with manual positions', () => {
     );
   });
 });
+
+describe('moveNodes limit', () => {
+  test('a far move is clamped to a bound that grows with the piece count', () => {
+    const g = chain();
+    const m = mv(g, { lin1: [1e9, 1e9] });
+    const [x, y] = m.positions?.['lin1'] ?? [0, 0];
+    const spare = g.nodes.length + 2;
+    expect(x).toBe(LAYOUT.pad + spare * (LAYOUT.boxW + LAYOUT.layerGap));
+    expect(y).toBe(LAYOUT.pad + spare * (LAYOUT.boxH + LAYOUT.rowGap));
+  });
+});
