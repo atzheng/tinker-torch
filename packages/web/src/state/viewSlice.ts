@@ -12,7 +12,9 @@ export type Selection =
   /** Neuron view: the weight W[i][j] of a Linear (row-major [in, out], CONTRACTS.md section 5). */
   | { kind: 'edge'; node: NodeId; i: number; j: number }
   /** Neuron view: one circle of a unit column; `index` counts from the top, as in `NeuronLayout.units`. */
-  | { kind: 'unit'; node: NodeId; index: number };
+  | { kind: 'unit'; node: NodeId; index: number }
+  /** A role pin (ŷ or L) on a node's output. Identified by node: a node carries each role at most once. */
+  | { kind: 'pin'; role: 'pred' | 'loss'; node: NodeId };
 
 /** The two drawings of the same graph (SPEC "Grain"). Never stored in the graph. */
 export type Grain = 'layer' | 'neuron';
@@ -32,6 +34,9 @@ export type ViewSlice = {
   selectNode: (id: NodeId) => void;
   /** Which drawing the canvas shows. Changing it never touches the graph. */
   grain: Grain;
+  /** The node whose ŷ pin the results plots draw; null (or a node that is no longer a ŷ): the first pin. See `plotIndex`. */
+  plotPrediction: NodeId | null;
+  setPlotPrediction: (id: NodeId | null) => void;
   /** Switch grain. A selected edge or unit exists only in neuron view, so it is cleared. */
   setGrain: (grain: Grain) => void;
   /**
@@ -49,6 +54,8 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
   select: (selection) => set({ selection }),
   selectNode: (id) => set({ selection: { kind: 'node', id } }),
   grain: 'layer',
+  plotPrediction: null,
+  setPlotPrediction: (plotPrediction) => set({ plotPrediction }),
   setGrain: (grain) =>
     set((s) => ({
       grain,

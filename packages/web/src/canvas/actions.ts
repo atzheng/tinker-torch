@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { deleteEdge, deleteNode } from '@tinker/core';
+import { deleteEdge, deleteNode, parsePort, removePrediction } from '@tinker/core';
 import { lockedIds } from '../state/locks.js';
 import { useStore } from '../state/store.js';
 import { edgeIndexOf } from './pure.js';
@@ -10,6 +10,13 @@ export function deleteSelection(): void {
   if (!selection) return;
   if (selection.kind === 'node') {
     if (apply(deleteNode(graph, selection.id, { locked: lockedIds() })).ok) select(null);
+    return;
+  }
+  if (selection.kind === 'pin') {
+    // A ŷ pin is removed; the L pin only moves (there is always one L pin to place).
+    if (selection.role !== 'pred') return;
+    const i = graph.predictions.findIndex((x) => parsePort(x).node === selection.node);
+    if (i >= 0 && apply(removePrediction(graph, i, { locked: lockedIds() })).ok) select(null);
     return;
   }
   if (selection.kind !== 'wire') return; // an edge or unit is not deleted (ran.2 removes units)

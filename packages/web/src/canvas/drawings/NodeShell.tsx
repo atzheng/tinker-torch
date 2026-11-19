@@ -34,47 +34,8 @@ export function roleOfNode(
   return undefined;
 }
 
-/** Every pin a node carries, in badge order (a node can be both a ŷ and L). */
-export function pinRolesOf(node: { id: string }, pins: RolePins): ('pred' | 'loss')[] {
-  const out: ('pred' | 'loss')[] = [];
-  if (pins.predictions.some((p) => pinTarget(p) === node.id)) out.push('pred');
-  if (pins.loss !== null && pinTarget(pins.loss) === node.id) out.push('loss');
-  return out;
-}
-
 /** The glyph (TeX, no dollars) of a role badge. */
 export const ROLE_GLYPH: Record<NodeRole, string> = { input: 'x', pred: '\\hat{y}', loss: 'L' };
-
-/**
- * The small ŷ or L badge on a pinned node: top right, half outside the body, so it never covers
- * the node's own glyph or tag. Static; moving a pin is a separate gesture.
- */
-export function PinBadge({
-  role,
-  w,
-  slot = 0,
-}: {
-  role: 'pred' | 'loss';
-  w: number;
-  slot?: number;
-}) {
-  return (
-    <g
-      className="tk-badge"
-      data-testid={`pin-badge-${role}`}
-      transform={`translate(${w - 16 - slot * 22} 0)`}
-    >
-      <circle r={9} />
-      <SvgTex
-        src={ROLE_GLYPH[role]}
-        box={{ x: -9, y: -9, width: 18, height: 18 }}
-        fontSize={11}
-        align="center"
-        className="tk-badge-tex"
-      />
-    </g>
-  );
-}
 
 /** Box (node-local units) a custom glyph `slot` must stay inside: the KaTeX bead's foreignObject goes here. */
 export function slotBox(w: number, h: number) {

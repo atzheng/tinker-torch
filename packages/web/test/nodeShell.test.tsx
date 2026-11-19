@@ -41,14 +41,12 @@ test('only inputs, the node pinned as ŷ and the node pinned as L carry a role',
     host.querySelector(`[data-testid="node-${id}"]`)?.getAttribute('data-role') ?? null;
   expect(['x', 'y', 'lin2', 'loss'].map(role)).toEqual(['input', 'input', 'pred', 'loss']);
   expect(['lin1', 'act1', 'diff', 'err'].map(role)).toEqual([null, null, null, null]);
-  // the pins are drawn as a badge on the pinned node, not as pieces of their own
+  // the pins are drawn as pins at the pinned node's output, not as pieces of their own
+  expect(host.querySelector('[data-testid="pin-pred-lin2"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="pin-loss-loss"]')).not.toBeNull();
   expect(
-    host.querySelector('[data-testid="node-lin2"] [data-testid="pin-badge-pred"]'),
-  ).not.toBeNull();
-  expect(
-    host.querySelector('[data-testid="node-loss"] [data-testid="pin-badge-loss"]'),
-  ).not.toBeNull();
-  expect(host.querySelectorAll('[data-testid^="pin-badge-"]')).toHaveLength(2);
+    host.querySelectorAll('[data-testid^="pin-pred-"], [data-testid^="pin-loss-"]'),
+  ).toHaveLength(2);
 });
 
 test('a node pinned as both ŷ and L shows both badges', () => {
@@ -56,6 +54,6 @@ test('a node pinned as both ŷ and L shows both badges', () => {
   useStore.getState().loadGraph({ ...initialGraph(), predictions: ['loss'] });
   root = createRoot(host);
   act(() => root.render(<Canvas />));
-  const badges = host.querySelectorAll('[data-testid="node-loss"] [data-testid^="pin-badge-"]');
-  expect(badges).toHaveLength(2);
+  expect(host.querySelector('[data-testid="pin-pred-loss"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="pin-loss-loss"]')).not.toBeNull();
 });

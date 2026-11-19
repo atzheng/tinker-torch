@@ -15,6 +15,7 @@ import {
 import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engine';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
+import { plotIndex } from './plotPrediction.js';
 import type { Store } from './store.js';
 import { bumpWeightGeneration } from './weightHistory.js';
 
@@ -91,7 +92,8 @@ export type TrainSlice = {
    * Predictions of the current parameters (dropout off, after the link) for the rows of `x`
    * (row-major [n, dataColumns], already standardised if on); [n, width], or null when there is
    * no compiled model. Allocates only the result. Every distinct `n` costs one retrace in the
-   * engine (about 2 ms), so callers keep n fixed per dataset (a constant grid).
+   * engine (about 2 ms), so callers keep n fixed per dataset (a constant grid). The output is the ŷ pin
+   * picked in the fit plot header (`plotPrediction`, default the first).
    */
   predictGrid: (x: Float32Array, n: number) => Float32Array | null;
   /**
@@ -504,7 +506,8 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const { engine, model, state } = rt;
       if (!engine || !model || !state) return null;
       try {
-        return engine.predict(model, state.params, x, n)[0] ?? null; // the first ŷ pin
+        const { graph, plotPrediction } = get();
+        return engine.predict(model, state.params, x, n)[plotIndex(graph, plotPrediction)] ?? null;
       } catch {
         return null;
       }

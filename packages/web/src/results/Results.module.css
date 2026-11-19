@@ -45,6 +45,22 @@
   opacity: 0.5;
 }
 
+.picker {
+  height: 26px;
+  max-width: 120px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+}
+
+@media (pointer: coarse) {
+  .picker {
+    height: 32px;
+  }
+}
+
 .plot {
   flex: 1;
   min-height: 0;

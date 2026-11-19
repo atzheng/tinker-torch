@@ -16,6 +16,7 @@ import {
 } from '../plot/surface.js';
 import { useStore } from '../state/store.js';
 import { ResampleButton, ResampleReadout, useOverlay2D } from './ResampleOverlay.js';
+import { PredictionPicker } from './PredictionPicker.js';
 import styles from './Results.module.css';
 
 /** Grid points per side of the surface. Fixed: every new n makes the engine retrace. */
@@ -28,6 +29,8 @@ export function FitPlot2D() {
   const host = useStore((s) => s.host);
   const predictGrid = useStore((s) => s.predictGrid);
   const noPrediction = useStore((s) => s.graph.predictions.length === 0);
+  const pick = useStore((s) => s.plotPrediction);
+  const predictions = useStore((s) => s.graph.predictions);
   const [showTruth, setShowTruth] = useState(false);
   const classification = dataset.info.kind !== 'regression';
 
@@ -71,7 +74,7 @@ export function FitPlot2D() {
     if (!out) return null;
     // binary models with two outputs: take P(class 1)
     return column(fixed.values, out, fixed.grid.n, 1);
-  }, [host, predictGrid, fixed]);
+  }, [host, predictGrid, fixed, pick, predictions]);
 
   // With the overlay on, the surface drawn is the average of the copies.
   const overlay = useOverlay2D();
@@ -252,6 +255,7 @@ export function FitPlot2D() {
           />
           {classification ? 'True boundary' : 'True contours'}
         </label>
+        <PredictionPicker />
         <ResampleButton />
       </div>
       <ResampleReadout />

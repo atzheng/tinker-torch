@@ -14,7 +14,10 @@ import {
   inputPortsOf,
   insertMacro,
   insertOnWire,
+  movePrediction,
+  parsePort,
   rewireEdge,
+  setLoss,
   swapPiece,
   type EditResult,
   type Graph,
@@ -29,11 +32,13 @@ export type DragPayload =
   | { kind: 'palette'; entry: PaletteEntry }
   | { kind: 'wire'; from: NodeId }
   /** An existing wire's destination end dragged to another input port (one undo step). */
-  | { kind: 'rewire'; edge: number; from: NodeId; to: PortRef };
+  | { kind: 'rewire'; edge: number; from: NodeId; to: PortRef }
+  /** A ŷ or L pin dragged from the node carrying it to another node's output (one undo step). */
+  | { kind: 'pin'; role: 'pred' | 'loss'; node: NodeId };
 
 /** The piece a wire-like drag starts from (a new wire or a rewired one), else undefined. */
 export function wireSource(p: DragPayload): NodeId | undefined {
-  return p.kind === 'palette' ? undefined : p.from;
+  return p.kind === 'wire' || p.kind === 'rewire' ? p.from : undefined;
 }
 
 export type DropTarget =
@@ -130,6 +135,18 @@ export function resolveDrop(
     return { kind: 'port', node: node.id, port: ref };
   }
 
+  if (payload.kind === 'pin') {
+    // A pin lands on a piece (its body or its output port); not where it already is, nor on a
+    // node that already carries a ŷ pin (the same node cannot be a ŷ twice).
+    const id = nodeOf(
+      hitAt(
+        shapes.filter((s) => s.kind !== 'wire'),
+        at.x,
+        at.y,
+      ),
+    );
+    return id !== undefined && pinCanLandOn(graph, payload, id) ? { kind: 'node', id } : null;
+  }
   const entry = payload.entry;
   const hit = hitAt(shapes, at.x, at.y);
   if (hit?.kind === 'wire') return insertable(entry) ? { kind: 'wire', edge: hit.edge } : null;
@@ -158,6 +175,17 @@ export function resolveDrop(
   return best ?? (entry.kind === 'macro' ? { kind: 'free' } : null);
 }
 
+/** Whether the dragged pin may be dropped on node `id`: not on its own node, not on another ŷ for a ŷ. */
+export function pinCanLandOn(
+  graph: Graph,
+  pin: { role: 'pred' | 'loss'; node: NodeId },
+  id: NodeId,
+): boolean {
+  if (id === pin.node) return false;
+  if (!graph.nodes.some((n) => n.id === id)) return false;
+  return pin.role === 'loss' || !graph.predictions.some((p) => parsePort(p).node === id);
+}
+
 /** The pure edit a drop stands for, or null when the pair makes no edit. */
 export function editForDrop(
   graph: Graph,
@@ -170,6 +198,12 @@ export function editForDrop(
   }
   if (payload.kind === 'rewire') {
     return target.kind === 'port' ? rewireEdge(graph, payload.edge, 'to', target.port, opts) : null;
+  }
+  if (payload.kind === 'pin') {
+    if (target.kind !== 'node') return null;
+    if (payload.role === 'loss') return setLoss(graph, target.id, opts);
+    const index = graph.predictions.findIndex((p) => parsePort(p).node === payload.node);
+    return movePrediction(graph, index, target.id, opts);
   }
   const entry = payload.entry;
   if (entry.kind === 'macro') {

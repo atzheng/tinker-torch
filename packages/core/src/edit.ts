@@ -6,12 +6,15 @@
  * that `analyse` reports as not trainable; they refuse only what cannot be represented (cycles,
  * unknown nodes or ports, a swap across families, a locked node, a value the schema rejects).
  * Pins (`predictions`, `loss`) follow their node: deleting a pinned node moves the pin to what fed
- * it, or drops it.
+ * it, or drops it. The pin edits (`setLoss`, `addPrediction`, `movePrediction`, `removePrediction`)
+ * change which output carries a role; a pin on a locked piece is fixed, so they refuse when the
+ * pin's old or new node is locked.
  */
 import { analyse, type Analysis } from './analyse.js';
 import {
   parseGraph,
   parsePort,
+  resolvePin,
   resolveEdge,
   inputPortsOf,
   type Edge,
@@ -477,6 +480,84 @@ export function insertMacro(g: Graph, key: string, at?: { edge: number }): EditR
   const parsed = parseGraph({ ...g, nodes, edges, loss });
   if (!parsed.ok) return fail(parsed.error);
   return { ok: true, graph: parsed.graph, select: sub.out };
+}
+
+// ------------------------------------------------------------------ pin edits
+
+/** Checks a pin target: it must be an existing node (a bare id or `id.out`). Returns the node id. */
+function pinTargetOf(g: Graph, ref: PortRef): { id: NodeId } | { error: string } {
+  const r = resolvePin(g.nodes, ref);
+  return r.ok ? { id: r.at.node } : { error: r.error };
+}
+
+function withPins(g: Graph, predictions: PortRef[], loss: PortRef | null): EditResult {
+  const parsed = parseGraph({ ...g, predictions, loss });
+  return parsed.ok ? { ok: true, graph: parsed.graph } : fail(parsed.error);
+}
+
+/**
+ * Moves the L pin to the output of `ref` (a node id), or removes it with `null`. There is exactly
+ * one L pin, so dropping it elsewhere moves it. Refused when the old or the new node is locked.
+ */
+export function setLoss(g: Graph, ref: PortRef | null, opts?: EditOptions): EditResult {
+  let next: NodeId | null = null;
+  if (ref !== null) {
+    const t = pinTargetOf(g, ref);
+    if ('error' in t) return fail(t.error);
+    next = t.id;
+  }
+  const old = g.loss === null ? [] : [pinNode(g.loss)];
+  if (lockedAmong(opts, [...old, ...(next === null ? [] : [next])])) return fail(LOCKED_MESSAGE);
+  if (next !== null && g.loss !== null && pinNode(g.loss) === next) {
+    return fail('That is already the loss.');
+  }
+  return withPins(g, g.predictions, next);
+}
+
+/** Adds a ŷ pin on the output of `ref`. The same node cannot be a ŷ twice. Refused on a locked node. */
+export function addPrediction(g: Graph, ref: PortRef, opts?: EditOptions): EditResult {
+  const t = pinTargetOf(g, ref);
+  if ('error' in t) return fail(t.error);
+  if (lockedAmong(opts, [t.id])) return fail(LOCKED_MESSAGE);
+  if (g.predictions.some((p) => pinNode(p) === t.id)) {
+    return fail('That piece is already a prediction.');
+  }
+  return withPins(g, [...g.predictions, t.id], g.loss);
+}
+
+/** Moves the ŷ pin at `index` (into `graph.predictions`) to another node, keeping its place in the order. */
+export function movePrediction(
+  g: Graph,
+  index: number,
+  ref: PortRef,
+  opts?: EditOptions,
+): EditResult {
+  const old = g.predictions[index];
+  if (old === undefined) return fail('That prediction does not exist.');
+  const t = pinTargetOf(g, ref);
+  if ('error' in t) return fail(t.error);
+  if (lockedAmong(opts, [pinNode(old), t.id])) return fail(LOCKED_MESSAGE);
+  if (pinNode(old) === t.id) return fail('That is already the prediction.');
+  if (g.predictions.some((p) => pinNode(p) === t.id)) {
+    return fail('That piece is already a prediction.');
+  }
+  return withPins(
+    g,
+    g.predictions.map((p, i) => (i === index ? t.id : p)),
+    g.loss,
+  );
+}
+
+/** Removes the ŷ pin at `index`. Refused when its node is locked. */
+export function removePrediction(g: Graph, index: number, opts?: EditOptions): EditResult {
+  const old = g.predictions[index];
+  if (old === undefined) return fail('That prediction does not exist.');
+  if (lockedAmong(opts, [pinNode(old)])) return fail(LOCKED_MESSAGE);
+  return withPins(
+    g,
+    g.predictions.filter((_, i) => i !== index),
+    g.loss,
+  );
 }
 
 /** Sets which data columns an Input piece uses, in the order given. Refused for repeats. */

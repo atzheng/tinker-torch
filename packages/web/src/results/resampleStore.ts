@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { biasVariance, grid1d, grid2d, truth } from '@tinker/core';
+import { plotIndex } from '../state/plotPrediction.js';
 import { useStore } from '../state/store.js';
 import type { ResampleRequest, ResampleResponse } from './resampleRun.js';
 
@@ -129,6 +130,7 @@ export function runOverlay(): void {
     k: COPIES,
     seed: graph.data.seed,
     gridN,
+    prediction: plotIndex(graph, st.plotPrediction),
   };
   w.postMessage(req);
 }

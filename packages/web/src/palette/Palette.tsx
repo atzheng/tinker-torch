@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { PALETTE, type PaletteEntry } from '@tinker/core';
 import { dnd } from '../canvas/dnd.js';
 import { HINTS } from '../hints.js';
@@ -70,18 +70,28 @@ export const ENTRY_TITLES: Record<string, string> = {
   weight_penalty: `Weight penalty: discourages large weights. ${GROUP}`,
 };
 
-const GROUPS: { family: PaletteEntry['family']; label: string }[] = [
-  { family: 'inputs', label: 'Inputs' },
-  { family: 'features', label: 'Features' },
-  { family: 'linear', label: 'Linear' },
-  { family: 'activations', label: 'Activations' },
-  { family: 'structure', label: 'Structure' },
-  { family: 'links', label: 'Links' },
-  { family: 'math', label: 'Math' },
-  { family: 'errors', label: 'Errors' },
-  { family: 'reductions', label: 'Reductions' },
-  { family: 'losses', label: 'Losses' },
-  { family: 'parameters', label: 'Parameters' },
+/**
+ * The palette's groups, in order. Most are one family; "Ready-made losses" is every macro (the five
+ * classic losses and the weight penalty), which share the Losses and Parameters families with
+ * primitives. `open` is the start state: the pieces a first network needs are open, the primitives
+ * for building a loss by hand are one click away.
+ */
+type Group = { id: string; label: string; open: boolean; has: (e: PaletteEntry) => boolean };
+const inFamily = (f: PaletteEntry['family']) => (e: PaletteEntry) =>
+  e.kind === 'piece' && e.family === f;
+export const GROUPS: Group[] = [
+  { id: 'inputs', label: 'Inputs', open: true, has: inFamily('inputs') },
+  { id: 'features', label: 'Features', open: false, has: inFamily('features') },
+  { id: 'linear', label: 'Linear', open: true, has: inFamily('linear') },
+  { id: 'activations', label: 'Activations', open: true, has: inFamily('activations') },
+  { id: 'structure', label: 'Structure', open: false, has: inFamily('structure') },
+  { id: 'links', label: 'Links', open: true, has: inFamily('links') },
+  { id: 'math', label: 'Math', open: false, has: inFamily('math') },
+  { id: 'errors', label: 'Errors', open: false, has: inFamily('errors') },
+  { id: 'reductions', label: 'Reductions', open: false, has: inFamily('reductions') },
+  { id: 'losses', label: 'Losses', open: false, has: inFamily('losses') },
+  { id: 'parameters', label: 'Parameters', open: false, has: inFamily('parameters') },
+  { id: 'ready', label: 'Ready-made losses', open: true, has: (e) => e.kind === 'macro' },
 ];
 
 /**
@@ -93,6 +103,9 @@ export function Palette() {
   const drag = useSyncExternalStore(dnd.subscribe, dnd.get, () => null);
   const dragging = drag?.payload.kind === 'palette' ? drag.payload.entry : null;
   const armed = useSyncExternalStore(dnd.subscribe, dnd.armed, () => null);
+  const [open, setOpen] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(GROUPS.map((g) => [g.id, g.open])),
+  );
   useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no ghost
   // Tap-to-add ends on Escape, or on a press that is neither on the palette nor on the drawing.
   useEffect(() => {
@@ -121,52 +134,70 @@ export function Palette() {
         </p>
       </div>
       {GROUPS.map((g) => (
-        <section key={g.family} className="tk-palette-group" aria-label={g.label}>
-          <h3>{g.label}</h3>
-          {PALETTE.filter((e) => e.family === g.family).map((entry) => (
+        <section
+          key={g.id}
+          className="tk-palette-group"
+          aria-label={g.label}
+          data-open={open[g.id]}
+        >
+          <h3>
             <button
-              key={entry.key}
               type="button"
-              className="tk-palette-entry"
-              data-testid={`palette-${entry.key}`}
-              data-dragging={dragging?.key === entry.key}
-              data-role={chipOf(entry).role}
-              data-family={entry.family}
-              data-kind={entry.kind}
-              title={ENTRY_TITLES[entry.key] ?? entry.label}
-              aria-pressed={armed?.key === entry.key}
-              onClick={(e) => {
-                if (e.detail === 0) dnd.arm(entry); // keyboard: Enter or Space picks the entry
-              }}
-              onPointerDown={(e) => {
-                if (e.pointerType === 'mouse' && e.button !== 0) return;
-                // Touch: the palette scrolls vertically (`touch-action: pan-y`), so a drag begins
-                // only once the movement is mostly horizontal; a vertical swipe is left to scroll.
-                const touch = e.pointerType !== 'mouse';
-                let begun = false;
-                startDrag(e, {
-                  onMove: (p) => {
-                    if (!begun) {
-                      if (touch && Math.abs(p.dx) < Math.abs(p.dy)) return;
-                      begun = true;
-                      dnd.begin({ kind: 'palette', entry }, p.x, p.y);
-                    }
-                    dnd.move(p.x, p.y);
-                  },
-                  onTap: () => dnd.arm(entry),
-                  onEnd: (p) => (begun ? dnd.end(p.x, p.y) : undefined),
-                  onCancel: () => dnd.cancel(),
-                });
-              }}
+              className="tk-palette-toggle"
+              data-testid={`palette-group-${g.id}`}
+              aria-expanded={open[g.id]}
+              onClick={() => setOpen((o) => ({ ...o, [g.id]: !o[g.id] }))}
             >
-              <span className="tk-chip-label">{entry.label}</span>
-              {chipOf(entry).glyph && (
-                <span className="tk-chip-glyph" aria-hidden="true">
-                  <Tex src={chipOf(entry).glyph ?? ''} />
-                </span>
-              )}
+              <span aria-hidden="true" className="tk-palette-caret" />
+              {g.label}
             </button>
-          ))}
+          </h3>
+          <div hidden={!open[g.id]}>
+            {PALETTE.filter(g.has).map((entry) => (
+              <button
+                key={entry.key}
+                type="button"
+                className="tk-palette-entry"
+                data-testid={`palette-${entry.key}`}
+                data-dragging={dragging?.key === entry.key}
+                data-role={chipOf(entry).role}
+                data-family={entry.family}
+                data-kind={entry.kind}
+                title={ENTRY_TITLES[entry.key] ?? entry.label}
+                aria-pressed={armed?.key === entry.key}
+                onClick={(e) => {
+                  if (e.detail === 0) dnd.arm(entry); // keyboard: Enter or Space picks the entry
+                }}
+                onPointerDown={(e) => {
+                  if (e.pointerType === 'mouse' && e.button !== 0) return;
+                  // Touch: the palette scrolls vertically (`touch-action: pan-y`), so a drag begins
+                  // only once the movement is mostly horizontal; a vertical swipe is left to scroll.
+                  const touch = e.pointerType !== 'mouse';
+                  let begun = false;
+                  startDrag(e, {
+                    onMove: (p) => {
+                      if (!begun) {
+                        if (touch && Math.abs(p.dx) < Math.abs(p.dy)) return;
+                        begun = true;
+                        dnd.begin({ kind: 'palette', entry }, p.x, p.y);
+                      }
+                      dnd.move(p.x, p.y);
+                    },
+                    onTap: () => dnd.arm(entry),
+                    onEnd: (p) => (begun ? dnd.end(p.x, p.y) : undefined),
+                    onCancel: () => dnd.cancel(),
+                  });
+                }}
+              >
+                <span className="tk-chip-label">{entry.label}</span>
+                {chipOf(entry).glyph && (
+                  <span className="tk-chip-glyph" aria-hidden="true">
+                    <Tex src={chipOf(entry).glyph ?? ''} />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </section>
       ))}
       {dragging && drag && (
