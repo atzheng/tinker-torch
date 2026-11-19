@@ -251,35 +251,12 @@ export function pinCanLandOn(
   return pin.role === 'loss' || !graph.predictions.some((p) => parsePort(p).node === id);
 }
 
-/**
- * Adds a piece on its own with its top-left at `at`. The layout cannot go left of or above its
- * margin, so a spot beyond it (the drawing is centred in a larger view) moves every piece by the
- * difference instead, in the same edit: `boxes` are where the pieces are drawn now.
- */
-function placeFree(
-  graph: Graph,
-  piece: NodeBody,
-  at: readonly [number, number] | undefined,
-  boxes: Readonly<Record<NodeId, { x: number; y: number }>> | undefined,
-): EditResult {
-  const dx = at ? Math.max(0, LAYOUT.pad - at[0]) : 0;
-  const dy = at ? Math.max(0, LAYOUT.pad - at[1]) : 0;
-  if (!at || !boxes || (dx === 0 && dy === 0)) return addPiece(graph, piece, at);
-  const added = addPiece(graph, piece);
-  if (!added.ok || added.select === undefined) return added;
-  const moves: Record<NodeId, [number, number]> = {};
-  for (const [id, b] of Object.entries(boxes)) moves[id] = [b.x + dx, b.y + dy];
-  moves[added.select] = [at[0] + dx, at[1] + dy];
-  const moved = moveNodes(added.graph, moves);
-  return moved.ok ? { ...moved, select: added.select } : moved;
-}
-
 /** The pure edit a drop stands for, or null when the pair makes no edit. */
 export function editForDrop(
   graph: Graph,
   payload: DragPayload,
   target: DropTarget,
-  opts?: { locked?: readonly NodeId[]; boxes?: Readonly<Record<NodeId, { x: number; y: number }>> },
+  opts?: { locked?: readonly NodeId[] },
 ): EditResult | null {
   if (payload.kind === 'wire') {
     return target.kind === 'port' ? connect(graph, payload.from, target.port, opts) : null;
@@ -301,8 +278,7 @@ export function editForDrop(
   const made = entry.make();
   if (target.kind === 'wire') return insertOnWire(graph, target.edge, made, opts);
   if (target.kind === 'node') return swapPiece(graph, target.id, made, opts);
-  if (target.kind === 'free' && placeable(entry))
-    return placeFree(graph, made, target.at, opts?.boxes);
+  if (target.kind === 'free' && placeable(entry)) return addPiece(graph, made, target.at);
   return null;
 }
 

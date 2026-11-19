@@ -113,6 +113,37 @@ describe('weight wires', () => {
     expect(lay(fan).wires.filter((w) => w.weightNode === 'w1')).toHaveLength(2);
   });
 
+  test('pills of weight wires that share a source do not overlap', () => {
+    const g = build();
+    const fan: Graph = {
+      ...g,
+      nodes: [...g.nodes, { id: 'w3', type: 'scalew' }],
+      edges: [...g.edges, ['x1', 'w3'], ['w3', 'sum']],
+    };
+    const l = lay(fan);
+    const pills = l.wires.filter((w) => w.weightNode).map((w) => w.labelAt);
+    expect(pills).toHaveLength(3);
+    for (let i = 0; i < pills.length; i++) {
+      for (let j = i + 1; j < pills.length; j++) {
+        const a = pills[i] as [number, number];
+        const b = pills[j] as [number, number];
+        // a pill is about 24 units tall at scale 1
+        const apart = Math.abs(a[0] - b[0]) >= 100 || Math.abs(a[1] - b[1]) >= 24;
+        expect(apart).toBe(true);
+      }
+    }
+    const one = lay(g).wires.find((w) => w.weightNode === 'w1');
+    expect(one?.labelAt[1]).toBe((l.nodes['x1']?.y ?? 0) + (l.nodes['x1']?.h ?? 0) / 2);
+  });
+
+  test('a Weight with a pin keeps its box', () => {
+    const g = build();
+    const pinned: Graph = { ...g, predictions: ['w1'] };
+    expect(collapsedWeights(pinned).has('w1')).toBe(false);
+    expect(lay(pinned).nodes['w1']).toBeDefined();
+    expect(collapsedWeights({ ...g, loss: 'w2' }).has('w2')).toBe(false);
+  });
+
   test('neuron view keeps the Weight as a box', () => {
     const g = build();
     expect(layoutNeurons(g, analyse(g, info)).boxes['w1']).toBeDefined();

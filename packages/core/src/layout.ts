@@ -47,6 +47,8 @@ export const LAYOUT = {
   layerGap: 72,
   /** Extra space after a column whose pieces start a weight wire (layer view): its pill sits at mid-gap. */
   weightGap: 64,
+  /** Vertical distance between the pills of weight wires that share a source (they meet at the same elbow). */
+  pillPitch: 36,
   /** Space between columns in neuron view (weight edges cross it). */
   neuronGap: 150,
   /** Width of a column of unit circles, and the vertical pitch of the circles. */
@@ -72,6 +74,10 @@ type Core = {
   wires: LayerLayout['wires'];
   size: [number, number];
 };
+
+function pillOffset(slot: [number, number] | undefined): number {
+  return slot ? (slot[0] - (slot[1] - 1) / 2) * LAYOUT.pillPitch : 0;
+}
 
 function nullRecord<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>;
@@ -443,6 +449,17 @@ function layoutCore(
     list.forEach((e, j) => slotOf.set(e.index, [j, list.length]));
   }
 
+  // Weight wires from the same source share an elbow: stagger their pills about it, in edge order.
+  const pillSlot = new Map<number, [number, number]>();
+  const bySource = new Map<NodeId, number[]>();
+  for (const e of edges) {
+    if (e.weight === undefined) continue;
+    const l = bySource.get(e.from);
+    if (l) l.push(e.index);
+    else bySource.set(e.from, [e.index]);
+  }
+  for (const l of bySource.values()) l.forEach((i, k) => pillSlot.set(i, [k, l.length]));
+
   const wires: LayerLayout['wires'] = [];
   for (const e of edges) {
     const a = boxes[e.from];
@@ -480,7 +497,7 @@ function layoutCore(
       // A weight's pill sits where its wire turns, mid-gap, clear of both pieces.
       labelAt:
         e.weight !== undefined && cb - ca === 1 && !manual.has(e.from) && !manual.has(e.to)
-          ? [gapR, y0]
+          ? [gapR, y0 + pillOffset(pillSlot.get(e.index))]
           : labelAnchor(points),
       ...(e.weight !== undefined && e.via !== undefined
         ? { weightNode: e.weight, viaEdge: e.via }

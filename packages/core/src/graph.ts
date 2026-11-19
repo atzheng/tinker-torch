@@ -275,10 +275,15 @@ export function resolvePin(nodes: readonly Node[], ref: PortRef): ResolvedPin {
 /**
  * The Weight pieces (`scalew`) drawn as a labelled wire rather than a box in layer view
  * (CONTRACTS.md section 9, "Weight wires"): a Weight with exactly one wire in, from a piece that is
- * not itself a Weight, and at least one wire out. Such a piece has no box, so it has no position.
+ * not itself a Weight, at least one wire out, and no ŷ or L pin. Such a piece has no box, so it has no position.
  * Resolved edges only; the first node of a duplicate id wins.
  */
-export function collapsedWeights(g: Pick<Graph, 'nodes' | 'edges'>): Set<NodeId> {
+export function collapsedWeights(
+  g: Pick<Graph, 'nodes' | 'edges' | 'predictions' | 'loss'>,
+): Set<NodeId> {
+  // A pinned Weight keeps its box: the pin needs a port to sit on.
+  const pinned = new Set<NodeId>(g.predictions.map((p) => parsePort(p).node));
+  if (g.loss !== null) pinned.add(parsePort(g.loss).node);
   const first = new Map<NodeId, Node>();
   for (const n of g.nodes) if (!first.has(n.id)) first.set(n.id, n);
   const feeders = new Map<NodeId, NodeId[]>();
@@ -293,7 +298,7 @@ export function collapsedWeights(g: Pick<Graph, 'nodes' | 'edges'>): Set<NodeId>
   }
   const out = new Set<NodeId>();
   for (const n of first.values()) {
-    if (n.type !== 'scalew') continue;
+    if (n.type !== 'scalew' || pinned.has(n.id)) continue;
     const from = feeders.get(n.id);
     const src = from?.length === 1 ? first.get(from[0] as NodeId) : undefined;
     if (src && src.type !== 'scalew' && src.id !== n.id && (consumers.get(n.id) ?? 0) > 0) {
