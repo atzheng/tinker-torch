@@ -26,7 +26,7 @@ export function weightAt(
   shape?: readonly [number, number],
 ): number | undefined {
   const e = host?.[node];
-  if (!e || e.W.length !== inWidth * out || i < 0 || j < 0 || i >= inWidth || j >= out) {
+  if (!e?.W || e.W.length !== inWidth * out || i < 0 || j < 0 || i >= inWidth || j >= out) {
     return undefined;
   }
   if (shape && (shape[0] !== inWidth || shape[1] !== out)) return undefined;

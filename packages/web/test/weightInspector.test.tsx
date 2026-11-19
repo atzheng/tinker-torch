@@ -55,10 +55,10 @@ test('Escape commits nothing; Enter commits one undo step', () => {
   type(field(), '0.5');
   key('Escape');
   expect(s().past.length).toBe(past);
-  expect(s().host?.lin1?.W[0]).not.toBeCloseTo(0.5, 6);
+  expect(s().host?.lin1?.W?.[0]).not.toBeCloseTo(0.5, 6);
   field().focus();
   type(field(), '0.5');
   key('Enter');
   expect(s().past.length).toBe(past + 1);
-  expect(s().host?.lin1?.W[0]).toBeCloseTo(0.5, 6);
+  expect(s().host?.lin1?.W?.[0]).toBeCloseTo(0.5, 6);
 });

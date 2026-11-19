@@ -1,10 +1,11 @@
 import { parseGraphWithMap, serializeGraph, type Graph, type NodeId } from './graph.js';
+import type { JsonParams } from './params.js';
 
 export type SaveFile = {
   kind: 'tinker';
   version: 2;
   graph: Graph;
-  params?: Record<NodeId, { W: number[]; b?: number[] }>;
+  params?: JsonParams;
 };
 export type Preset = SaveFile & { title: string; prompt?: string; locked?: NodeId[] };
 
@@ -80,10 +81,7 @@ export function parseFileText(text: string): ParseFileResult {
 }
 
 /** Two-space JSON with the graph in its stable key order; the same inputs always give the same text. */
-export function serializeFile(
-  graph: Graph,
-  params?: Record<NodeId, { W: number[]; b?: number[] }>,
-): string {
+export function serializeFile(graph: Graph, params?: JsonParams): string {
   const doc: Record<string, unknown> = {
     kind: 'tinker',
     version: 2,

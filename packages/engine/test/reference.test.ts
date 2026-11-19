@@ -152,7 +152,7 @@ describe('fixtures', () => {
         const now = after[id];
         if (!before || !now) return [];
         return [
-          ...Array.from(before.W, (w, i) => w - (now.W[i] ?? NaN)),
+          ...Array.from(before.W ?? [], (w, i) => w - (now.W?.[i] ?? NaN)),
           ...(before.b ? Array.from(before.b, (w, i) => w - (now.b?.[i] ?? NaN)) : []),
         ];
       });

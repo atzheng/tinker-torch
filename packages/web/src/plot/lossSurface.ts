@@ -25,9 +25,9 @@ export function twoParams(
   for (const node of order) {
     const p = Object.hasOwn(host, node) ? host[node] : undefined;
     if (!p) continue;
-    for (let i = 0; i < p.W.length; i++) {
+    for (let i = 0; i < (p.W?.length ?? 0); i++) {
       axes.push({ node, tensor: 'W', index: i });
-      values.push(p.W[i] ?? 0);
+      values.push(p.W?.[i] ?? 0);
     }
     if (p.b) {
       for (let i = 0; i < p.b.length; i++) {

@@ -23,7 +23,7 @@ export interface Engine {
   init(model: Model, seed: number): Params;
   fromHost(model: Model, host: HostParams): Params;
   toHost(params: Params): HostParams;
-  write(params: Params, nodeId: NodeId, values: { W?: Float32Array; b?: Float32Array }): Params;
+  write(params: Params, nodeId: NodeId, values: Readonly<Record<string, Float32Array>>): Params;
   startTraining(model: Model, params: Params, seed: number): TrainState;
   step(model: Model, state: TrainState, batch: Batch): StepResult;
   /** One `[n, width]` array per ŷ pin, in pin order (empty with no ŷ). */

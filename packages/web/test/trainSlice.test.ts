@@ -16,7 +16,7 @@ test('host and graph change in the same store update', () => {
     const st = s(); // current state, as React reads it (the listener argument can be stale)
     const lin = st.graph.nodes.find((n) => n.id === 'lin1');
     if (lin?.type !== 'linear' || !st.host) return;
-    seen.push({ out: lin.out, wLen: st.host.lin1?.W.length ?? null });
+    seen.push({ out: lin.out, wLen: st.host.lin1?.W?.length ?? null });
   });
   const r = setLinearOut(s().graph, 'lin1', 6);
   s().apply(r);
