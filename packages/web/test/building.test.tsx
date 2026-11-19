@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { analyse, layoutLayers } from '@tinker/core';
+import { PALETTE, analyse, connect, layoutLayers, setLoss } from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { fitTransform } from '../src/canvas/pure.js';
 import { layerBaseView } from '../src/canvas/viewport.js';
@@ -18,6 +18,19 @@ let host: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  // jsdom lays nothing out: the canvas region is 800 x 500 at the origin (the size `screenOf` assumes).
+  Element.prototype.getBoundingClientRect = () =>
+    ({
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 500,
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 500,
+      toJSON: () => ({}),
+    }) as DOMRect;
   s().loadGraph(initialGraph());
   s().select(null);
   host = document.createElement('div');
@@ -44,9 +57,9 @@ const must = (id: string): Element => {
   return el;
 };
 
-function ptr(el: Element, type: string, x: number, y: number) {
+function ptr(el: Element, type: string, x: number, y: number, pointerType = 'touch') {
   const e = new Event(type, { bubbles: true, cancelable: true });
-  Object.assign(e, { pointerId: 1, clientX: x, clientY: y, button: 0, pointerType: 'touch' });
+  Object.assign(e, { pointerId: 1, clientX: x, clientY: y, button: 0, pointerType });
   act(() => void el.dispatchEvent(e));
 }
 
@@ -61,12 +74,12 @@ function screenOf(fn: (l: ReturnType<typeof layoutLayers>) => [number, number]):
   return [x * t.scale + t.tx, y * t.scale + t.ty];
 }
 
-function dragEntry(key: string, to: [number, number]) {
+function dragEntry(key: string, to: [number, number], kind = 'touch') {
   const el = must(`palette-${key}`);
-  ptr(el, 'pointerdown', 20, 20);
-  ptr(el, 'pointermove', 60, 60);
-  ptr(el, 'pointermove', to[0], to[1]);
-  return () => ptr(el, 'pointerup', to[0], to[1]);
+  ptr(el, 'pointerdown', 20, 20, kind);
+  ptr(el, 'pointermove', 60, 60, kind);
+  ptr(el, 'pointermove', to[0], to[1], kind);
+  return () => ptr(el, 'pointerup', to[0], to[1], kind);
 }
 
 test('drag a piece onto a wire inserts it, onto a piece swaps it; undo restores', () => {
@@ -94,11 +107,60 @@ test('drag a piece onto a wire inserts it, onto a piece swaps it; undo restores'
   expect(s().graph).toEqual(original);
 });
 
-test('dropping on empty canvas does nothing', () => {
-  const before = s().graph;
-  dragEntry('dropout', [790, 490])();
-  expect(s().graph).toBe(before);
-  expect(host.querySelector('[data-testid="palette-ghost"]')).toBeNull();
+const EMPTY: [number, number] = [780, 470];
+const newNodes = (before: { nodes: { id: string }[] }) =>
+  s().graph.nodes.filter((n) => !before.nodes.some((m) => m.id === n.id));
+
+test.each(['mouse', 'touch'])(
+  'every palette entry dragged onto empty canvas (%s) is placed there, inert, in one undo step',
+  (kind) => {
+    for (const entry of PALETTE) {
+      const before = s().graph;
+      dragEntry(entry.key, EMPTY, kind)();
+      const added = newNodes(before);
+      expect(added.length, entry.key).toBeGreaterThan(0);
+      for (const n of added)
+        expect(s().graph.positions?.[n.id], `${entry.key} ${n.id}`).toBeDefined();
+      expect(s().analysis.trainable, entry.key).toBe(true);
+      act(() => s().undo());
+      expect(s().graph, entry.key).toEqual(before);
+      act(() => s().redo());
+      expect(newNodes(before).length, entry.key).toBe(added.length);
+      act(() => s().undo());
+    }
+  },
+);
+
+test.each(['mouse', 'touch'])(
+  'tap-to-add (%s): arm any palette entry, tap empty canvas, it lands there',
+  (kind) => {
+    for (const entry of PALETTE) {
+      const before = s().graph;
+      const el = must(`palette-${entry.key}`);
+      ptr(el, 'pointerdown', 20, 20, kind);
+      ptr(el, 'pointerup', 20, 20, kind);
+      expect(must('armed-hint').textContent, entry.key).toMatch(/empty canvas/);
+      const svg = must('canvas-svg');
+      ptr(svg, 'pointerdown', EMPTY[0], EMPTY[1], kind);
+      ptr(svg, 'pointerup', EMPTY[0], EMPTY[1], kind);
+      const added = newNodes(before);
+      expect(added.length, entry.key).toBeGreaterThan(0);
+      for (const n of added)
+        expect(s().graph.positions?.[n.id], `${entry.key} ${n.id}`).toBeDefined();
+      act(() => s().undo());
+    }
+  },
+);
+
+test('an unwired piece shows the inert state and training stays possible; wiring it in makes it live', () => {
+  dragEntry('square', EMPTY)();
+  const id = newNodes(initialGraph())[0]?.id ?? '';
+  expect(must(`node-${id}`).getAttribute('data-inert')).toBe('true');
+  expect(must(`inert-${id}`).textContent).toBe('not connected');
+  expect(s().analysis.trainable).toBe(true);
+  act(() => void s().apply(connect(s().graph, 'err', id)));
+  act(() => void s().apply(setLoss(s().graph, id)));
+  expect(must(`node-${id}`).getAttribute('data-inert')).toBe('false');
 });
 
 test('Delete removes the selected piece, Cmd+Z restores, and a cycle shows the toast', () => {

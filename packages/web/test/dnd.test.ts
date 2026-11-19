@@ -1,5 +1,12 @@
 import { expect, test } from 'vitest';
-import { PALETTE, analyse, layoutLayers, type Graph, type PaletteEntry } from '@tinker/core';
+import {
+  LAYOUT,
+  PALETTE,
+  analyse,
+  layoutLayers,
+  type Graph,
+  type PaletteEntry,
+} from '@tinker/core';
 import {
   dnd,
   dropCandidates,
@@ -65,13 +72,28 @@ test('a palette piece over a wire label targets that wire; a piece with no input
   });
 });
 
-test('dropping a piece on empty canvas cancels; a ready-made group goes in free-standing', () => {
+test('every palette entry dropped on empty canvas goes in free-standing at the drop point', () => {
   const { g, a, layout } = setup();
   const at = { x: -500, y: -500 };
-  expect(resolveDrop(palette('activation'), g, layout, a.edgeWidth, SCALE, at)).toBeNull();
-  expect(resolveDrop(palette('loss_huber'), g, layout, a.edgeWidth, SCALE, at)).toEqual({
-    kind: 'free',
-  });
+  for (const entry of PALETTE) {
+    const t = resolveDrop({ kind: 'palette', entry }, g, layout, a.edgeWidth, SCALE, at);
+    expect(t, entry.key).toEqual({ kind: 'free', at: [-552, -528] });
+  }
+});
+
+test('editForDrop puts every piece and group on empty canvas, positioned, as one edit', () => {
+  const g = initialGraph();
+  for (const entry of PALETTE) {
+    const r = editForDrop(g, { kind: 'palette', entry }, { kind: 'free', at: [480, 320] });
+    if (!r?.ok) {
+      // the only refusals: a Weights tap needs a Linear; the penalty needs a Linear
+      expect(['weights', 'weight_penalty'], entry.key).toContain(entry.key);
+      continue;
+    }
+    expect(r.graph.nodes.length, entry.key).toBeGreaterThan(g.nodes.length);
+    const added = r.graph.nodes.filter((n) => !g.nodes.some((m) => m.id === n.id));
+    for (const n of added) expect(r.graph.positions?.[n.id], `${entry.key} ${n.id}`).toBeDefined();
+  }
 });
 
 test('every wire label resolves to its own wire, including the two that meet at the loss', () => {
@@ -216,4 +238,45 @@ test('dropCandidates: wires for insertable pieces and groups, same-family pieces
   expect(pen.edges.size).toBe(g.edges.length);
   expect(pen.nodes.size).toBe(0);
   expect(dropCandidates(entry('input'), g).edges.size).toBe(0);
+});
+
+test('a piece dropped on an occupied spot is nudged to the nearest free grid slot', async () => {
+  const { freeSlot } = await import('../src/canvas/dnd.js');
+  expect(freeSlot([200, 100], [])).toEqual([200, 100]);
+  const others: [number, number][] = [[200, 100]];
+  const s = freeSlot([200, 100], others);
+  expect(s).not.toEqual([200, 100]);
+  expect(s[0] % 8).toBe(0);
+  expect(s[1] % 8).toBe(0);
+  const overlap = Math.abs(s[0] - 200) < LAYOUT.boxW + 8 && Math.abs(s[1] - 100) < LAYOUT.boxH + 8;
+  expect(overlap).toBe(false);
+  // Several pieces in a row: still free of all of them.
+  const row: [number, number][] = [
+    [200, 100],
+    [320, 100],
+    [80, 100],
+  ];
+  const r = freeSlot([200, 100], row);
+  for (const [ox, oy] of row) {
+    expect(Math.abs(r[0] - ox) >= LAYOUT.boxW + 8 || Math.abs(r[1] - oy) >= LAYOUT.boxH + 8).toBe(
+      true,
+    );
+  }
+  // Via editForDrop: a Column dropped on top of an existing piece does not share its position.
+  const g = initialGraph();
+  const a = analyse(g, { columns: ['x1'], kind: 'regression', numClasses: 1 });
+  const layout = layoutLayers(g, a);
+  const b = layout.nodes['lin1'];
+  if (!b) throw new Error('no box');
+  const r2 = editForDrop(
+    g,
+    { kind: 'palette', entry: PALETTE.find((e) => e.key === 'column') as PaletteEntry },
+    { kind: 'free', at: [b.x, b.y] },
+    { boxes: layout.nodes },
+  );
+  if (!r2?.ok) throw new Error('no edit');
+  const id = r2.select ?? '';
+  const p = r2.graph.positions?.[id];
+  expect(p).toBeDefined();
+  expect(p?.[0] !== b.x || p?.[1] !== b.y).toBe(true);
 });

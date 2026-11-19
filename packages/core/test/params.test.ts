@@ -325,3 +325,44 @@ describe('a non-Linear parameter owner (stub)', () => {
     expect(r.params['l1']).toBeUndefined();
   });
 });
+
+describe('inert owners keep their weights frozen (tinker-l6y)', () => {
+  const live = net([2, 1]);
+  /** l2 reads the Input directly, so l1 is a Linear nobody needs: inert, width still known. */
+  const cut = (g: Graph, out = 2): Graph => ({
+    ...g,
+    nodes: g.nodes.map((n) => (n.id === 'l1' ? { ...n, out } : n)),
+    edges: g.edges.map((e): Edge => (e[0] === 'l1' ? ['in', e[1]] : e)),
+  });
+  const trained = () => {
+    const h = initParams(an(live), 1);
+    const W = h['l1']?.['W'];
+    if (W) W.fill(0.123);
+    return h;
+  };
+
+  test('live -> inert -> live keeps W bit for bit (pin away and back, wire deleted then undone)', () => {
+    const h0 = trained();
+    const inertG = cut(live);
+    expect(an(inertG).inert).toContain('l1');
+    const h1 = reconcileParams(h0, an(live), an(inertG), 1);
+    expect(h1['l1']?.['W']).toBe(h0['l1']?.['W']);
+    expect(Object.keys(h1)).toContain('l1');
+    expect(an(inertG).paramNodes).not.toContain('l1');
+    const h2 = reconcileParams(h1, an(inertG), an(live), 1);
+    expect(h2['l1']?.['W']).toBe(h0['l1']?.['W']);
+    expect(Array.from(h2['l1']?.['W'] ?? [])).toEqual(Array.from(h0['l1']?.['W'] ?? []));
+  });
+
+  test('a shape change while inert re-inits, and a deleted node is dropped', () => {
+    const h0 = trained();
+    const h1 = reconcileParams(h0, an(live), an(cut(live)), 1);
+    const wider = cut(live, 3);
+    const h2 = reconcileParams(h1, an(cut(live)), an(wider), 1);
+    expect(Object.keys(h2)).not.toContain('l1');
+    const gone: Graph = { ...wider, nodes: wider.nodes.filter((n) => n.id !== 'l1') };
+    expect(Object.keys(reconcileParams(h1, an(cut(live)), an(gone), 1))).not.toContain('l1');
+    const back = reconcileParams(h2, an(wider), an(live), 1);
+    expect(back['l1']?.['W']).not.toBe(h0['l1']?.['W']);
+  });
+});

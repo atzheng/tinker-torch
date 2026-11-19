@@ -21,9 +21,9 @@ type Owner = { shapes: ParamShapes; init: ParamInit; type: string | undefined };
  * Shapes and init of every live param node (`analysis.paramNodes`) whose input width is known. A Linear
  * read only through a Weights tap is live too, though it is not in `analysis.order`.
  */
-function owners(analysis: Analysis): Map<NodeId, Owner> {
+function owners(analysis: Analysis, all = false): Map<NodeId, Owner> {
   const out = new Map<NodeId, Owner>();
-  for (const id of analysis.paramNodes) {
+  for (const id of all ? Object.keys(analysis.paramShapes) : analysis.paramNodes) {
     const shapes = analysis.paramShapes[id];
     const init = analysis.paramInit[id];
     if (shapes && init) out.set(id, { shapes, init, type: analysis.paramType[id] });
@@ -76,7 +76,9 @@ const sameShape = (a: readonly number[] | undefined, b: readonly number[] | unde
  * are drawn fresh and tensors only in the old are dropped (Linear: W is kept when [in, out] is unchanged
  * even if bias was toggled; b is drawn fresh when bias is turned on). If any shared tensor changed shape,
  * or the old entry does not fit, or the node's piece type changed (an id reused for another piece), the
- * whole node is re-inited. Nodes that are no longer live are dropped.
+ * whole node is re-inited. A node that exists but is inert (no role needs it, so it is never compiled or
+ * trained) keeps its arrays frozen while its param shapes are unchanged, so wiring it in again restores
+ * them bit for bit; it is dropped when deleted, when its shapes change or its input width is unknown.
  * Does not mutate `old`. The returned arrays are shared with `old` and must never be written in place.
  */
 export function reconcileParams(
@@ -85,12 +87,26 @@ export function reconcileParams(
   analysis: Analysis,
   seed: number,
 ): HostParams {
-  const oldOwners = owners(oldAnalysis);
+  const oldOwners = owners(oldAnalysis, true);
+  const live = new Set(analysis.paramNodes);
   const host: HostParams = Object.create(null) as HostParams;
-  for (const [id, o] of owners(analysis)) {
+  for (const [id, o] of owners(analysis, true)) {
     const prev = Object.hasOwn(old, id) ? old[id] : undefined;
     const os = oldOwners.get(id);
     const keys = Object.keys(o.shapes);
+    if (!live.has(id)) {
+      const same =
+        prev !== undefined &&
+        os !== undefined &&
+        os.type === o.type &&
+        keys.length === Object.keys(prev).length &&
+        keys.every(
+          (k) =>
+            prev[k]?.length === size(o.shapes[k] ?? []) && sameShape(os.shapes[k], o.shapes[k]),
+        );
+      if (same) host[id] = prev;
+      continue;
+    }
     const shared = os ? keys.filter((k) => Object.hasOwn(os.shapes, k)) : [];
     const keep =
       prev !== undefined &&

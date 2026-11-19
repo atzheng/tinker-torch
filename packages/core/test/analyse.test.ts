@@ -448,14 +448,104 @@ describe('analyse v2: shapes and wiring', () => {
     );
   });
 
-  test('mean of a scalar, norm of examples', () => {
+  test('mean of a scalar, norm of examples: inert until a pin needs them', () => {
     const gr = spec();
     gr.nodes.push({ id: 'm2', type: 'mean' }, { id: 'n', type: 'norm', kind: 'l1' });
     gr.edges.push(['loss', 'm2'], ['a1', 'n']);
-    expect(messages(analyse(gr, reg))).toEqual([
-      'A norm needs a weight matrix input, but this one is 4 per example.',
-      'Mean needs a per-example input, but this one is a single number.',
-    ]);
+    const inert = analyse(gr, reg);
+    expect(inert.issues).toEqual([]);
+    expect(inert.trainable).toBe(true);
+    expect(inert.inert).toEqual(['m2', 'n']);
+    expect(inert.order).not.toContain('m2');
+    // Pinned as predictions they are live, and their issues apply.
+    const live = analyse({ ...gr, predictions: ['l2', 'n', 'm2'] }, reg);
+    expect(live.inert).toEqual([]);
+    expect(messages(live)).toEqual(
+      expect.arrayContaining([
+        'A norm needs a weight matrix input, but this one is 4 per example.',
+        'Mean needs a per-example input, but this one is a single number.',
+      ]),
+    );
+  });
+
+  describe('inert pieces (not needed by a role)', () => {
+    test('unwired pieces of every kind raise no issue and are listed as inert', () => {
+      const gr = spec();
+      gr.nodes.push(
+        lin('lone', 3),
+        act('lonea'),
+        { id: 'sq2', type: 'square' },
+        { id: 'sub2', type: 'subtract' },
+        { id: 'ce', type: 'cross_entropy' },
+        { id: 'col', type: 'column', name: 'x1' },
+        { id: 'in2', type: 'input', columns: ['x1'] },
+      );
+      const a = analyse(gr, reg);
+      expect(a.issues).toEqual([]);
+      expect(a.trainable).toBe(true);
+      expect(a.inert).toEqual(['lone', 'lonea', 'sq2', 'sub2', 'ce', 'col', 'in2']);
+      for (const id of a.inert) expect(a.order).not.toContain(id);
+      // An unwired Linear has no live parameters.
+      expect(a.paramNodes).not.toContain('lone');
+      expect(a.totalParams).toBe(analyse(spec(), reg).totalParams);
+    });
+
+    test('wiring an inert piece into the loss makes it live, and its issues apply', () => {
+      const gr = spec();
+      gr.nodes.push({ id: 'sub2', type: 'subtract' });
+      // sub2 dangling: inert, fine.
+      expect(analyse(gr, reg).trainable).toBe(true);
+      // Feed it into the loss path through an Add: the missing inputs now block.
+      gr.nodes.push({ id: 'tot', type: 'add' });
+      gr.edges.push(['loss', 'tot.a'], ['sub2', 'tot.b']);
+      gr.loss = 'tot';
+      const a = analyse(gr, reg);
+      expect(a.inert).toEqual([]);
+      expect(a.trainable).toBe(false);
+      expect(a.issues.some((i) => i.at.node === 'sub2')).toBe(true);
+    });
+
+    test('a Linear read by a Weights tap that the loss needs is live with its feeders', () => {
+      const gr = g(
+        [
+          input(),
+          lin('l1', 1),
+          tgt,
+          { id: 'w', type: 'weights', of: 'l1' },
+          { id: 'n', type: 'norm', kind: 'l2' },
+          { id: 'x', type: 'input', columns: ['nope'] },
+        ],
+        [
+          ['w', 'n'],
+          ['in', 'l1'],
+        ],
+        [],
+        'n',
+      );
+      const a = analyse(gr, reg);
+      expect(a.trainable).toBe(true);
+      expect(a.paramNodes).toEqual(['l1']);
+      expect(a.inert).toEqual(['y', 'x']);
+      // A broken feeder of that Linear blocks: it is needed for the tap's shape.
+      gr.edges.pop();
+      gr.nodes[0] = { id: 'in', type: 'input', columns: ['nope'] };
+      gr.edges.push(['in', 'l1']);
+      expect(analyse(gr, reg).trainable).toBe(false);
+    });
+
+    test('a cycle still blocks', () => {
+      const gr = spec();
+      gr.nodes.push({ id: 'c1', type: 'add' }, { id: 'c2', type: 'add' });
+      gr.edges.push(['c1', 'c2.a'], ['c2', 'c1.a']);
+      expect(analyse(gr, reg).issues.some((i) => i.message.includes('loop'))).toBe(true);
+    });
+
+    test('with no pin resolved, nothing is inert', () => {
+      const gr = g([input(), lin('l1', 1)], [], [], null);
+      const a = analyse(gr, reg);
+      expect(a.inert).toEqual([]);
+      expect(a.trainable).toBe(false);
+    });
   });
 
   test('a cycle', () => {
