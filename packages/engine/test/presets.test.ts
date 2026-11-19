@@ -1,6 +1,6 @@
-// The bundled presets are version 1 files that open migrated to graph v2. Their training loss at
-// steps 1, 50 and 300 was recorded on main before the cutover (tinker-8xw.6, version 1 graphs through
-// the migration adapter); the same numbers must come out of the v2-only code path.
+// The bundled presets are native graph v2 files (tinker-8xw.5). Their training loss at steps 1, 50
+// and 300 was recorded before the cutover (version 1 graphs through the migration adapter); the same
+// numbers must come out of the native v2 files.
 import { readFileSync } from 'node:fs';
 import { batchSchedule, gatherBatch, initParams, analyse, parseFile, sample } from '@tinker/core';
 import { expect, test } from 'vitest';

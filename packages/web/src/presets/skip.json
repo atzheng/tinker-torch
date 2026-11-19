@@ -1,9 +1,9 @@
 {
   "kind": "tinker",
-  "version": 1,
+  "version": 2,
   "title": "Skip connection on a wiggle",
   "graph": {
-    "version": 1,
+    "version": 2,
     "nodes": [
       {
         "id": "x",
@@ -38,18 +38,20 @@
         "bias": true
       },
       {
-        "id": "yhat",
-        "type": "output",
-        "link": "identity"
-      },
-      {
         "id": "y",
         "type": "target"
       },
       {
+        "id": "diff",
+        "type": "subtract"
+      },
+      {
+        "id": "err",
+        "type": "square"
+      },
+      {
         "id": "loss",
-        "type": "loss",
-        "fn": "squared_error"
+        "type": "mean"
       }
     ],
     "edges": [
@@ -59,16 +61,20 @@
       ["lin1", "add1.a"],
       ["lin2", "add1.b"],
       ["add1", "lin3"],
-      ["lin3", "yhat"],
-      ["yhat", "loss.pred"],
-      ["y", "loss.target"]
+      ["lin3", "diff.a"],
+      ["y", "diff.b"],
+      ["diff", "err"],
+      ["err", "loss"]
     ],
+    "predictions": ["lin3"],
+    "loss": "loss",
     "data": {
       "set": "wiggle",
       "n": 60,
       "noise": 0.1,
       "val": 0.3,
-      "seed": 7
+      "seed": 7,
+      "standardize": false
     },
     "train": {
       "optimizer": "adam",

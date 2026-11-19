@@ -1,9 +1,9 @@
 {
   "kind": "tinker",
-  "version": 1,
+  "version": 2,
   "title": "2-8-8-1 ReLU on XOR",
   "graph": {
-    "version": 1,
+    "version": 2,
     "nodes": [
       {
         "id": "x",
@@ -40,17 +40,20 @@
       },
       {
         "id": "yhat",
-        "type": "output",
-        "link": "sigmoid"
+        "type": "link",
+        "fn": "sigmoid"
       },
       {
         "id": "y",
         "type": "target"
       },
       {
+        "id": "err",
+        "type": "log_loss"
+      },
+      {
         "id": "loss",
-        "type": "loss",
-        "fn": "log_loss"
+        "type": "mean"
       }
     ],
     "edges": [
@@ -60,15 +63,19 @@
       ["lin2", "act2"],
       ["act2", "lin3"],
       ["lin3", "yhat"],
-      ["yhat", "loss.pred"],
-      ["y", "loss.target"]
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
     ],
+    "predictions": ["yhat"],
+    "loss": "loss",
     "data": {
       "set": "xor",
       "n": 100,
       "noise": 0.1,
       "val": 0.3,
-      "seed": 7
+      "seed": 7,
+      "standardize": false
     },
     "train": {
       "optimizer": "adam",
