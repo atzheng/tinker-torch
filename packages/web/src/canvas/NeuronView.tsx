@@ -11,7 +11,7 @@ import {
 } from '@tinker/core';
 import { ACTIVATION_LABEL, ACTIVATION_SYMBOL } from './drawings/activation.js';
 import { WEB_PIECES } from './drawings/index.js';
-import { nameFontUnits } from './pure.js';
+import { fitName } from './pure.js';
 import { NODE_RADIUS, NodeShell, roleOfNode } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 import type { LayerProps } from './drawings/types.js';
@@ -427,6 +427,7 @@ const UNIT_COLUMN_NAME: Partial<Record<Node['type'], string>> = {
 function UnitColumnName({ node, w, scale }: { node: Node; w: number; scale: number }) {
   const text = node.type === 'activation' ? ACTIVATION_LABEL[node.fn] : UNIT_COLUMN_NAME[node.type];
   if (!text) return null;
+  const name = fitName(scale, text, LAYOUT.unitW, 13, 16);
   return (
     <text
       className="tk-name"
@@ -434,9 +435,9 @@ function UnitColumnName({ node, w, scale }: { node: Node; w: number; scale: numb
       x={w / 2}
       y={LAYOUT.unitLabelH - 6}
       textAnchor="middle"
-      style={{ fontSize: nameFontUnits(scale, text, 2 * UNIT_R + 40, 13, 16) }}
+      style={{ fontSize: name.size }}
     >
-      {text}
+      {name.text}
     </text>
   );
 }

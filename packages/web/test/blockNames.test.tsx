@@ -5,8 +5,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { analyse, layoutNeurons, LAYOUT, sample } from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { initialGraph } from '../src/state/graphSlice.js';
+import { editSetting } from '../src/canvas/drawings/fields.js';
 import { useStore } from '../src/state/store.js';
-import { nameFontUnits, MIN_TEXT_PX } from '../src/canvas/pure.js';
+import { fitName, MIN_TEXT_PX } from '../src/canvas/pure.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -36,14 +37,33 @@ test('layer view: each node shows its type, the activation its function, the los
   expect(nameOf('loss')).toBe('Squared error');
 });
 
-test('nameFontUnits keeps names at least MIN_TEXT_PX on screen where the width allows, and never hides them', () => {
-  expect(nameFontUnits(1, 'Linear', 88, 15)).toBe(15);
-  expect(nameFontUnits(undefined, 'Linear', 88, 15)).toBe(15);
-  const f = nameFontUnits(0.45, 'Linear', 88, 15);
-  expect(f * 0.45).toBeGreaterThanOrEqual(MIN_TEXT_PX - 1e-9);
-  // A long name shrinks to fit the box, down to 10 units.
-  expect(nameFontUnits(1, 'Absolute error', 88, 15)).toBeLessThan(15);
-  expect(nameFontUnits(1, 'Absolute error', 88, 15)).toBeGreaterThanOrEqual(10);
+test('fitName keeps names at least MIN_TEXT_PX on screen where the width allows, and never exceeds the width', () => {
+  expect(fitName(1, 'Linear', 88, 15)).toEqual({ text: 'Linear', size: 15 });
+  expect(fitName(undefined, 'Linear', 88, 15).size).toBe(15);
+  const f = fitName(0.45, 'Linear', 88, 15);
+  expect(f.size * 0.45).toBeGreaterThanOrEqual(MIN_TEXT_PX - 1e-9);
+  const long = fitName(1, 'Absolute error', 88, 15);
+  expect(long.size).toBeLessThan(15);
+  expect(long.size).toBeGreaterThanOrEqual(10);
+  // Too narrow even at 10 units: cut with an ellipsis, and the estimate stays within the width.
+  for (const w of [30, 36, 50]) {
+    for (const t of ['Input', 'Target', 'Sigmoid', 'Absolute error']) {
+      const r = fitName(0.4, t, w, 13, 16);
+      expect(r.text.length * r.size * 0.52, `${t} in ${w}`).toBeLessThanOrEqual(w + 1e-9);
+      expect(r.text.length).toBeGreaterThanOrEqual(2);
+    }
+  }
+  expect(fitName(1, 'Sigmoid', 36, 13).text.endsWith('\u2026')).toBe(true);
+});
+
+test('Tanh has no glyph that repeats its name; ReLU keeps max(0,x)', () => {
+  const g = (id: string) => host.querySelector(`[data-testid="node-${id}"] .tk-glyph`)?.textContent;
+  expect(g('act1')).toBe('max(0,x)');
+  act(() => {
+    editSetting('act1', 'fn', 'tanh');
+  });
+  expect(nameOf('act1')).toBe('Tanh');
+  expect(g('act1')).toBeUndefined();
 });
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -72,7 +92,7 @@ function crosses(p: readonly [number, number], q: readonly [number, number], r: 
 test('neuron view: the name strip above each unit column crosses no weight edge, wire, unit or box', () => {
   const g = initialGraph();
   const layout = layoutNeurons(g, analyse(g, sample(g.data).info));
-  const half = 45; // the name is centred on the column and at most ~90 units wide
+  const half = 18; // the name is centred on the column and at most one column (36 units) wide
   let strips = 0;
   for (const [id, b] of Object.entries(layout.boxes)) {
     if (!layout.units.some((u) => u.node === id)) continue;

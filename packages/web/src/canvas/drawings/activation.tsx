@@ -17,9 +17,8 @@ export const ACTIVATION_LABEL: Record<ActivationFn, string> = {
 };
 
 /** The operation in the layer drawing's glyph slot; the name beside it is the function's name. */
-const ACTIVATION_GLYPH: Record<ActivationFn, string> = {
+const ACTIVATION_GLYPH: Partial<Record<ActivationFn, string>> = {
   sigmoid: 'σ(x)',
-  tanh: 'tanh(x)',
   relu: 'max(0,x)',
   gelu: 'x·Φ(x)',
 };
