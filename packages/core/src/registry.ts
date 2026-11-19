@@ -59,6 +59,11 @@ export type CorePiece<N extends Node> = {
    * entry means no wire yet). The wires' order is their order in `graph.edges`.
    */
   variadicPorts?: readonly string[];
+  /**
+   * Input ports (a subset of `inputPorts`) that may stay unwired. A missing wire there is not an
+   * issue and `outShape` gets no entry for the port. Absent or empty: every port is required.
+   */
+  optionalPorts?: readonly string[];
   defaults: () => Omit<N, 'id'>;
   /**
    * `inShapes` is keyed by input port. A missing entry means that port is not connected (or its
@@ -220,14 +225,20 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
   bias: {
     family: 'scalars',
     inputPorts: ['in'],
+    optionalPorts: ['in'],
     defaults: () => ({ type: 'bias' }),
-    outShape: exampleThrough('A bias'),
+    // Unwired, a Bias is one learnable value for every example: the mean-as-a-weight model.
+    outShape: (_node, inShapes) =>
+      inShapes['in'] === undefined
+        ? { kind: 'example', width: 1 }
+        : exampleThrough('A bias')(_node, inShapes),
     paramShapes: () => ({ b: [1] }),
     paramInit: (_node, _inWidth, data) => ({
       kind: 'uniform',
       bound: 1 / Math.sqrt(Math.max(1, data.columns.length)),
     }),
-    torch: () => 'x + b',
+    // inWidth is 0 when nothing is wired in (like a piece with no ports)
+    torch: (_node, inWidth) => (inWidth === 0 ? 'b.expand(n, 1)' : 'x + b'),
   },
   sum: {
     family: 'structure',

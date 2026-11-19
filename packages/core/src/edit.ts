@@ -19,6 +19,7 @@ import {
   inputPortsOf,
   collapsedWeights,
   isVariadicPort,
+  optionalPortsOf,
   variadicPortsOf,
   type Edge,
   type Endpoint,
@@ -233,7 +234,8 @@ export function swapPiece(
   // Target, which both have none, are different data and never swap).
   const same =
     inputPortsOf(old.type).join() === inputPortsOf(piece.type).join() &&
-    variadicPortsOf(old.type).join() === variadicPortsOf(piece.type).join();
+    variadicPortsOf(old.type).join() === variadicPortsOf(piece.type).join() &&
+    optionalPortsOf(old.type).join() === optionalPortsOf(piece.type).join();
   if (!same || (old.type !== piece.type && family === 'inputs')) {
     return fail(
       `A ${piece.type} cannot replace the ${old.type}; they are different kinds of piece.`,

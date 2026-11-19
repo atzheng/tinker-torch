@@ -81,10 +81,11 @@ for (const file of files) {
     const { n } = fx.batch;
     const input = fx.graph.nodes.find((x) => x.type === 'input') as unknown as
       { columns: string[] } | undefined;
-    // scalar graphs have no Input: their columns are the Column nodes' names
+    // scalar graphs have no Input: their columns are the Column nodes' names; a graph with neither
+    // (an unwired Bias) reads the dataset's single column
     const d = input
       ? input.columns.length
-      : fx.graph.nodes.filter((x) => x.type === 'column').length;
+      : Math.max(1, fx.graph.nodes.filter((x) => x.type === 'column').length);
     expect(fx.batch.x).toHaveLength(n * d);
     expect(fx.batch.y).toHaveLength(n);
     const linears = fx.graph.nodes.filter((x) => x.type === 'linear');

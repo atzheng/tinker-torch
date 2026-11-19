@@ -4,6 +4,8 @@ import {
   analyse,
   CORE_PIECES,
   initParams,
+  isOptionalPort,
+  reconcileParams,
   insertOnWire,
   withFreshColumn,
   PALETTE,
@@ -134,7 +136,8 @@ describe('scalar pieces: registry', () => {
 
   test('swap rules', () => {
     const graph = scalarGraph(2);
-    expect(swapPiece(graph, 'w1', { type: 'bias' }).ok).toBe(true);
+    // Bias has an optional input and Weight does not, so they no longer swap
+    expect(swapPiece(graph, 'w1', { type: 'bias' }).ok).toBe(false);
     expect(swapPiece(graph, 'c1', { type: 'target' }).ok).toBe(false);
     expect(swapPiece(graph, 'c1', { type: 'input', columns: ['x1'] }).ok).toBe(false);
     expect(swapPiece(graph, 'y', { type: 'column', name: 'x1' }).ok).toBe(false);
@@ -197,5 +200,74 @@ describe('column ids', () => {
     // a Column has no input port, so it cannot go on a wire; ids come from the same allocator
     const r = insertOnWire(graph, 0, { type: 'scalew' });
     expect(r.ok && r.select).toBe('w1');
+  });
+});
+
+describe('optional input (tinker-7ab): an unwired Bias is the mean as a weight', () => {
+  const intercept = (): Graph =>
+    g(
+      [
+        { id: 'b', type: 'bias' },
+        { id: 'y', type: 'target' },
+        { id: 'diff', type: 'subtract' },
+        { id: 'sq', type: 'square' },
+        { id: 'm', type: 'mean' },
+      ],
+      [
+        ['b', 'diff.a'],
+        ['y', 'diff.b'],
+        ['diff', 'sq'],
+        ['sq', 'm'],
+      ],
+      ['b'],
+      'm',
+    );
+
+  test('has no issues, one parameter and can train', () => {
+    const a = analyse(intercept(), info(1));
+    expect(a.issues).toEqual([]);
+    expect(a.totalParams).toBe(1);
+    expect(a.trainable).toBe(true);
+    expect(a.paramShapes['b']).toEqual({ b: [1] });
+    expect(a.shape['b']).toEqual({ kind: 'example', width: 1 });
+  });
+
+  test('torch strings and registry flags', () => {
+    expect(CORE_PIECES.bias.optionalPorts).toEqual(['in']);
+    expect(isOptionalPort('bias', 'in')).toBe(true);
+    expect(isOptionalPort('scalew', 'in')).toBe(false);
+    expect(CORE_PIECES.bias.torch({ id: 'b', type: 'bias' }, 0)).toBe('b.expand(n, 1)');
+    expect(CORE_PIECES.bias.torch({ id: 'b', type: 'bias' }, 1)).toBe('x + b');
+  });
+
+  test('wiring and unwiring keep b (reconcileParams)', () => {
+    const g1 = intercept();
+    const a1 = analyse(g1, info(1));
+    const h1 = initParams(a1, 1);
+    const hb = h1['b']?.b;
+    if (hb) hb[0] = 7;
+    const g2: Graph = {
+      ...g1,
+      nodes: [...g1.nodes, { id: 'c', type: 'column', name: 'x1' }],
+      edges: [...g1.edges, ['c', 'b']],
+    };
+    const a2 = analyse(g2, info(1));
+    expect(a2.issues).toEqual([]);
+    const h2 = reconcileParams(h1, a1, a2, 1);
+    expect(h2['b']?.b?.[0]).toBe(7);
+    const h3 = reconcileParams(h2, a2, a1, 1);
+    expect(h3['b']?.b?.[0]).toBe(7);
+  });
+
+  test('a wired Bias still rejects scalar inputs; other pieces still need their input', () => {
+    const g1 = intercept();
+    const bad: Graph = { ...g1, edges: [...g1.edges, ['m', 'b']] };
+    expect(analyse(bad, info(1)).issues.length).toBeGreaterThan(0);
+    const dangling: Graph = {
+      ...g1,
+      nodes: [...g1.nodes, { id: 'w', type: 'scalew' }],
+      edges: [...g1.edges, ['w', 'diff.a']],
+    };
+    expect(analyse(dangling, info(1)).issues.length).toBeGreaterThan(0);
   });
 });

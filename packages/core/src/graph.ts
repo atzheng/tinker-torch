@@ -208,6 +208,16 @@ export function isVariadicPort(type: PieceType, port: string): boolean {
   return variadicPortsOf(type).includes(port);
 }
 
+/** The input ports of a node type that may stay unwired (CONTRACTS.md section 3); empty for most pieces. */
+export function optionalPortsOf(type: PieceType): readonly string[] {
+  return CORE_PIECES[type].optionalPorts ?? [];
+}
+
+/** Whether `port` of a `type` node may stay unwired without being an issue. */
+export function isOptionalPort(type: PieceType, port: string): boolean {
+  return optionalPortsOf(type).includes(port);
+}
+
 /** Output port names of a node type: every piece has exactly `out`. */
 export function outputPortsOf(_type: PieceType): string[] {
   return ['out'];

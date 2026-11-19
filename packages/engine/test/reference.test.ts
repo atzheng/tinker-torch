@@ -64,6 +64,7 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   scalar_sum_two_cols: {},
   scalar_activation_after_sum: {},
   scalar_adam_5steps: {},
+  intercept_only_mse: {},
 };
 
 /** Skipped until the named bead lands. */

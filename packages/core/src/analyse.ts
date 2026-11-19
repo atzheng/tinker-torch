@@ -3,7 +3,7 @@
  * the issues that disable Train. Pure; no DOM.
  */
 import type { DataInfo, Graph, Node, NodeId } from './graph.js';
-import { isVariadicPort, resolveEdge, resolvePin } from './graph.js';
+import { isOptionalPort, isVariadicPort, resolveEdge, resolvePin } from './graph.js';
 import {
   CORE_PIECES,
   describeShape,
@@ -239,7 +239,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     for (const port of ports) {
       const wires = inEdges.get(id)?.get(port) ?? [];
       if (wires.length === 0) {
-        missing = true;
+        if (!isOptionalPort(node.type, port)) missing = true;
         continue;
       }
       const shapes = wires.map((w) => shapeOf(w.from));
@@ -338,7 +338,16 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     const firstIn = firstPort === undefined ? undefined : inS[firstPort];
     if (firstIn?.kind === 'example') inWidth[id] = firstIn.width;
     // A piece with no input port that owns parameters (e.g. one learnable scalar) needs no width.
-    const w = firstIn?.kind === 'example' ? firstIn.width : ports.length === 0 ? 0 : undefined;
+    const w =
+      firstIn?.kind === 'example'
+        ? firstIn.width
+        : ports.length === 0 ||
+            (firstPort !== undefined &&
+              isOptionalPort(node.type, firstPort) &&
+              firstIn === undefined &&
+              !unknownUpstream)
+          ? 0
+          : undefined;
     if (w !== undefined) {
       const ps = (piece.paramShapes as ParamFn)(node, w);
       let count = 0;

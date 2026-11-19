@@ -328,7 +328,12 @@ function walk(
   const values = new Map<NodeId, JArray>();
   const remaining = new Map(plan.uses);
   const layerLeft = new Map(plan.layerUses);
-  let xLeft = plan.steps.filter((s) => s.node.type === 'input' || s.node.type === 'column').length;
+  let xLeft = plan.steps.filter(
+    (s) =>
+      s.node.type === 'input' ||
+      s.node.type === 'column' ||
+      (s.node.type === 'bias' && s.ports.length === 0),
+  ).length;
   let yLeft = plan.steps.filter((s) => s.node.type === 'target').length;
   if (xLeft === 0) x.dispose();
   if (y && yLeft === 0) y.dispose();
