@@ -168,14 +168,24 @@ test('dropping a Column on empty canvas is one edit: a new unconnected node at t
   expect(r.graph.edges).toEqual(g.edges);
   expect(r.select).toBe('x3');
   expect(r.graph.positions?.['x3']).toEqual([480, 320]);
-  // left of or above the margin: clamped to it, and no other piece gets a position
-  const left = editForDrop(
+  // left of or above the margin: pieces with a position move by the difference, automatic ones do not
+  const placed = editForDrop(
     g,
     { kind: 'palette', entry: entry('column') },
+    { kind: 'free', at: [200, 200] },
+  );
+  if (!placed?.ok) throw new Error('no edit');
+  const layout = layoutLayers(placed.graph, analyse(placed.graph, info));
+  const left = editForDrop(
+    placed.graph,
+    { kind: 'palette', entry: entry('sum') },
     { kind: 'free', at: [-100, 8] },
+    { boxes: layout.nodes },
   );
   if (!left?.ok) throw new Error('no edit');
-  expect(left.graph.positions).toEqual({ x3: [LAYOUT.pad, LAYOUT.pad] });
+  expect(Object.keys(left.graph.positions ?? {}).sort()).toEqual(['sum2', 'x3']);
+  expect(left.graph.positions?.['sum2']).toEqual([LAYOUT.pad, LAYOUT.pad]);
+  expect(left.graph.positions?.['x3']).toEqual([324, 216]);
 });
 
 test('a wire dragged to the Sum enters at its own slot of the port, ordered by source height', () => {

@@ -404,7 +404,10 @@ export function Canvas() {
         return inside ? target : null;
       },
       commit: (payload, target) => {
-        const edit = editForDrop(graph, payload, target, { locked: lockedIds() });
+        const edit = editForDrop(graph, payload, target, {
+          locked: lockedIds(),
+          boxes: layerLayout.nodes,
+        });
         if (!edit) return;
         const result = apply(edit);
         if (result.ok && result.select !== undefined) selectNode(result.select);
