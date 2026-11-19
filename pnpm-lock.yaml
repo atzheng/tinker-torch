@@ -172,7 +172,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@jax-js/jax@0.1.27': c7afe624ba6c876e76d863a28a8635c316fce0d85d37401d10912d66dac24f2c
+  '@jax-js/jax@0.1.27': 1635528341274c3b7b7fe8483dcbe892053ecede4fe4d345af64722de7b7bd91
 
 importers:
 
@@ -211,7 +211,7 @@ importers:
     dependencies:
       '@jax-js/jax':
         specifier: 0.1.27
-        version: 0.1.27(patch_hash=c7afe624ba6c876e76d863a28a8635c316fce0d85d37401d10912d66dac24f2c)
+        version: 0.1.27(patch_hash=1635528341274c3b7b7fe8483dcbe892053ecede4fe4d345af64722de7b7bd91)
       '@jax-js/optax':
         specifier: 0.1.3
         version: 0.1.3
@@ -1449,11 +1449,11 @@ snapshots:
 
   '@isaacs/nonrecursive-glob-match@1.1.0': {}
 
-  '@jax-js/jax@0.1.27(patch_hash=c7afe624ba6c876e76d863a28a8635c316fce0d85d37401d10912d66dac24f2c)': {}
+  '@jax-js/jax@0.1.27(patch_hash=1635528341274c3b7b7fe8483dcbe892053ecede4fe4d345af64722de7b7bd91)': {}
 
   '@jax-js/optax@0.1.3':
     dependencies:
-      '@jax-js/jax': 0.1.27(patch_hash=c7afe624ba6c876e76d863a28a8635c316fce0d85d37401d10912d66dac24f2c)
+      '@jax-js/jax': 0.1.27(patch_hash=1635528341274c3b7b7fe8483dcbe892053ecede4fe4d345af64722de7b7bd91)
 
   '@jridgewell/sourcemap-codec@1.6.0': {}
 

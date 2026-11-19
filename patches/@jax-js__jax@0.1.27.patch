@@ -1,3 +1,29 @@
+diff --git a/dist/backend-C55xalPO.cjs b/dist/backend-C55xalPO.cjs
+index 3a6487a4a666c8688c0f436b27b0df43b9d0fc5b..87b998a276723210e5e583e6c6a1b26c0f29ef57 100644
+--- a/dist/backend-C55xalPO.cjs
++++ b/dist/backend-C55xalPO.cjs
+@@ -5961,7 +5961,7 @@ var WasmBackend = class {
+ 					const epoch = this.#pendingWork.get(slot);
+ 					return epoch && this.#workerPool.epoch < epoch;
+ 				})) throw new Error("cannot dispatch synchronously with pending async work");
+-				const func = new WebAssembly.Instance(program.module, { env: { memory: this.#memory } }).exports.kernel;
++				const func = program.kernelFunc ??= new WebAssembly.Instance(program.module, { env: { memory: this.#memory } }).exports.kernel;
+ 				func(...ptrs, 0, program.workSize);
+ 			}
+ 		}
+diff --git a/dist/backend-CTa-DzSO.js b/dist/backend-CTa-DzSO.js
+index 993651e7b60e55513dd6657a79de03d9c0a659aa..e434efc766533527e36fe8a77785d5ee5f71566a 100644
+--- a/dist/backend-CTa-DzSO.js
++++ b/dist/backend-CTa-DzSO.js
+@@ -5961,7 +5961,7 @@ var WasmBackend = class {
+ 					const epoch = this.#pendingWork.get(slot);
+ 					return epoch && this.#workerPool.epoch < epoch;
+ 				})) throw new Error("cannot dispatch synchronously with pending async work");
+-				const func = new WebAssembly.Instance(program.module, { env: { memory: this.#memory } }).exports.kernel;
++				const func = program.kernelFunc ??= new WebAssembly.Instance(program.module, { env: { memory: this.#memory } }).exports.kernel;
+ 				func(...ptrs, 0, program.workSize);
+ 			}
+ 		}
 diff --git a/dist/index.cjs b/dist/index.cjs
 index 4b71bb87c8d1b4ace11e2747f298a3bd635d796c..73da21bb55141430c7cfce0549e1e70d3c0403ad 100644
 --- a/dist/index.cjs
