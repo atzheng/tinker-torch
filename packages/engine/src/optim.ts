@@ -38,7 +38,11 @@ function scaleByAdamMax(b1 = 0.9, b2 = 0.999, eps = 1e-8): optax.GradientTransfo
       const count = s.count.add(1);
       const muHat = optax.treeBiasCorrection(tree.ref(mu), b1, count.ref);
       const nuHat = optax.treeBiasCorrection(tree.ref(nu), b2, count.ref);
-      const nuMax = tree.map((a: np.Array, b: np.Array) => np.maximum(a, b), s.nuMax, nuHat) as Tree;
+      const nuMax = tree.map(
+        (a: np.Array, b: np.Array) => np.maximum(a, b),
+        s.nuMax,
+        nuHat,
+      ) as Tree;
       const out = tree.map(
         (m: np.Array, v: np.Array) => m.div(np.sqrt(v).add(eps)),
         muHat,
