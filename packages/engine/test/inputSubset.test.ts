@@ -45,7 +45,10 @@ test('an Input subset or reorder gives the host-selected columns', () => {
 test('compiling, training, predicting and disposing 200 subset-Input graphs leaves no buffers', () => {
   const y = Float32Array.from({ length: n }, (_, i) => i / 10);
   const batch = { x, y, n };
-  for (const cols of [['x3', 'x1'], ['x1', 'x2']]) {
+  for (const cols of [
+    ['x3', 'x1'],
+    ['x1', 'x2'],
+  ]) {
     const g = graphWith(cols);
     const cycle = () => {
       const model = engine.compile(g, data);
