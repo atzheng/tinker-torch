@@ -65,6 +65,10 @@ export const NODE_TYPES = [
   'scale',
   'weights',
   'norm',
+  'column',
+  'scalew',
+  'bias',
+  'sum',
 ] as const;
 
 const nodeSchema = z.discriminatedUnion('type', [
@@ -128,6 +132,14 @@ const nodeSchema = z.discriminatedUnion('type', [
     type: z.literal('norm'),
     kind: z.enum(NORM_KINDS, { error: oneOf(NORM_KINDS) }),
   }),
+  z.strictObject({
+    id: nodeId,
+    type: z.literal('column'),
+    name: z.string({ error: 'must be a column name (text)' }),
+  }),
+  z.strictObject({ id: nodeId, type: z.literal('scalew') }),
+  z.strictObject({ id: nodeId, type: z.literal('bias') }),
+  z.strictObject({ id: nodeId, type: z.literal('sum') }),
 ]);
 
 const GRAPH_VERSION = 2 as const;
@@ -430,6 +442,10 @@ const NODE_KEY_ORDER: Record<PieceType, string[]> = {
   scale: ['id', 'type', 'c'],
   weights: ['id', 'type', 'of'],
   norm: ['id', 'type', 'kind'],
+  column: ['id', 'type', 'name'],
+  scalew: ['id', 'type'],
+  bias: ['id', 'type'],
+  sum: ['id', 'type'],
 };
 
 function pick(obj: object, keys: string[]): Record<string, unknown> {

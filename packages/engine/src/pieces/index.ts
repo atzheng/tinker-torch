@@ -18,6 +18,7 @@ import { subtract } from './subtract.js';
 import { target } from './target.js';
 import type { EnginePiece } from './types.js';
 import { weights } from './weights.js';
+import { bias, column, scalew, sum } from './scalar.js';
 
 export type { EnginePiece, PieceCtx } from './types.js';
 
@@ -41,4 +42,8 @@ export const ENGINE_PIECES: { [T in PieceType]: EnginePiece<NodeOf<T>> } = {
   scale,
   weights,
   norm,
+  column,
+  scalew,
+  bias,
+  sum,
 };

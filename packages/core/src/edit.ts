@@ -30,6 +30,7 @@ import {
 import { CORE_PIECES, PALETTE, sameShape } from './registry.js';
 import type { Namer } from './macros.js';
 import { LAYOUT } from './layout.js';
+import { SETS } from './data/sets.js';
 
 export type EditResult = { ok: true; graph: Graph; select?: NodeId } | { ok: false; error: string };
 
@@ -81,10 +82,26 @@ function noNode(id: NodeId): EditResult {
   return fail(`There is no piece called "${id}".`);
 }
 
+/** Id stems that differ from the piece type: columns are x1.., weights w1... */
+const ID_STEMS: Record<string, string> = { column: 'x', scalew: 'w' };
+
 /** Smallest free id of the form `${type}${k}`, k from 1. */
 function freshId(g: Graph, type: string): NodeId {
   const used = new Set(g.nodes.map((n) => n.id));
-  for (let k = 1; ; k++) if (!used.has(`${type}${k}`)) return `${type}${k}`;
+  const stem = ID_STEMS[type] ?? type;
+  for (let k = 1; ; k++) if (!used.has(`${stem}${k}`)) return `${stem}${k}`;
+}
+
+/**
+ * A new Column's name: the first dataset column no other Column node uses (x1 when all are used).
+ * Other pieces pass through unchanged.
+ */
+export function withFreshColumn(g: Graph, piece: NodeBody): NodeBody {
+  if (piece.type !== 'column') return piece;
+  const d = SETS[g.data.set].d;
+  const used = new Set(g.nodes.flatMap((n) => (n.type === 'column' ? [n.name] : [])));
+  for (let i = 1; i <= d; i++) if (!used.has(`x${i}`)) return { ...piece, name: `x${i}` };
+  return { ...piece, name: 'x1' };
 }
 
 /** Whether `target` can be reached from `start` by following wires forwards. */
@@ -129,7 +146,7 @@ export function insertOnWire(
   }
   if (lockedAmong(opts, [r.to.node])) return fail(LOCKED_MESSAGE);
   const id = freshId(g, piece.type);
-  const node = { id, ...piece } as Node;
+  const node = { id, ...withFreshColumn(g, piece) } as Node;
   const edges = g.edges.slice();
   edges.splice(edgeIndex, 1, [edge[0], ports.length === 1 ? id : `${id}.${first}`], [id, edge[1]]);
   // A pin on the source follows the data when this is the source's only wire out.
@@ -210,7 +227,7 @@ export function swapPiece(
       `A ${piece.type} cannot replace the ${old.type}, because a wire into it would be lost.`,
     );
   }
-  const base = { id: nodeId, ...piece } as Node;
+  const base = { id: nodeId, ...withFreshColumn(g, piece) } as Node;
   const identity = IDENTITY_KEYS[piece.type];
   const carried: Record<string, unknown> = {};
   const rest = old as unknown as Record<string, unknown>;
@@ -304,7 +321,13 @@ export function rewireEdge(
 /** Analysis for shape questions only: the dataset kind and class count do not change shapes. */
 function shapesOf(g: Graph): Analysis {
   return analyse(g, {
-    columns: [...new Set(g.nodes.flatMap((n) => (n.type === 'input' ? n.columns : [])))],
+    columns: [
+      ...new Set(
+        g.nodes.flatMap((n) =>
+          n.type === 'input' ? n.columns : n.type === 'column' ? [n.name] : [],
+        ),
+      ),
+    ],
     kind: 'regression',
     numClasses: 2,
   });
