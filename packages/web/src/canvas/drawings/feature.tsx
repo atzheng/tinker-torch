@@ -33,7 +33,7 @@ function FeatureFields({ node }: { node: NodeOf<'feature'> }) {
   const out = useAnalysis().outWidth[node.id];
   return (
     <>
-      <p className="tk-muted" data-testid="feature-width">
+      <p className="tk-diag" data-testid="feature-width">
         {out === undefined
           ? 'Columns produced: unknown until the input is connected.'
           : `Produces ${out} columns`}

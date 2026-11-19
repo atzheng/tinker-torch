@@ -28,25 +28,8 @@
 .row button {
   height: 28px;
   padding: 0 6px;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.row button {
-  cursor: pointer;
-}
-
-.row button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .check {
   color: var(--text);
-}
-
-.check input {
-  accent-color: var(--accent);
 }

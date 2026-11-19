@@ -56,10 +56,23 @@
   --role-loss-fill: #faeed3;
   --on-role: #ffffff;
   --region-opacity: 0.08;
-  /* Diagnostics (wire widths, later tinker-t6o): quiet, monospace, never the node style. */
+  /* Controls vs diagnostics (tinker-t6o, CONTRACTS.md section 10). A CONTROL is something the user
+     can change: raised, outlined (--ctl-border), accent on hover, press and focus. A DIAGNOSTIC is
+     measured by the tool: flat, no outline, muted monospace numbers, default cursor. An ISSUE is
+     red text on a red tint. Accent blue is only ever used for what can be changed or is selected. */
+  --ctl-fill: var(--surface-2);
+  --ctl-fill-hover: #e6eaf2;
+  --ctl-fill-press: #d6dcea;
+  --ctl-field-bg: #ffffff;
+  --ctl-border: #6f7886;
+  --ctl-fg: var(--text);
   --diag-fg: var(--text-muted);
+  --diag-value: var(--text);
   --diag-bg: var(--surface-2);
   --diag-border: var(--border);
+  --issue-fg: var(--error);
+  --issue-bg: var(--error-bg);
+  --issue-border: var(--error);
   /* Typography: one UI stack and one mono stack, no network fonts; one size scale. */
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --fs-xs: 11px;
@@ -116,6 +129,12 @@
     --seq-2: #fde725;
     --point-halo: #0f1218;
 
+    --ctl-fill: #2b313c;
+    --ctl-fill-hover: #343b49;
+    --ctl-fill-press: #3d4658;
+    --ctl-field-bg: #14171c;
+    --ctl-border: #8a93a3;
+
     --node-fill: #232833;
     --node-fill-hover: #2c3342;
     --node-fill-press: #2f384a;
@@ -166,17 +185,94 @@ select {
   color: inherit;
 }
 
-/* Controls share one look (diagnostic readouts do not: see --diag-* and tinker-t6o). */
-button:not(:disabled),
-select:not(:disabled) {
+/* CONTROLS (tinker-t6o). Every native button, select and field is a control and gets one look from
+   zero-specificity rules, so a component sets only its size and layout. Buttons are raised
+   (--ctl-fill), fields are inset (--ctl-field-bg), both outlined with --ctl-border. Accent border
+   on hover, pressed fill on press, accent fill for a pressed toggle, the focus ring above, 0.5
+   opacity when disabled. Components that need a bare button set border: 0 and a transparent fill. */
+:where(button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'])) {
+  color: var(--ctl-fg);
+  border: 1px solid var(--ctl-border);
+  border-radius: var(--radius);
+}
+:where(button) {
+  background: var(--ctl-fill);
+}
+:where(select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'])) {
+  background: var(--ctl-field-bg);
+}
+:where(input[type='checkbox'], input[type='radio'], input[type='range']) {
+  accent-color: var(--accent);
+}
+:where(button:not(:disabled), select:not(:disabled), input[type='checkbox']:not(:disabled), input[type='range']:not(:disabled)) {
   cursor: pointer;
 }
-button:not(:disabled):hover,
-select:not(:disabled):hover {
-  border-color: var(--text-muted);
+:where(input[type='text'], input[type='number']):not(:disabled) {
+  cursor: text;
 }
-button:not(:disabled):active {
-  background: var(--border);
+:where(button:not(:disabled):hover, select:not(:disabled):hover, input:not(:disabled):hover) {
+  border-color: var(--accent);
+}
+:where(button:not(:disabled):hover) {
+  background: var(--ctl-fill-hover);
+}
+:where(button:not(:disabled):active) {
+  background: var(--ctl-fill-press);
+}
+:where(input:not([type='checkbox'], [type='radio'], [type='range']):focus-visible) {
+  border-color: var(--accent);
+}
+:where(button[aria-pressed='true']) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+:where(button:disabled, select:disabled, input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Component classes. .tk-ctl gives a non-native element (an SVG or div control) the same
+   states; .tk-primary is the one filled action of a bar. */
+.tk-ctl {
+  cursor: pointer;
+}
+.tk-primary,
+.tk-primary:not(:disabled):hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.tk-primary:not(:disabled):active {
+  filter: brightness(0.9);
+}
+
+/* DIAGNOSTICS: read-only numbers and facts the tool computes. Flat (no border, no fill), muted,
+   monospace with tabular figures, default cursor; the number itself (<b> or .tk-diag-value) is
+   full-contrast text. Never styled like a control, so nothing that looks editable is read-only. */
+.tk-diag {
+  color: var(--diag-fg);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+.tk-diag b,
+.tk-diag-value {
+  color: var(--diag-value);
+  font-weight: 500;
+}
+/* A quiet label for a diagnostic that is not a number (legend keys, "no prediction"). */
+.tk-diag-label {
+  color: var(--diag-fg);
+  cursor: default;
+}
+
+/* ISSUES: an error sentence. Red text on a red tint with a red outline; only validation messages
+   and "diverged" use it. */
+.tk-issue {
+  color: var(--issue-fg);
+  background: var(--issue-bg);
+  border: 1px solid var(--issue-border);
+  border-radius: var(--radius);
 }
 .tk-panel-title,
 .tk-region-title {

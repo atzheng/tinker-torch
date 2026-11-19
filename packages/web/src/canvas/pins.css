@@ -85,10 +85,6 @@
 .tk-pin-actions button {
   min-height: 28px;
   padding: 2px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  cursor: pointer;
 }
 @media (pointer: coarse) {
   .tk-pin-actions button {

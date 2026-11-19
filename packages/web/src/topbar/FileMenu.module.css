@@ -9,11 +9,6 @@
 .row button {
   height: 28px;
   padding: 0 8px;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
 }
 
 .check {
@@ -23,9 +18,6 @@
   font-size: 12px;
 }
 
-.check input {
-  accent-color: var(--accent);
-}
 
 /* Fixed so that the top bar's overflow clipping does not hide it. */
 .note,
@@ -48,9 +40,9 @@
 }
 
 .error {
-  border-color: var(--error);
-  background: var(--error-bg);
-  color: var(--error);
+  border-color: var(--issue-border);
+  background: var(--issue-bg);
+  color: var(--issue-fg);
 }
 
 .note button,
