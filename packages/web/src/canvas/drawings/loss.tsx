@@ -25,12 +25,48 @@ export const lossPiece: WebPiece<'loss'> = {
     return (
       <g data-piece="loss">
         <circle className="tk-shape" cx={w / 2} cy={h / 2} r={Math.min(w, h) / 2 - 2} />
+        {node.fn === 'huber' && (
+          <text
+            className="tk-text tk-small tk-muted"
+            x={w / 2}
+            y={h / 2 + 13}
+            textAnchor="middle"
+            dominantBaseline="middle"
+          >
+            {`δ=${node.delta ?? 1}`}
+          </text>
+        )}
+        {node.penalty && (
+          <g data-testid={`penalty-tag-${node.id}`}>
+            <rect className="tk-shape" x={w - 34} y={h / 2 - 17} width={34} height={34} rx={5} />
+            <text
+              className="tk-text"
+              x={w - 17}
+              y={h / 2 - 5}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ fontSize: 11 }}
+            >
+              {node.penalty.kind.toUpperCase()}
+            </text>
+            <text
+              className="tk-text tk-muted"
+              x={w - 17}
+              y={h / 2 + 8}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ fontSize: 9 }}
+            >
+              {String(node.penalty.lambda)}
+            </text>
+          </g>
+        )}
         {lines.map((t, i) => (
           <text
             key={t}
             className="tk-text tk-small"
             x={w / 2}
-            y={h / 2 + (i - (lines.length - 1) / 2) * 13}
+            y={h / 2 + (i - (lines.length - 1) / 2) * 13 - (node.fn === 'huber' ? 7 : 0)}
             textAnchor="middle"
             dominantBaseline="middle"
           >
