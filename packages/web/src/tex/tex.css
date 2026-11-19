@@ -1,5 +1,4 @@
-/* KaTeX fonts and rules come from the katex package (bundled by Vite, no network). */
-@import 'katex/dist/katex.min.css';
+/* KaTeX's own CSS and fonts (woff2 only, see vite.config.ts) are imported in main.tsx. */
 
 .tk-tex {
   white-space: nowrap;

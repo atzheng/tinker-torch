@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
 import { loadBundled } from './topbar/PresetMenu.js';
 import './theme.css';
+import 'katex/dist/katex.min.css';
 import './tex/tex.css';
 
 if (import.meta.env.DEV) {

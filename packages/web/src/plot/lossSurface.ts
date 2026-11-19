@@ -51,7 +51,8 @@ export function axisLabels(axes: [SurfaceAxis, SurfaceAxis]): [string, string] {
   const one = (a: SurfaceAxis) => {
     const sym = a.tensor === 'W' ? 'w' : 'b';
     const n = bothW ? `${sym}_{${a.index + 1}}` : sym;
-    return sameNode ? `$${n}$` : `${a.node} $${n}$`;
+    // The node id is plain text: a `$` in it would break the pairing, so it is dropped.
+    return sameNode ? `$${n}$` : `${a.node.replace(/\$/g, '')} $${n}$`;
   };
   return [one(axes[0]), one(axes[1])];
 }
