@@ -1,0 +1,31 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Small network on a sine curve",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "x", "type": "input", "columns": ["x1"] },
+      { "id": "lin1", "type": "linear", "out": 4, "bias": true },
+      { "id": "act1", "type": "activation", "fn": "relu" },
+      { "id": "lin2", "type": "linear", "out": 1, "bias": true },
+      { "id": "y", "type": "target" },
+      { "id": "diff", "type": "subtract" },
+      { "id": "err", "type": "square" },
+      { "id": "loss", "type": "mean" }
+    ],
+    "edges": [
+      ["x", "lin1"],
+      ["lin1", "act1"],
+      ["act1", "lin2"],
+      ["lin2", "diff.a"],
+      ["y", "diff.b"],
+      ["diff", "err"],
+      ["err", "loss"]
+    ],
+    "predictions": ["lin2"],
+    "loss": "loss",
+    "data": { "set": "sine", "n": 40, "noise": 0.2, "val": 0.3, "seed": 7, "standardize": false },
+    "train": { "optimizer": "sgd", "lr": 0.03, "batch": "full", "seed": 11 }
+  }
+}

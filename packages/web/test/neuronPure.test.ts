@@ -8,7 +8,7 @@ import {
   type Graph,
   type HostParams,
 } from '@tinker/core';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import {
   distToSegment,
   edgeStyle,

@@ -7,7 +7,7 @@ import {
   resolveDrop,
   type DragPayload,
 } from '../src/canvas/dnd.js';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { PORT_INSET, hitAt, layerHitShapes } from '../src/canvas/pure.js';
 
 const SCALE = 0.475;

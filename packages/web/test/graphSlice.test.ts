@@ -13,18 +13,20 @@ beforeEach(() => {
   s().loadGraph(initialGraph());
 });
 
-test('initial graph is the SPEC example', () => {
+test('initial graph is the scalar linear regression', () => {
   expect(s().graph.nodes.map((n) => n.id)).toEqual([
-    'x',
-    'lin1',
-    'act1',
-    'lin2',
+    'x1',
+    'x2',
+    'w1',
+    'w2',
+    'sum',
+    'bias',
     'y',
     'diff',
     'err',
     'loss',
   ]);
-  expect(s().graph.predictions).toEqual(['lin2']);
+  expect(s().graph.predictions).toEqual(['bias']);
   expect(s().graph.loss).toBe('loss');
   expect(s().canUndo).toBe(false);
   expect(s().canRedo).toBe(false);

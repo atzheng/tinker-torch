@@ -9,7 +9,7 @@ import {
   setLinearOut,
   serializeGraph,
 } from '@tinker/core';
-import { initialGraph } from '../src/state/graphSlice.js';
+import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 import { FileMenu, loadText, saveText } from '../src/topbar/FileMenu.js';
 

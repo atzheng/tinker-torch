@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { analyse, parseFile, parseFileText, sample, serializeFile } from '../src/index.js';
 
-const NAMES = ['linear', 'logistic', 'sine', 'xor', 'skip', 'softmax'];
+const NAMES = ['linear', 'logistic', 'sine', 'xor', 'skip', 'softmax', 'scalar', 'mlp'];
 const raw = (name: string): Record<string, unknown> =>
   JSON.parse(
     readFileSync(new URL(`../../web/src/presets/${name}.json`, import.meta.url), 'utf8'),
