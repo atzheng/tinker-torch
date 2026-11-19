@@ -4,14 +4,17 @@ import {
   inputPortsOf as inputPortsOfType,
   layoutLayers,
   layoutNeurons,
+  parsePort,
   type LayerLayout,
 } from '@tinker/core';
 import './canvas.css';
+import './pins.css';
 import { useEditShortcuts } from './actions.js';
 import {
   dnd,
   dropCandidates,
   editForDrop,
+  pinCanLandOn,
   inputPortAt,
   outputPortAt,
   resolveDrop,
@@ -20,6 +23,7 @@ import {
 } from './dnd.js';
 import { lockedIds } from '../state/locks.js';
 import { Inspector } from './Inspector.js';
+import { PinDisc } from './PinMark.js';
 import { LayerView } from './LayerView.js';
 import { NeuronView, UNIT_BTN_ROOM } from './NeuronView.js';
 import { Toast } from './Toast.js';
@@ -31,6 +35,8 @@ import {
   edgeIndexOf,
   errorNodes,
   fitTransform,
+  pinCentre,
+  PIN_ROOM_X,
   placeInspector,
   placeIssues,
   type InspectorPlacement,
@@ -140,7 +146,11 @@ export function Canvas() {
             // room under the drawing for the unit +/- buttons
             size: [neuronLayout.size[0], neuronLayout.size[1] + UNIT_BTN_ROOM],
           }
-        : layerLayout,
+        : {
+            ...layerLayout,
+            // room for a pin on the last column
+            size: [layerLayout.size[0] + PIN_ROOM_X, layerLayout.size[1]],
+          },
     [neuronLayout, layerLayout],
   );
   // A header strip above the drawing holds the grain toggle, so it never covers a piece or wire.
@@ -187,6 +197,13 @@ export function Canvas() {
   const candidates = useMemo(() => {
     const entry = drag?.payload.kind === 'palette' ? drag.payload.entry : armed;
     if (entry) return dropCandidates(entry, graph);
+    if (drag?.payload.kind === 'pin') {
+      const pin = drag.payload;
+      return {
+        edges: new Set<number>(),
+        nodes: new Set(graph.nodes.filter((n) => pinCanLandOn(graph, pin, n.id)).map((n) => n.id)),
+      };
+    }
     const src = drag ? wireSource(drag.payload) : undefined;
     if (src === undefined) return null;
     return {
@@ -213,16 +230,25 @@ export function Canvas() {
       onMove: (p) => setUserView(clampT({ ...t0, tx: t0.tx + p.dx, ty: t0.ty + p.dy })),
     });
   };
+  // Layer view draws pin issues at the pin; neuron view has no pins, so they stay at the piece.
   const placed = useMemo(
     () =>
       placeIssues(
         analysis.issues,
         new Set(layout.wires.map((w) => w.edge)),
         new Set(graph.nodes.map((n) => n.id)),
+        undefined,
+        isNeuron
+          ? undefined
+          : (pin) => {
+              const ref = pin.role === 'loss' ? graph.loss : graph.predictions[pin.index];
+              return ref === null || ref === undefined ? undefined : parsePort(ref).node;
+            },
       ),
-    [analysis, layout, graph],
+    [analysis, layout, graph, isNeuron],
   );
-  const errNodes = useMemo(() => errorNodes(analysis.issues), [analysis]);
+  const errNodes = useMemo(() => errorNodes(analysis.issues, !isNeuron), [analysis, isNeuron]);
+  const errPins = useMemo(() => new Set(placed.byPin.keys()), [placed]);
   const errEdges = useMemo(() => new Set(placed.byEdge.keys()), [placed]);
 
   const toAbstract = useMemo(
@@ -275,6 +301,16 @@ export function Canvas() {
     if (box) {
       anchor = placeInspector(
         { cx: px(box.x + box.w / 2), top: py(box.y), bottom: py(box.y + box.h) },
+        view,
+        INSPECTOR_W,
+      );
+    }
+  } else if (selection?.kind === 'pin') {
+    const box = layout.nodes[selection.node];
+    if (box) {
+      const [cx, cy] = pinCentre(box, selection.role);
+      anchor = placeInspector(
+        { cx: px(cx), top: py(cy) - 16, bottom: py(cy) + 16 },
         view,
         INSPECTOR_W,
       );
@@ -397,6 +433,7 @@ export function Canvas() {
               weights={weights}
               errorEdges={errEdges}
               errorNodes={errNodes}
+              errorPins={errPins}
               selection={selection}
               select={select}
               scale={t.scale}
@@ -406,6 +443,27 @@ export function Canvas() {
             />
           )}
         </g>
+        {drag?.payload.kind === 'pin' &&
+          (() => {
+            const box = ref.current?.getBoundingClientRect();
+            if (!box) return null;
+            return (
+              <g
+                className="tk-pin-preview"
+                data-testid="pin-preview"
+                data-role={drag.payload.kind === 'pin' ? drag.payload.role : undefined}
+                data-target={drag.target ? 'node' : 'none'}
+                pointerEvents="none"
+              >
+                <PinDisc
+                  role={drag.payload.kind === 'pin' ? drag.payload.role : 'pred'}
+                  cx={drag.x - box.left}
+                  cy={drag.y - box.top}
+                  r={14}
+                />
+              </g>
+            );
+          })()}
         {drag &&
           wireSource(drag.payload) !== undefined &&
           (() => {
@@ -474,6 +532,22 @@ export function Canvas() {
             testid={`issue-wire-${edge}`}
             x={px(w.labelAt[0])}
             y={py(w.labelAt[1]) + 14}
+            viewW={view.w}
+            text={text}
+          />
+        );
+      })}
+      {[...placed.byPin].map(([key, text]) => {
+        const [role, id] = key.split(':') as ['pred' | 'loss', string];
+        const box = id ? layout.nodes[id] : undefined;
+        if (!box) return null;
+        const [cx, cy] = pinCentre(box, role);
+        return (
+          <Callout
+            key={`p${key}`}
+            testid={`issue-pin-${role}-${id}`}
+            x={px(cx)}
+            y={py(cy) + (role === 'pred' ? -18 - 30 : 18)}
             viewW={view.w}
             text={text}
           />

@@ -1,7 +1,18 @@
 import { useRef, useState, type ComponentType } from 'react';
-import type { Analysis, Graph, HostParams, Node, PieceType } from '@tinker/core';
+import {
+  addPrediction,
+  parsePort,
+  setLoss,
+  type Analysis,
+  type Graph,
+  type HostParams,
+  type Node,
+  type PieceType,
+} from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import { deleteSelection } from './actions.js';
+import { lockedIds } from '../state/locks.js';
+import { pinLive } from './pure.js';
 import { biasAt, weightAt } from './neuronPure.js';
 import { edgeIndexOf } from './pure.js';
 import { beginWeightEdit, type WeightTarget } from './weightEdit.js';
@@ -46,7 +57,17 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
   const Fields = WEB_PIECES[node.type].Fields as ComponentType<{ node: Node }>;
   const inW = analysis.inWidth[node.id];
   const count = analysis.params[node.id];
-  const messages = analysis.issues.filter((i) => i.at.node === node.id).map((i) => i.message);
+  const messages = analysis.issues
+    .filter((i) => i.at.node === node.id && !i.at.pin)
+    .map((i) => i.message);
+  const graph = useStore((s) => s.graph);
+  const apply = useStore((s) => s.apply);
+  const select = useStore((s) => s.select);
+  const pin = (role: 'pred' | 'loss') => {
+    const opts = { locked: lockedIds() };
+    const r = role === 'pred' ? addPrediction(graph, node.id, opts) : setLoss(graph, node.id, opts);
+    if (apply(r).ok) select({ kind: 'pin', role, node: node.id });
+  };
   return (
     <>
       <h2 className="tk-inspector-title">
@@ -63,6 +84,57 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
       )}
       {inW !== undefined && node.type !== 'linear' && <p className="tk-muted">Width {inW}</p>}
       <Fields node={node} />
+      {(!pinLive(graph, 'pred', node.id) || !pinLive(graph, 'loss', node.id)) && (
+        <div className="tk-pin-actions">
+          {!pinLive(graph, 'pred', node.id) && (
+            <button type="button" data-testid="inspector-pin-pred" onClick={() => pin('pred')}>
+              Pin as <TexText>{'$\\hat{y}$'}</TexText>
+            </button>
+          )}
+          {!pinLive(graph, 'loss', node.id) && (
+            <button type="button" data-testid="inspector-pin-loss" onClick={() => pin('loss')}>
+              Pin as <TexText>{'$L$'}</TexText>
+            </button>
+          )}
+        </div>
+      )}
+      <Issues messages={messages} />
+    </>
+  );
+}
+
+/**
+ * A selected role pin. The L pin is moved (drag it, or Pin as L on another piece), never removed;
+ * a ŷ pin can also be removed here, or with Delete. Shows the pin's own issues.
+ */
+function PinInspector({
+  role,
+  node,
+  analysis,
+  graph,
+}: {
+  role: 'pred' | 'loss';
+  node: string;
+  analysis: Analysis;
+  graph: Graph;
+}) {
+  const index = graph.predictions.findIndex((p) => parsePort(p).node === node);
+  const messages = analysis.issues
+    .filter((i) =>
+      role === 'loss'
+        ? i.at.pin?.role === 'loss'
+        : i.at.pin?.role === 'prediction' && i.at.pin.index === index,
+    )
+    .map((i) => i.message);
+  return (
+    <>
+      <h2 className="tk-inspector-title">
+        {role === 'pred' ? 'Prediction' : 'Loss'}{' '}
+        <TexText>{role === 'pred' ? '$\\hat{y}$' : '$L$'}</TexText>
+      </h2>
+      <p className="tk-muted">
+        on <code>{node}</code>
+      </p>
       <Issues messages={messages} />
     </>
   );
@@ -253,7 +325,9 @@ export function Inspector({
       >
         {'×'}
       </button>
-      {(selection.kind === 'node' || selection.kind === 'wire') && (
+      {(selection.kind === 'node' ||
+        selection.kind === 'wire' ||
+        (selection.kind === 'pin' && selection.role === 'pred')) && (
         <button
           type="button"
           className="tk-inspector-delete"
@@ -264,6 +338,14 @@ export function Inspector({
         </button>
       )}
       {selection.kind === 'node' && node && <NodeInspector node={node} analysis={analysis} />}
+      {selection.kind === 'pin' && (
+        <PinInspector
+          role={selection.role}
+          node={selection.node}
+          analysis={analysis}
+          graph={graph}
+        />
+      )}
       {selection.kind === 'edge' && (
         <EdgeInspector
           graph={graph}

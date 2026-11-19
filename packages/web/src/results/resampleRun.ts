@@ -16,6 +16,8 @@ export type ResampleRequest = {
   seed: number;
   /** Grid points: 1-D data uses grid1d(domain, gridN), 2-D grid2d(domain, gridN). */
   gridN: number;
+  /** Which ŷ pin to predict (index into `graph.predictions`); default 0. */
+  prediction?: number;
 };
 
 export type ResampleResponse =
@@ -68,7 +70,7 @@ export function runResample(engine: Engine, req: ResampleRequest): ResampleRespo
       const params = engine.fromHost(model, r.params);
       let out: Float32Array | undefined;
       try {
-        out = engine.predict(model, params, grid.xStd, grid.n)[0]; // the first ŷ pin
+        out = engine.predict(model, params, grid.xStd, grid.n)[req.prediction ?? 0];
       } finally {
         engine.dispose(params);
       }

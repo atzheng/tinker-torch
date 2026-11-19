@@ -3,13 +3,23 @@ import type { Analysis, Graph, HostParams, LayerLayout, Node } from '@tinker/cor
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
 import { dnd, inputPortAt, outputPortAt, wireSource, type DndState } from './dnd.js';
-import { edgeIndexOf, layerHitShapes } from './pure.js';
-import { inputPortsOf, resolveEdge } from '@tinker/core';
+import {
+  edgeIndexOf,
+  layerHitShapes,
+  pinHitRect,
+  pinKey,
+  pinsOf,
+  pointsToPath,
+  type PinRole,
+} from './pure.js';
+import { PinMark } from './PinMark.js';
+import { lockedIds } from '../state/locks.js';
+import { addPrediction, inputPortsOf, resolveEdge, setLoss } from '@tinker/core';
 import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
 import { useStore } from '../state/store.js';
-import { PinBadge, pinRolesOf, roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
+import { roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 
 export type LayerViewProps = {
@@ -21,6 +31,8 @@ export type LayerViewProps = {
   /** Edge indices and node ids to draw in the error colour. */
   errorEdges: ReadonlySet<number>;
   errorNodes: ReadonlySet<string>;
+  /** Pins (`pinKey`) to draw in the error colour. */
+  errorPins?: ReadonlySet<string>;
   selection: Selection | null;
   select: (s: Selection | null) => void;
   /** Screen pixels per abstract unit. */
@@ -54,6 +66,68 @@ export function layerProps(
     }
   }
   return props as LayerProps<typeof node.type>;
+}
+
+/** Padding of a region's shading around a piece, and its stroke width along a wire (abstract units). */
+const REGION_PAD = 10;
+const REGION_WIRE = 30;
+
+/**
+ * Subtle shading behind the pieces for the model and objective regions (`analysis.region`): a
+ * padded rounded rect per piece plus a fat round-cap stroke along every wire inside one region, in
+ * one group per region so overlaps do not darken. Not a layout zone: it follows whatever the pins
+ * and wires say, and a piece in neither region has none.
+ */
+function Regions({
+  graph,
+  analysis,
+  layout,
+}: Pick<LayerViewProps, 'graph' | 'analysis' | 'layout'>) {
+  return (
+    <g className="tk-regions" data-testid="regions" pointerEvents="none">
+      {(['model', 'objective'] as const).map((region) => {
+        const ids = graph.nodes.filter(
+          (n) => analysis.region[n.id] === region && layout.nodes[n.id],
+        );
+        if (ids.length === 0) return null;
+        const wires = layout.wires.filter((w) => {
+          const edge = graph.edges[w.edge];
+          const r = edge ? resolveEdge(graph.nodes, edge) : undefined;
+          return (
+            r?.ok === true &&
+            analysis.region[r.from.node] === region &&
+            analysis.region[r.to.node] === region
+          );
+        });
+        return (
+          <g
+            key={region}
+            className="tk-region"
+            data-region={region}
+            data-testid={`region-${region}`}
+          >
+            {wires.map((w) => (
+              <path key={w.edge} d={pointsToPath(w.points)} strokeWidth={REGION_WIRE} />
+            ))}
+            {ids.map((n) => {
+              const b = layout.nodes[n.id];
+              if (!b) return null;
+              return (
+                <rect
+                  key={n.id}
+                  x={b.x - REGION_PAD}
+                  y={b.y - REGION_PAD}
+                  width={b.w + 2 * REGION_PAD}
+                  height={b.h + 2 * REGION_PAD}
+                  rx={NODE_RADIUS + REGION_PAD}
+                />
+              );
+            })}
+          </g>
+        );
+      })}
+    </g>
+  );
 }
 
 /**
@@ -92,6 +166,19 @@ export function LayerView(p: LayerViewProps) {
   const src = p.drag ? wireSource(p.drag.payload) : undefined;
   const lifted = p.drag?.payload.kind === 'rewire' ? p.drag.payload.edge : -1;
   const sel = p.selection;
+  // Role pins: the real ones, and while a piece is selected the dashed "add" form of each role it
+  // does not carry (tap to pin ŷ or L there). Hidden during any drag.
+  const pinDrag = p.drag?.payload.kind === 'pin' ? p.drag.payload : null;
+  const pinMarks: { role: PinRole; node: string; ghost: boolean }[] = pinsOf(graph).map((x) => ({
+    ...x,
+    ghost: false,
+  }));
+  if (sel?.kind === 'node' && !p.drag && layout.nodes[sel.id]) {
+    const have = new Set(pinMarks.map((x) => pinKey(x.role, sel.id)));
+    for (const role of ['pred', 'loss'] as const) {
+      if (!have.has(pinKey(role, sel.id))) pinMarks.push({ role, node: sel.id, ghost: true });
+    }
+  }
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
   return (
     <g data-testid="layer-view">
@@ -110,6 +197,26 @@ export function LayerView(p: LayerViewProps) {
           <path d="M0 0L8 4L0 8z" className="tk-arrow-error" />
         </marker>
       </defs>
+      <Regions graph={graph} analysis={analysis} layout={layout} />
+      {analysis.paramWires.map((pw) => {
+        // A Weights tap reads the parameters of its Linear: a dashed wire, not a data wire.
+        const a = layout.nodes[pw.linear];
+        const b = layout.nodes[pw.weights];
+        if (!a || !b) return null;
+        const sx = a.x + a.w / 2;
+        const sy = a.y + a.h;
+        const ex = b.x;
+        const ey = b.y + b.h / 2;
+        return (
+          <path
+            key={`pw-${pw.weights}`}
+            data-testid={`param-wire-${pw.weights}`}
+            className="tk-param-wire"
+            d={`M${sx} ${sy}C${sx} ${sy + 36} ${ex - 40} ${ey} ${ex} ${ey}`}
+            markerEnd="url(#tk-arrow)"
+          />
+        );
+      })}
       {layout.wires.map((w) => {
         const edge = graph.edges[w.edge];
         if (!edge) return null;
@@ -183,9 +290,6 @@ export function LayerView(p: LayerViewProps) {
               rx={NODE_RADIUS + 4}
             />
             <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
-            {pinRolesOf(node, graph).map((role, k) => (
-              <PinBadge key={role} role={role} w={box.w} slot={k} />
-            ))}
             {locked.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
         );
@@ -211,6 +315,55 @@ export function LayerView(p: LayerViewProps) {
             <circle className="tk-port-dot" cx={at[0]} cy={at[1]} r={PORT_R} />
             <title>Drag to another piece to connect</title>
           </g>
+        );
+      })}
+      {pinMarks.map(({ role, node, ghost }) => {
+        const box = layout.nodes[node];
+        if (!box) return null;
+        const lifted = pinDrag?.role === role && pinDrag.node === node;
+        const key = pinKey(role, node);
+        const activate = () => {
+          if (!ghost) return p.select({ kind: 'pin', role, node });
+          const g = useStore.getState().graph;
+          const r =
+            role === 'pred'
+              ? addPrediction(g, node, { locked: lockedIds() })
+              : setLoss(g, node, { locked: lockedIds() });
+          if (useStore.getState().apply(r).ok) p.select({ kind: 'pin', role, node });
+        };
+        return (
+          <PinMark
+            key={`${ghost ? 'add' : 'pin'}-${key}`}
+            role={role}
+            node={node}
+            box={box}
+            hit={pinHitRect(box, role, scale)}
+            ghost={ghost}
+            selected={!ghost && sel?.kind === 'pin' && sel.role === role && sel.node === node}
+            error={!ghost && p.errorPins?.has(key) === true}
+            lifted={lifted}
+            title={
+              ghost
+                ? role === 'pred'
+                  ? 'Add a prediction (\u0177) pin here'
+                  : 'Move the loss (L) pin here'
+                : role === 'pred'
+                  ? 'Prediction pin: drag to another piece to move it'
+                  : 'Loss pin: drag to another piece to move it'
+            }
+            onActivate={activate}
+            onPointerDown={pointerDownWith(
+              ghost
+                ? { onTap: activate }
+                : {
+                    onTap: () => p.select({ kind: 'pin', role, node }),
+                    onStart: (pt) => dnd.begin({ kind: 'pin', role, node }, pt.x, pt.y),
+                    onMove: (pt) => dnd.move(pt.x, pt.y),
+                    onEnd: (pt) => dnd.end(pt.x, pt.y),
+                    onCancel: () => dnd.cancel(),
+                  },
+            )}
+          />
         );
       })}
       {src !== undefined &&

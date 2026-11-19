@@ -12,6 +12,46 @@
   text-transform: uppercase;
   color: var(--header-fg);
 }
+/* Groups collapse: the header is a button (at least 32 px on touch). */
+.tk-palette-group h3 {
+  margin: 4px 0 2px;
+}
+.tk-palette-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tk-palette-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+}
+.tk-palette-caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.1s;
+}
+.tk-palette-toggle[aria-expanded='true'] .tk-palette-caret {
+  transform: rotate(90deg);
+}
+@media (pointer: coarse) {
+  .tk-palette-toggle {
+    min-height: 32px;
+  }
+}
+
 /* A palette entry previews the node it creates: same body, border, ports and role tint. */
 .tk-palette-entry {
   --chip-stroke: var(--role, var(--node-border));

@@ -13,6 +13,7 @@ import {
   overlayLegend,
   useOverlay1D,
 } from './ResampleOverlay.js';
+import { PredictionPicker } from './PredictionPicker.js';
 import styles from './Results.module.css';
 
 /** Number of grid points for the model curve. Fixed: every new n makes the engine retrace. */
@@ -30,6 +31,8 @@ function FitPlot1D() {
   const host = useStore((s) => s.host);
   const predictGrid = useStore((s) => s.predictGrid);
   const noPrediction = useStore((s) => s.graph.predictions.length === 0);
+  const pick = useStore((s) => s.plotPrediction);
+  const predictions = useStore((s) => s.graph.predictions);
   const [showTruth, setShowTruth] = useState(false);
   const overlay = useOverlay1D();
   const pins = useStore((s) => s.pins);
@@ -52,7 +55,7 @@ function FitPlot1D() {
     const y = new Float32Array(fixed.grid.n);
     for (let i = 0; i < y.length; i++) y[i] = out[i * width] ?? Number.NaN;
     return y;
-  }, [host, predictGrid, fixed]);
+  }, [host, predictGrid, fixed, pick, predictions]);
 
   const draw: DrawFn = (ctx, w, h, c) => {
     const m = MARGINS;
@@ -176,6 +179,7 @@ function FitPlot1D() {
           />
           True function
         </label>
+        <PredictionPicker />
         <ResampleButton />
       </div>
       <ResampleReadout />

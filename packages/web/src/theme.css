@@ -55,6 +55,7 @@
   --role-loss: #8a5a00;
   --role-loss-fill: #faeed3;
   --on-role: #ffffff;
+  --region-opacity: 0.08;
   /* Diagnostics (wire widths, later tinker-t6o): quiet, monospace, never the node style. */
   --diag-fg: var(--text-muted);
   --diag-bg: var(--surface-2);
@@ -126,6 +127,7 @@
     --role-loss: #f0b84a;
     --role-loss-fill: #40300f;
     --on-role: #14171c;
+    --region-opacity: 0.13;
     --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-2: 0 4px 14px rgb(0 0 0 / 0.5);
   }

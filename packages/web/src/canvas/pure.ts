@@ -1,5 +1,6 @@
 /** Pure helpers for the layer view: no React, no store. Unit tested in test/canvasPure.test.ts. */
 import {
+  parsePort,
   resolveEdge,
   type Analysis,
   type Graph,
@@ -107,7 +108,62 @@ export function neuronSelectionLive(
   return !analysis || (inW !== undefined && sel.i < inW);
 }
 
+/** Pins: the ŷ and L role markers at a node's output (CONTRACTS.md section 10, "Role pins"). */
+export type PinRole = 'pred' | 'loss';
+/** Geometry of a pin in abstract units: radius and the offset of its centre from the output port. */
+export const PIN = { r: 11, dx: 34, dy: 40 } as const;
+/** Extra room right of the drawing so a pin on the last column is not cut off. */
+export const PIN_ROOM_X = 24;
+
+export const pinKey = (role: PinRole, node: NodeId): string => `${role}:${node}`;
+
+/** Every pin of the graph: the ŷ pins in order, then the L pin. */
+export function pinsOf(
+  graph: Pick<Graph, 'predictions' | 'loss'>,
+): { role: PinRole; node: NodeId }[] {
+  const out: { role: PinRole; node: NodeId }[] = graph.predictions.map((p) => ({
+    role: 'pred',
+    node: parsePort(p).node,
+  }));
+  if (graph.loss !== null) out.push({ role: 'loss', node: parsePort(graph.loss).node });
+  return out;
+}
+
+/** Whether a pin of this role is on this node. */
+export function pinLive(
+  graph: Pick<Graph, 'predictions' | 'loss'>,
+  role: PinRole,
+  node: NodeId,
+): boolean {
+  return pinsOf(graph).some((p) => p.role === role && p.node === node);
+}
+
+type Rect = { x: number; y: number; w: number; h: number };
+
+/** Centre of a pin of `role` on the node `box`: up and right of the output port for ŷ, down and right for L. */
+export function pinCentre(box: Rect, role: PinRole): [number, number] {
+  return [box.x + box.w + PIN.dx, box.y + box.h / 2 + (role === 'pred' ? -PIN.dy : PIN.dy)];
+}
+
+/**
+ * The press rectangle of a pin: at least 32 screen px each way where there is room, but never
+ * reaching into the piece (it starts right of the box) nor into the 32 px band around the output
+ * port's row, where the wire label and the connect handle are, so those keep winning their presses.
+ */
+export function pinHitRect(box: Rect, role: PinRole, scale: number): Rect {
+  const [cx, cy] = pinCentre(box, role);
+  const half = Math.max(PIN.r, HIT_MIN_PX / 2 / scale);
+  const mid = box.y + box.h / 2;
+  const band = HIT_MIN_PX / 2 / scale;
+  const x0 = Math.max(cx - half, box.x + box.w + 1);
+  const y0 = role === 'loss' ? Math.max(cy - half, mid + band) : cy - half;
+  const y1 = role === 'pred' ? Math.min(cy + half, mid - band) : cy + half;
+  return { x: x0, y: y0, w: cx + half - x0, h: Math.max(1, y1 - y0) };
+}
+
 export type PlacedIssues = {
+  /** Issues drawn at a pin, by `pinKey` (only when the caller passes `pinNode`). */
+  byPin: Map<string, string[]>;
   /** Issues drawn at a wire (that has geometry). */
   byEdge: Map<number, string[]>;
   /** Issues drawn at a piece. */
@@ -127,15 +183,20 @@ export function placeIssues(
   wireEdges: ReadonlySet<number>,
   nodeIds: ReadonlySet<NodeId>,
   wireOfNode: (node: NodeId) => number | undefined = () => undefined,
+  /** The node a pin issue's pin sits on; when given, pin issues are drawn at the pin, not the node. */
+  pinNode?: (pin: NonNullable<Issue['at']['pin']>) => NodeId | undefined,
 ): PlacedIssues {
-  const out: PlacedIssues = { byEdge: new Map(), byNode: new Map(), global: [] };
+  const out: PlacedIssues = { byPin: new Map(), byEdge: new Map(), byNode: new Map(), global: [] };
   const add = <K>(m: Map<K, string[]>, k: K, msg: string) => {
     const list = m.get(k);
     if (!list) m.set(k, [msg]);
     else if (!list.includes(msg)) list.push(msg);
   };
   for (const { at, message } of issues) {
-    if (at.edge !== undefined && wireEdges.has(at.edge)) add(out.byEdge, at.edge, message);
+    const pinOn = at.pin && pinNode ? pinNode(at.pin) : undefined;
+    if (at.pin && pinOn !== undefined && nodeIds.has(pinOn)) {
+      add(out.byPin, pinKey(at.pin.role === 'loss' ? 'loss' : 'pred', pinOn), message);
+    } else if (at.edge !== undefined && wireEdges.has(at.edge)) add(out.byEdge, at.edge, message);
     else if (at.node !== undefined && nodeIds.has(at.node)) {
       const wire = wireOfNode(at.node);
       if (wire !== undefined && wireEdges.has(wire)) add(out.byEdge, wire, message);
@@ -145,10 +206,13 @@ export function placeIssues(
   return out;
 }
 
-/** Pieces to outline red: any issue naming them, wherever the sentence is shown. */
-export function errorNodes(issues: readonly Issue[]): Set<NodeId> {
+/**
+ * Pieces to outline red: any issue naming them, wherever the sentence is shown. With `skipPins`
+ * (the layer view) a pin issue outlines its pin instead, not the piece.
+ */
+export function errorNodes(issues: readonly Issue[], skipPins = false): Set<NodeId> {
   const s = new Set<NodeId>();
-  for (const i of issues) if (i.at.node !== undefined) s.add(i.at.node);
+  for (const i of issues) if (i.at.node !== undefined && !(skipPins && i.at.pin)) s.add(i.at.node);
   return s;
 }
 
