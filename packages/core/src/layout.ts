@@ -67,6 +67,9 @@ export const LAYOUT = {
   maxUnits: 8,
 } as const;
 
+/** Fanned-out wires in a widened gap (a weight pill mid-gap): the width label sits this far left of the destination box, clear of the pill. */
+const FAN_LABEL_INSET = 14;
+
 type Plan = { w: number; h: number; unit: NeuronUnitKind | null; count: number };
 
 type Core = {
@@ -460,6 +463,12 @@ function layoutCore(
   }
   for (const l of bySource.values()) l.forEach((i, k) => pillSlot.set(i, [k, l.length]));
 
+  // An output with several wires: they share the first horizontal run and the elbow, so a label
+  // at its midpoint would sit under every sibling's. Plain (non-weight) wires out of such an output
+  // put their label on the last run instead, beside the destination, where each wire has its own row.
+  const outCount = new Map<NodeId, number>();
+  for (const e of edges) outCount.set(e.from, (outCount.get(e.from) ?? 0) + 1);
+
   const wires: LayerLayout['wires'] = [];
   for (const e of edges) {
     const a = boxes[e.from];
@@ -491,14 +500,24 @@ function layoutCore(
       const laneY = top - LAYOUT.lane * (1 + (laneOf.get(e.index) ?? 0));
       points.push([x0, y0], [gapR, y0], [gapR, laneY], [gapL, laneY], [gapL, y1], [x1, y1]);
     }
+    const isManual = manual.has(e.from) || manual.has(e.to);
+    const fanned = e.weight === undefined && (outCount.get(e.from) ?? 0) > 1;
+    let labelAt: [number, number];
+    if (e.weight !== undefined && cb - ca === 1 && !isManual) {
+      // A weight's pill sits where its wire turns, mid-gap, clear of both pieces.
+      labelAt = [gapR, y0 + pillOffset(pillSlot.get(e.index))];
+    } else if (fanned && (isManual || cb - ca === 1)) {
+      const last = points[points.length - 1] ?? [x1, y1];
+      const prev = points[points.length - 2] ?? last;
+      labelAt =
+        !isManual || prev[1] !== last[1]
+          ? [(gapAfter[ca] ?? gap) > gap ? x1 - FAN_LABEL_INSET : (gapR + x1) / 2, y1]
+          : [(prev[0] + last[0]) / 2, y1];
+    } else labelAt = labelAnchor(points);
     wires.push({
       edge: e.index,
       points,
-      // A weight's pill sits where its wire turns, mid-gap, clear of both pieces.
-      labelAt:
-        e.weight !== undefined && cb - ca === 1 && !manual.has(e.from) && !manual.has(e.to)
-          ? [gapR, y0 + pillOffset(pillSlot.get(e.index))]
-          : labelAnchor(points),
+      labelAt,
       ...(e.weight !== undefined && e.via !== undefined
         ? { weightNode: e.weight, viaEdge: e.via }
         : {}),
