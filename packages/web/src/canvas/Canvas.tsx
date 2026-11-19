@@ -18,7 +18,7 @@ import {
 import { lockedIds } from '../state/locks.js';
 import { Inspector } from './Inspector.js';
 import { LayerView } from './LayerView.js';
-import { NeuronView } from './NeuronView.js';
+import { NeuronView, UNIT_BTN_ROOM } from './NeuronView.js';
 import { Toast } from './Toast.js';
 import {
   edgeIndexOf,
@@ -119,7 +119,12 @@ export function Canvas() {
   const layout: LayerLayout = useMemo(
     () =>
       neuronLayout
-        ? { nodes: neuronLayout.boxes, wires: neuronLayout.wires, size: neuronLayout.size }
+        ? {
+            nodes: neuronLayout.boxes,
+            wires: neuronLayout.wires,
+            // room under the drawing for the unit +/- buttons
+            size: [neuronLayout.size[0], neuronLayout.size[1] + UNIT_BTN_ROOM],
+          }
         : layerLayout,
     [neuronLayout, layerLayout],
   );

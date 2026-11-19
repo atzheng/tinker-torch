@@ -2,6 +2,7 @@ import { memo, useLayoutEffect, useMemo, useRef, useState, type ComponentType } 
 import {
   LAYOUT,
   resolveEdge,
+  setLinearOut,
   type Analysis,
   type Graph,
   type HostParams,
@@ -21,8 +22,11 @@ import {
   weightAt,
   type NeuronEdge,
 } from './neuronPure.js';
+import type { DragHandlers } from '../gestures/drag.js';
 import { pointerDownWith } from './tap.js';
+import { weightDragHandlers } from './weightEdit.js';
 import { hostShape } from '../state/hostShape.js';
+import { lockedIds } from '../state/locks.js';
 import { useStore } from '../state/store.js';
 import type { Selection } from '../state/viewSlice.js';
 
@@ -58,6 +62,8 @@ const EdgeLayer = memo(function EdgeLayer(p: {
   hitPx: number;
   scale: number;
   onPress: (k: number, e: PointerEvent | React.PointerEvent) => void;
+  /** Drag handlers that set the weight of the edge nearest to the press (own edge `k` as fallback). */
+  dragOf: (k: number) => DragHandlers;
   onHover: (k: number | null, e: React.PointerEvent) => void;
 }) {
   const lines = useRef<(SVGLineElement | null)[]>([]);
@@ -101,6 +107,7 @@ const EdgeLayer = memo(function EdgeLayer(p: {
             data-testid={`edge-${e.node}-${e.i}-${e.j}`}
             className="tk-edge"
             onPointerDown={pointerDownWith({
+              ...p.dragOf(k),
               onTap: (pt) => p.onPress(k, pt.event),
             })}
             onPointerMove={(ev) => p.onHover(k, ev)}
@@ -239,6 +246,17 @@ export function NeuronView(p: NeuronViewProps) {
     setHover((h) => (h && h.k === k && h.x === at.x && h.y === at.y ? h : { k, x: at.x, y: at.y }));
   };
 
+  const dragOfEdge = (own: number): DragHandlers =>
+    weightDragHandlers(
+      (pt) => {
+        const at = p.toAbstract(pt.startX, pt.startY);
+        const k = nearestEdge(layout.edges, at.x, at.y, hitPx / 2 / scale) ?? own;
+        const e = layout.edges[k];
+        return e ? { kind: 'W', node: e.node, i: e.i, j: e.j } : null;
+      },
+      (t) => t.kind === 'W' && p.select({ kind: 'edge', node: t.node, i: t.i, j: t.j }),
+    );
+
   const sel = p.selection;
   const selEdge =
     sel?.kind === 'edge'
@@ -259,6 +277,7 @@ export function NeuronView(p: NeuronViewProps) {
         hitPx={hitPx}
         scale={scale}
         onPress={pressEdge}
+        dragOf={dragOfEdge}
         onHover={hoverEdge}
       />
       {selEdge && (
@@ -331,6 +350,13 @@ export function NeuronView(p: NeuronViewProps) {
             data-error={p.errorNodes.has(u.node)}
             className="tk-node tk-unit"
             onPointerDown={pointerDownWith({
+              // A drag on a plus circle sets that unit's bias; other units only select.
+              ...(u.kind === 'sum'
+                ? weightDragHandlers(
+                    () => ({ kind: 'b', node: u.node, j: u.index }),
+                    () => p.select({ kind: 'unit', node: u.node, index: u.index }),
+                  )
+                : {}),
               onTap: () => p.select({ kind: 'unit', node: u.node, index: u.index }),
             })}
           >
@@ -347,6 +373,11 @@ export function NeuronView(p: NeuronViewProps) {
             <UnitCircle kind={u.kind} node={node} />
           </g>
         );
+      })}
+      {graph.nodes.map((node) => {
+        const box = layout.boxes[node.id];
+        if (node.type !== 'linear' || !box) return null;
+        return <UnitButtons key={node.id} node={node} box={box} scale={scale} />;
       })}
       {hover && (
         <EdgeTip layout={layout} hover={hover} dims={dims} fallback={p.fallback} scale={scale} />
@@ -444,6 +475,82 @@ function EdgeTip(p: {
       >
         {text}
       </text>
+    </g>
+  );
+}
+
+export const UNIT_BTN_W = 28;
+export const UNIT_BTN_H = 24;
+/** Extra abstract height the canvas reserves under the neuron drawing for the buttons. */
+export const UNIT_BTN_ROOM = 16;
+
+/**
+ * The minus and plus buttons under a Linear: one more or one fewer unit (`setLinearOut`, one undo
+ * step, 1 to 64). They sit under collapsed Linears too, so a column that grew past 8 can shrink
+ * back. A locked piece refuses through the toast. The hit area is at least 32 screen px.
+ */
+function UnitButtons(p: {
+  node: Extract<Node, { type: 'linear' }>;
+  box: { x: number; y: number; w: number; h: number };
+  scale: number;
+}) {
+  const { node, box, scale } = p;
+  const change = (delta: number) => {
+    const s = useStore.getState();
+    s.apply(setLinearOut(s.graph, node.id, node.out + delta, { locked: lockedIds() }));
+  };
+  // The two hit areas share the column centre and never overlap, so at small scales the buttons
+  // move apart rather than the hit areas shrinking below 32 px.
+  const hit = Math.max(UNIT_BTN_W + 6, 32 / scale);
+  const hitH = Math.max(UNIT_BTN_H, 32 / scale);
+  const btn = (sign: -1 | 1) => {
+    const disabled = sign < 0 ? node.out <= 1 : node.out >= 64;
+    const x = sign * (hit / 2) - UNIT_BTN_W / 2;
+    const label = sign < 0 ? 'Remove a unit' : 'Add a unit';
+    return (
+      <g
+        data-testid={`unit-${sign < 0 ? 'minus' : 'plus'}-${node.id}`}
+        className="tk-unitbtn"
+        data-disabled={disabled}
+        role="button"
+        tabIndex={0}
+        aria-label={label}
+        aria-disabled={disabled}
+        onPointerDown={pointerDownWith({ onTap: () => !disabled && change(sign) })}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!disabled) change(sign);
+          }
+        }}
+      >
+        <rect
+          className="tk-hit"
+          x={x + UNIT_BTN_W / 2 - hit / 2}
+          y={UNIT_BTN_H / 2 - hitH / 2}
+          width={hit}
+          height={hitH}
+        />
+        <rect className="tk-shape" x={x} y={0} width={UNIT_BTN_W} height={UNIT_BTN_H} rx={6} />
+        <text
+          className="tk-text"
+          x={x + UNIT_BTN_W / 2}
+          y={UNIT_BTN_H / 2}
+          textAnchor="middle"
+          dominantBaseline="central"
+        >
+          {sign < 0 ? '−' : '+'}
+        </text>
+      </g>
+    );
+  };
+  return (
+    <g
+      transform={`translate(${box.x + box.w / 2} ${box.y + box.h + 6})`}
+      data-testid={`unitbtns-${node.id}`}
+    >
+      {btn(-1)}
+      {btn(1)}
     </g>
   );
 }

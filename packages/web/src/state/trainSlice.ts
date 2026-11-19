@@ -96,6 +96,13 @@ export type TrainSlice = {
     a: Float32Array,
     b: Float32Array,
   ) => Float32Array | null;
+  /**
+   * Hand-set weights (tinker-ran.2): overwrite the W and/or b of one Linear in the live model
+   * through `engine.write` (the optimizer state is kept) and republish `host`. Does not touch the
+   * graph, the history or the step counter. False when there is no live model or the values do
+   * not fit (nothing changes then). Callers refuse while running and for locked pieces.
+   */
+  writeParams: (node: string, values: { W?: Float32Array; b?: Float32Array }) => boolean;
   setSpeed: (n: number) => void;
   /** Commit a learning rate (one undo step). Committed on release or blur by the UI. */
   setLearningRate: (lr: number) => void;
@@ -476,6 +483,17 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       } catch {
         return null;
       }
+    },
+    writeParams: (node, values) => {
+      const { engine, state } = rt;
+      if (!engine || !state) return false;
+      try {
+        state.params = engine.write(state.params, node, values); // consumes the old params
+      } catch {
+        return false; // the engine leaves the params valid when it throws
+      }
+      publish();
+      return true;
     },
     setSpeed: (n) => set({ speed: Math.max(1, Math.round(n)) }),
     setLearningRate: (lr) => {

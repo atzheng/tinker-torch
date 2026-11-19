@@ -1,9 +1,10 @@
-import type { ComponentType } from 'react';
+import { useState, type ComponentType } from 'react';
 import type { Analysis, Graph, HostParams, Node, PieceType } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import { deleteSelection } from './actions.js';
 import { biasAt, weightAt } from './neuronPure.js';
 import { edgeIndexOf } from './pure.js';
+import { beginWeightEdit, type WeightTarget } from './weightEdit.js';
 import { hostShape } from '../state/hostShape.js';
 import { useStore } from '../state/store.js';
 import type { Selection } from '../state/viewSlice.js';
@@ -84,6 +85,47 @@ function WireInspector({
   );
 }
 
+/**
+ * Type an exact value for a weight or bias; committed on Enter or blur as one undo step, Escape
+ * drops the draft. Disabled while training runs (a running loop would overwrite it).
+ */
+function ValueField(p: { testid: string; label: string; value: number; target: WeightTarget }) {
+  const running = useStore((s) => s.running);
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    const text = draft;
+    setDraft(null);
+    if (text === null) return;
+    const v = Number(text);
+    if (text.trim() === '' || !Number.isFinite(v)) return;
+    const edit = beginWeightEdit(p.target);
+    if (!edit) return;
+    edit.set(v);
+    edit.commit();
+  };
+  return (
+    <label className="tk-valuefield">
+      <span className="tk-muted">{p.label}</span>
+      <input
+        type="text"
+        inputMode="decimal"
+        data-testid={p.testid}
+        disabled={running}
+        value={draft ?? p.value.toFixed(4)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+          else if (e.key === 'Escape') {
+            setDraft(null);
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </label>
+  );
+}
+
 /** The live value of a weight; follows the train slice's `host` while it runs. */
 function EdgeInspector(p: {
   graph: Graph;
@@ -117,6 +159,14 @@ function EdgeInspector(p: {
       <p data-testid="inspector-weight">
         {w === undefined ? 'No value yet' : `Value ${w.toFixed(4)}`}
       </p>
+      {w !== undefined && (
+        <ValueField
+          testid="inspector-weight-input"
+          label="Set value"
+          value={w}
+          target={{ kind: 'W', node: p.node, i: p.i, j: p.j }}
+        />
+      )}
     </>
   );
 }
@@ -143,6 +193,14 @@ function UnitInspector(p: {
         <p data-testid="inspector-fanin">{inW} incoming weights</p>
       )}
       {b !== undefined && <p data-testid="inspector-bias">Bias {b.toFixed(4)}</p>}
+      {b !== undefined && (
+        <ValueField
+          testid="inspector-bias-input"
+          label="Set bias"
+          value={b}
+          target={{ kind: 'b', node: n.id, j: p.index }}
+        />
+      )}
     </>
   );
 }
