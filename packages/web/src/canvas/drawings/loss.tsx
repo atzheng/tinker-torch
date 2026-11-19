@@ -1,4 +1,5 @@
 import { LOSS_FNS, type LossFn } from '@tinker/core';
+import { legibleAt } from '../pure.js';
 import { NumberField, SelectField, editPenalty, editSetting } from './fields.js';
 import type { WebPiece } from './types.js';
 
@@ -20,12 +21,14 @@ const LOSS_LINES: Record<LossFn, string[]> = {
 
 /** Layer drawing: a loss circle with the loss name (two short lines when it has two words). */
 export const lossPiece: WebPiece<'loss'> = {
-  Layer: ({ node, w, h }) => {
+  Layer: ({ node, w, h, scale }) => {
+    const showDelta = node.fn === 'huber' && legibleAt(scale, 12.5);
+    const showTag = node.penalty !== undefined && legibleAt(scale, 9);
     const lines = LOSS_LINES[node.fn];
     return (
       <g data-piece="loss">
         <circle className="tk-shape" cx={w / 2} cy={h / 2} r={Math.min(w, h) / 2 - 2} />
-        {node.fn === 'huber' && (
+        {showDelta && (
           <text
             className="tk-text tk-small tk-muted"
             x={w / 2}
@@ -36,7 +39,7 @@ export const lossPiece: WebPiece<'loss'> = {
             {`δ=${node.delta ?? 1}`}
           </text>
         )}
-        {node.penalty && (
+        {node.penalty && showTag && (
           <g data-testid={`penalty-tag-${node.id}`}>
             <rect className="tk-shape" x={w - 34} y={h / 2 - 17} width={34} height={34} rx={5} />
             <text
@@ -66,7 +69,7 @@ export const lossPiece: WebPiece<'loss'> = {
             key={t}
             className="tk-text tk-small"
             x={w / 2}
-            y={h / 2 + (i - (lines.length - 1) / 2) * 13 - (node.fn === 'huber' ? 7 : 0)}
+            y={h / 2 + (i - (lines.length - 1) / 2) * 13 - (showDelta ? 7 : 0)}
             textAnchor="middle"
             dominantBaseline="middle"
           >
@@ -118,6 +121,7 @@ export const lossPiece: WebPiece<'loss'> = {
           testid="field-penalty-lambda"
           value={node.penalty.lambda}
           min={0}
+          max={100}
           step={0.01}
           onCommit={(v) => editPenalty(node.id, { kind: node.penalty?.kind ?? 'l2', lambda: v })}
         />

@@ -1,31 +1,43 @@
+import { legibleAt } from '../pure.js';
 import { useAnalysis } from '../../state/derived.js';
 import { CheckField, NumberField, editSetting } from './fields.js';
 import type { NodeOf, WebPiece } from './types.js';
 
 /** Layer drawing: a small box with a short formula. (Minimal: the swapping epic may refine it.) */
 export const featurePiece: WebPiece<'feature'> = {
-  Layer: ({ node, w, h, outWidth }) => {
+  Layer: ({ node, w, h, outWidth, scale }) => {
+    const detail = legibleAt(scale, 12.5);
     const extra = [node.sin ? 'sin' : '', node.cos ? 'cos' : '', node.products ? 'xy' : '']
       .filter(Boolean)
       .join(' ');
     return (
       <g data-piece="feature">
         <rect className="tk-shape" x={0} y={0} width={w} height={h} rx={4} />
-        <text className="tk-text tk-small" x={w / 2} y={h * 0.3} textAnchor="middle">
+        <text
+          className={detail ? 'tk-text tk-small' : 'tk-text'}
+          x={w / 2}
+          y={detail ? h * 0.3 : h / 2}
+          dominantBaseline={detail ? undefined : 'middle'}
+          textAnchor="middle"
+        >
           {node.degree === 1 ? 'x' : `x to x^${node.degree}`}
         </text>
-        <text
-          className="tk-text tk-small tk-muted"
-          x={w / 2}
-          y={h * 0.55}
-          textAnchor="middle"
-          data-testid={`feature-extra-${node.id}`}
-        >
-          {extra}
-        </text>
-        <text className="tk-text tk-small" x={w / 2} y={h * 0.84} textAnchor="middle">
-          {outWidth === undefined ? '? columns' : `${outWidth} columns`}
-        </text>
+        {detail && (
+          <>
+            <text
+              className="tk-text tk-small tk-muted"
+              x={w / 2}
+              y={h * 0.55}
+              textAnchor="middle"
+              data-testid={`feature-extra-${node.id}`}
+            >
+              {extra}
+            </text>
+            <text className="tk-text tk-small" x={w / 2} y={h * 0.84} textAnchor="middle">
+              {outWidth === undefined ? '? columns' : `${outWidth} columns`}
+            </text>
+          </>
+        )}
       </g>
     );
   },

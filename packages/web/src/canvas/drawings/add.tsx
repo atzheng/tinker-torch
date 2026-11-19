@@ -41,10 +41,8 @@ function AddFields({ node }: { node: NodeOf<'add'> }) {
   const b = width('b');
   return (
     <>
-      <p className="tk-muted">No settings.</p>
       <p data-testid="add-widths">
         Input a: {a}. Input b: {b}.
-        {a !== b && a !== 'not known' && b !== 'not known' ? ' The widths do not match.' : ''}
       </p>
     </>
   );

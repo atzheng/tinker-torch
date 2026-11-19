@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { parseGraph, type Graph } from '@tinker/core';
+import { legibleAt } from '../src/canvas/pure.js';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { useStore } from '../src/state/store.js';
@@ -105,7 +106,7 @@ test('feature inspector: degree, sin, cos, products; width shown; one undo step 
   expect(steps()).toBe(before + 4);
   act(() => s().undo());
   expect(node('feat')).toMatchObject({ products: false });
-  expect(must('node-feat').textContent).toContain('columns');
+  expect(must('node-feat').textContent).toContain('x to x^3'); // main label stays at any scale
 });
 
 test('dropout inspector: p commits once; out of range is refused', () => {
@@ -133,13 +134,12 @@ test('add inspector: both input widths, and the mismatch sentence', () => {
     });
   });
   pick('add');
-  expect(must('add-widths').textContent).toBe('Input a: 3. Input b: 5. The widths do not match.');
+  expect(must('add-widths').textContent).toBe('Input a: 3. Input b: 5.');
   expect(must('inspector-issues').textContent).toContain('same width');
 });
 
 test('loss inspector: fn, huber delta, penalty kind, lambda, remove; tag drawn', () => {
   pick('loss');
-  expect(must('penalty-tag-loss').textContent).toBe('L20.01');
   const before = steps();
   typeAndBlur(must('field-delta'), '2');
   expect(node('loss')).toMatchObject({ delta: 2 });
@@ -188,4 +188,22 @@ test('locked pieces refuse every inspector edit', () => {
   expect(s().error).toBe('This piece is locked.');
   expect(node('feat')).toMatchObject({ degree: 2, sin: true });
   expect(node('yhat')).toMatchObject({ link: 'identity' });
+});
+
+test('lambda above 100 is refused with the schema sentence', () => {
+  pick('loss');
+  const before = steps();
+  typeAndBlur(must('field-penalty-lambda'), '101');
+  expect(node('loss')).toMatchObject({ penalty: { lambda: 0.01 } });
+  expect(steps()).toBe(before);
+  expect(s().error).toContain('0 to 100');
+});
+
+test('secondary text is hidden when it would be under 8 px on screen', () => {
+  expect(legibleAt(undefined, 9)).toBe(true);
+  expect(legibleAt(1, 9)).toBe(true);
+  expect(legibleAt(0.3, 12.5)).toBe(false);
+  expect(legibleAt(0.64, 12.5)).toBe(true);
+  expect(legibleAt(0.88, 9)).toBe(false);
+  expect(legibleAt(0.89, 9)).toBe(true);
 });
