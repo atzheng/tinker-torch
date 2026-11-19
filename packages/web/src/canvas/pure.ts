@@ -111,7 +111,7 @@ export function neuronSelectionLive(
 /** Pins: the ŷ and L role markers at a node's output (CONTRACTS.md section 10, "Role pins"). */
 export type PinRole = 'pred' | 'loss';
 /** Geometry of a pin in abstract units: radius and the offset of its centre from the output port. */
-export const PIN = { r: 11, dx: 34, dy: 40 } as const;
+export const PIN = { r: 12, dx: 34, dy: 44 } as const;
 /** Extra room right of the drawing so a pin on the last column is not cut off. */
 export const PIN_ROOM_X = 24;
 

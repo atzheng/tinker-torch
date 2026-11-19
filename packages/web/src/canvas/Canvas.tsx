@@ -86,11 +86,26 @@ function useCoarse(): boolean {
   );
 }
 
-function Callout(props: { x: number; y: number; viewW: number; text: string[]; testid: string }) {
+function Callout(props: {
+  x: number;
+  y: number;
+  viewW: number;
+  text: string[];
+  testid: string;
+  above?: boolean;
+}) {
   const half = 100;
   const left = Math.min(Math.max(props.x, half + 4), Math.max(half + 4, props.viewW - half - 4));
   return (
-    <div className="tk-callout" data-testid={props.testid} style={{ left, top: props.y }}>
+    <div
+      className="tk-callout"
+      data-testid={props.testid}
+      style={{
+        left,
+        top: props.y,
+        ...(props.above ? { transform: 'translate(-50%, -100%)' } : {}),
+      }}
+    >
       {props.text.map((t) => (
         <p key={t}>{t}</p>
       ))}
@@ -300,7 +315,8 @@ export function Canvas() {
     const box = layout.nodes[selection.id];
     if (box) {
       anchor = placeInspector(
-        { cx: px(box.x + box.w / 2), top: py(box.y), bottom: py(box.y + box.h) },
+        // clear of the pins (and the add pins) above and below the piece
+        { cx: px(box.x + box.w / 2), top: py(box.y - 30), bottom: py(box.y + box.h + 30) },
         view,
         INSPECTOR_W,
       );
@@ -547,7 +563,8 @@ export function Canvas() {
             key={`p${key}`}
             testid={`issue-pin-${role}-${id}`}
             x={px(cx)}
-            y={py(cy) + (role === 'pred' ? -18 - 30 : 18)}
+            y={py(cy) + (role === 'pred' ? -16 : 16)}
+            above={role === 'pred'}
             viewW={view.w}
             text={text}
           />

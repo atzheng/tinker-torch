@@ -174,7 +174,7 @@ export function LayerView(p: LayerViewProps) {
     ghost: false,
   }));
   if (sel?.kind === 'node' && !p.drag && layout.nodes[sel.id]) {
-    const have = new Set(pinMarks.map((x) => pinKey(x.role, sel.id)));
+    const have = new Set(pinMarks.map((x) => pinKey(x.role, x.node)));
     for (const role of ['pred', 'loss'] as const) {
       if (!have.has(pinKey(role, sel.id))) pinMarks.push({ role, node: sel.id, ghost: true });
     }
