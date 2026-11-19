@@ -313,3 +313,18 @@ describe('round trip', () => {
     expect(an(e.graph).shape['bias1']).toEqual(an(g0).shape['b']);
   });
 });
+
+describe('positions', () => {
+  test('removed pieces lose theirs, the rest keep theirs, new pieces get none', () => {
+    const pos: Record<string, [number, number]> = { w1: [1, 2], m: [3, 4] };
+    const a = groupIntoLinear({ ...scalar(['x1', 'x2']), positions: pos }, host(2), IDS);
+    if (!a.ok) throw new Error(a.error);
+    expect(a.graph.positions).toEqual({ m: [3, 4] });
+    const lh = Object.create(null) as HostParams;
+    lh['linear1'] = a.host['linear1'] ?? {};
+    const withPos = { ...a.graph, positions: { linear1: [5, 6], m: [3, 4] } as typeof pos };
+    const e = expandToScalars(withPos, lh, 'linear1');
+    if (!e.ok) throw new Error(e.error);
+    expect(e.graph.positions).toEqual({ m: [3, 4] });
+  });
+});
