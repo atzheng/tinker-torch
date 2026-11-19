@@ -40,6 +40,10 @@ export const PIECE_LABEL: Record<PieceType, string> = {
   scale: 'Scale',
   weights: 'Weights',
   norm: 'Norm',
+  column: 'Column',
+  scalew: 'Weight',
+  bias: 'Bias',
+  sum: 'Sum',
 };
 
 function Issues({ messages }: { messages: string[] }) {

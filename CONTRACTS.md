@@ -93,7 +93,11 @@ type Node =
   | { id: NodeId; type: 'mean' }                                // reduction over the batch (and elements): per-example -> single number
   | { id: NodeId; type: 'scale'; c: number }                    // c * x, any finite c
   | { id: NodeId; type: 'weights'; of: NodeId }                 // tap: reads W of the Linear `of` (not a bias)
-  | { id: NodeId; type: 'norm'; kind: NormKind };               // sum w^2 (l2) or sum |w| (l1) of a weight matrix -> single number
+  | { id: NodeId; type: 'norm'; kind: NormKind }                // sum w^2 (l2) or sum |w| (l1) of a weight matrix -> single number
+  | { id: NodeId; type: 'column'; name: string }                // one dataset column by name, example(1); no input port
+  | { id: NodeId; type: 'scalew' }                              // out = w * in, one learnable scalar (palette label "Weight")
+  | { id: NodeId; type: 'bias' }                                // out = in + b, one learnable scalar
+  | { id: NodeId; type: 'sum' };                                // adds every wire into its one variadic port `in`
 
 type PortRef = string;          // "node" (its output) or "node.port"
 type Edge = [from: PortRef, to: PortRef];
@@ -110,8 +114,8 @@ type Graph = {
 - Also exported: `DatasetName` and the `*_NAMES`/`*_FNS`/`LINK_FNS`/`NORM_KINDS`/`NODE_TYPES` const lists, `NodeBody`, `NodeOf`, `parsePort`, `resolveEdge(nodes, edge)`, `resolvePin(nodes, ref)` (a pin must name a node and, if it has a port, `out`), `inputPortsOf(type)`, `outputPortsOf(type)`, `variadicPortsOf(type)`, `isVariadicPort(type, port)`. Types come from the zod schema.
 - `parseGraph(json)`: version 2 as written, or version 1 migrated (below). Fills defaults (`standardize: false`, `huber.delta: 1`, `predictions: []`, `loss: null`). Rejects unknown fields and types, duplicate ids, a `weights.of` that is not a Linear, a pin that is not a node's `out`, and the same node pinned twice as ŷ. One plain sentence on failure. It does not check the pins' widths, that L is a single number or that L depends on a parameter: that is analyse (tinker-8xw.2).
 - `serializeGraph(graph)`: always version 2, stable key order (`version, nodes, edges, predictions, loss, data, train`), two-space JSON. `loss: null` is written, not omitted.
-- Ports. Every node has the one output port `out` (a port ref still allows more later). Input ports: `add` and `subtract` have `a` and `b`; `log_loss` and `cross_entropy` have `pred` and `target`; `input`, `target` and `weights` have none; every other piece has one input port `in`. A bare node id means `out` as a source and the single input port as a destination.
-- Every input port takes exactly one edge, except a variadic port (section 3, `variadicPorts`), which takes any number (at least one); an output port may feed several. The wires into a variadic port are ordered by their position in `graph.edges`. The same source cannot be wired into a variadic port twice. No piece has a variadic port yet (tinker-9io.3 adds Sum); tests register a stub.
+- Ports. Every node has the one output port `out` (a port ref still allows more later). Input ports: `add` and `subtract` have `a` and `b`; `log_loss` and `cross_entropy` have `pred` and `target`; `input`, `target`, `column` and `weights` have none; `sum` has one variadic port `in`; every other piece (including `scalew` and `bias`) has one input port `in`. A bare node id means `out` as a source and the single input port as a destination.
+- Every input port takes exactly one edge, except a variadic port (section 3, `variadicPorts`), which takes any number (at least one); an output port may feed several. The wires into a variadic port are ordered by their position in `graph.edges`. The same source cannot be wired into a variadic port twice. Sum is the only variadic piece.
 - `weights.of` is a node field, not an edge: the tap reads a parameter, so it creates no data dependency and no cycle. The canvas draws it as a dashed wire from the Linear to the Weights node. Extension point for the scalar-level bead (tinker-9io): scalar weights on wires, a variadic Sum, a Bias and per-column inputs are new node types or a richer `of`; nothing here forbids them.
 - ŷ and L are pins, so the same node can be both a ŷ and part of the loss path (the usual case: ŷ feeds the loss). A graph with no ŷ still trains when L is valid. Rules that analyse enforces: every ŷ width equals the dataset target (1 for regression and binary; numClasses for softmax classification); L is a single number that depends on at least one parameter.
 
@@ -137,13 +141,13 @@ The five classic losses and the weight penalty are palette macros (`PaletteEntry
 
 ## 3. Piece registry (`core/registry.ts`)
 
-`PieceType` is the `type` of the nodes above (18 types). The palette (`PALETTE`) has one `piece` entry per type, with Sigmoid and Softmax as two entries of `link` and L2 and L1 as two entries of `norm`, plus six `macro` entries: `loss_squared_error`, `loss_absolute_error`, `loss_huber`, `loss_log_loss`, `loss_cross_entropy` and `weight_penalty`. The four activations are one type with `fn`.
+`PieceType` is the `type` of the nodes above (22 types). The palette (`PALETTE`) has one `piece` entry per type, with Sigmoid and Softmax as two entries of `link` and L2 and L1 as two entries of `norm`, (plus `column`, `sum`, `scalew` labelled Weight and `bias` as single entries), plus six `macro` entries: `loss_squared_error`, `loss_absolute_error`, `loss_huber`, `loss_log_loss`, `loss_cross_entropy` and `weight_penalty`. The four activations are one type with `fn`.
 
 ```ts
 // core/registry.ts
 type Family = 'inputs' | 'features' | 'linear' | 'activations' | 'structure' | 'links'
-  | 'errors' | 'losses' | 'reductions' | 'math' | 'parameters';   // drop-to-swap only within a family
-// inputs: input, target. structure: dropout, add. links: link. errors: square, abs, huber.
+  | 'errors' | 'losses' | 'reductions' | 'math' | 'parameters' | 'scalars';   // drop-to-swap only within a family
+// inputs: input, target, column (column never swaps with input or target). scalars: scalew, bias. structure: dropout, add, sum (swaps need identical ports incl. variadic flags, so sum swaps with nothing). links: link. errors: square, abs, huber.
 // losses: log_loss, cross_entropy. reductions: mean. math: subtract, scale. parameters: weights, norm.
 
 // What flows along a wire.
@@ -189,11 +193,14 @@ Shape rules (`outShape`):
 - square, abs, huber, scale: elementwise, any shape passes through.
 - log_loss: `pred` and `target` are `example`; pred width 1; result `example(1)`. cross_entropy: same, pred width any; result `example(1)`. Whether pred width matches numClasses and the target is analyse's job.
 - mean: `example(w)` -> `scalar` (mean over the batch and the elements).
+- column: `example(1)` (analyse issues when the name is not a dataset column). scalew, bias: need an `example` input, width passes through. sum: the shared shape of its wires (analyse has checked they agree).
 - weights: `param(rows, cols)` from `ctx.weightShape(of)`; error when that Linear's input width is unknown. norm: `param` -> `scalar`.
 
 Variadic ports (tinker-9io.2). A piece lists the ports that take many wires in `variadicPorts`; every other port keeps one wire. A variadic port with no wire is a dangling input (the piece's own "needs an input" sentence). Nothing but the registry flag marks a piece as variadic; core code asks `isVariadicPort(type, port)`.
 
 Feature output layout (the order of columns; the engine and the torch fixtures use it): `x^p` for p = 1..degree (power-major, then column, so power 1 is x itself), then `sin(x)` if `sin`, then `cos(x)` if `cos`, then `x_i * x_j` for i < j in row-major pair order if `products`. sin and cos apply to the raw column values (no frequency scaling).
+
+Scalar pieces: `scalew` owns `{ W: [1, 1] }` and `bias` owns `{ b: [1] }` (1 parameter each, any input width); both init `{ kind: 'uniform', bound: 1 / sqrt(d) }` with d = `data.columns.length` (the dataset's column count, so a scalar model starts at the scale of `nn.Linear(d, 1)`). Torch: `w * x`, `x + b`, `torch.stack(xs).sum(0)`, column `x[:, [i]]`. New ids from the palette: columns `x1`.., weights `w1`.. (smallest free), others `<type>k`. `ENGINE_PIECES` has throwing stubs for these four until tinker-9io.4.
 
 Parameter count of a Linear: in·out + (bias ? out : 0). Every other piece has 0; the penalty's norms read Linear weights but own nothing. The penalty covers Linear weight matrices only, never biases.
 
@@ -243,7 +250,7 @@ Roles, each an issue when it fails:
 - Log loss and cross-entropy take probabilities: their `pred` must come from a `link` of the matching fn (sigmoid for log loss, softmax for cross-entropy; issue at the node and the pred wire otherwise), the dataset must be `binary`, and cross-entropy's pred width must be `numClasses`. A matching pair is listed in `fusable`.
 - The 10,000 parameter limit applies to `totalParams` (issue with `at: {}`).
 
-Regions and order. Ancestry follows data wires (the first wire into each plain port, every wire into a variadic port). Model = ancestors of the ŷ pins (including the pinned nodes). Objective = ancestors of L that are not in the model. `order` is the topological order of model plus objective when L or a ŷ resolves, so dangling nodes are left out; otherwise every acyclic node. `modelOrder` is what `predict()` runs (dropout off). Wires from a Linear to a Weights tap (`weights.of`) are not data wires: the tap reads parameters, so it pulls in neither the Linear's inputs nor an ordering constraint, and a Linear read only through a tap is not in `order` (the engine does not run its forward pass). Such a Linear is still live: `paramNodes` lists every parameter-owning node in `order` (`ownsParams(node)`: its `paramShapes` is non-empty; exported from the registry) plus every Linear read by a Weights node in `order`, and `totalParams` and the engine's parameter tables use that list, not the keys of `params`. `paramWires` lists every Weights node whose `of` is a Linear, for the dashed wire.
+Regions and order. Ancestry follows data wires (the first wire into each plain port, every wire into a variadic port). Model = ancestors of the ŷ pins (including the pinned nodes). Objective = ancestors of L that are not in the model. `order` is the topological order of model plus objective when L or a ŷ resolves, so dangling nodes are left out; otherwise every acyclic node. `modelOrder` is what `predict()` runs (dropout off). Wires from a Linear to a Weights tap (`weights.of`) are not data wires: the tap reads parameters, so it pulls in neither the Linear's inputs nor an ordering constraint, and a Linear read only through a tap is not in `order` (the engine does not run its forward pass). Such a Linear is still live: `paramNodes` lists every parameter-owning node in `order` (`ownsParams(node)`: its `paramShapes` is non-empty, so Linear, scalew and bias; exported from the registry) plus every Linear read by a Weights node in `order`, and `totalParams` and the engine's parameter tables use that list, not the keys of `params`. `paramWires` lists every Weights node whose `of` is a Linear, for the dashed wire.
 
 `inWidth`/`outWidth`/`shape` have no key where unknown (never NaN or null). The records are prototype-free, so lookups by node id are safe for any id.
 

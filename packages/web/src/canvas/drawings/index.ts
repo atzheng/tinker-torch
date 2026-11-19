@@ -20,6 +20,7 @@ import {
   weightsPiece,
 } from './math.js';
 import { targetPiece } from './target.js';
+import { biasPiece, columnPiece, scalewPiece, sumPiece } from './scalar.js';
 
 export type { WebPiece } from './types.js';
 
@@ -42,4 +43,8 @@ export const WEB_PIECES: { [T in PieceType]: WebPiece<T> } = {
   scale: scalePiece,
   weights: weightsPiece,
   norm: normPiece,
+  column: columnPiece,
+  scalew: scalewPiece,
+  bias: biasPiece,
+  sum: sumPiece,
 };
