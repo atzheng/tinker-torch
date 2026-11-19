@@ -45,7 +45,7 @@ test.each(Object.keys(BEFORE))(
       state = r.state;
       if (i === 0 || i === 49 || i === 299) got.push(r.loss);
     }
-    want.losses.forEach((l, k) => expect(got[k]).toBeCloseTo(l, 6));
+    want.losses.forEach((l, k) => expect(got[k]).toBe(l));
     engine.dispose(state);
     engine.disposeModel(model);
   },
