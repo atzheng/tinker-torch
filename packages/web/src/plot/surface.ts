@@ -5,6 +5,8 @@ import type { HostParams, NodeId } from '@tinker/core';
 export const SURFACE_N = 50;
 /** Minimum half-width of the range around the current parameters. */
 export const MIN_HALF = 3;
+/** Largest half-width the range follows the path to; a run that runs off further keeps the last range. */
+export const MAX_HALF = 100;
 /** The path keeps at most this many points (halved, keeping the last, when it grows past it). */
 export const MAX_PATH = 4000;
 
@@ -44,9 +46,11 @@ export function twoParams(
 /** Short axis label: "weight" / "bias", prefixed with the node id when the two axes sit on different nodes. */
 export function axisLabels(axes: [SurfaceAxis, SurfaceAxis]): [string, string] {
   const sameNode = axes[0].node === axes[1].node;
+  const bothW = sameNode && axes[0].tensor === 'W' && axes[1].tensor === 'W';
   const one = (a: SurfaceAxis) => {
     const t = a.tensor === 'W' ? 'weight' : 'bias';
-    return sameNode ? t : `${a.node} ${t}`;
+    const n = bothW ? `${t} ${a.index + 1}` : t;
+    return sameNode ? n : `${a.node} ${t}`;
   };
   return [one(axes[0]), one(axes[1])];
 }
@@ -84,6 +88,8 @@ export function nextRange(prev: SurfaceRange | null, path: readonly Pt[]): Surfa
   }
   const ha = Math.max(MIN_HALF, 1.25 * da);
   const hb = Math.max(MIN_HALF, 1.25 * db);
+  if (!(ha <= MAX_HALF && hb <= MAX_HALF) && prev) return prev; // diverging: keep the last good range
+  if (!(Number.isFinite(cur[0]) && Number.isFinite(cur[1]))) return prev;
   return { a: [cur[0] - ha, cur[0] + ha], b: [cur[1] - hb, cur[1] + hb] };
 }
 

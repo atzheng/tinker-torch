@@ -33,6 +33,19 @@ export function LossSurface() {
   return <Surface axes={info.axes} point={info.values} hostKey={host} />;
 }
 
+/** Any CSS colour to [r, g, b]: draw one pixel and read it back. */
+function rgbOf(color: string): [number, number, number] {
+  const cv = document.createElement('canvas');
+  cv.width = 1;
+  cv.height = 1;
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  if (!g) return [0, 0, 0];
+  g.fillStyle = color;
+  g.fillRect(0, 0, 1, 1);
+  const d = g.getImageData(0, 0, 1, 1).data;
+  return [d[0] ?? 0, d[1] ?? 0, d[2] ?? 0];
+}
+
 type PathState = { key: object | null; path: Pt[]; range: SurfaceRange | null };
 
 function Surface({
@@ -48,6 +61,7 @@ function Surface({
   const graph = useStore((s) => s.graph);
   const step = useStore((s) => s.step);
   const canTrain = useStore((s) => s.canTrain);
+  const diverged = useStore((s) => s.diverged);
   const lossSurface = useStore((s) => s.lossSurface);
 
   // The path and the range live in a ref; they change once per published host (not per redraw).
@@ -99,9 +113,7 @@ function Surface({
       const cw = (w - m.l - m.r) / (n - 1);
       const ch = (h - m.t - m.b) / (n - 1);
       // one pixel per grid point in an offscreen canvas, drawn scaled up (smooth, no seams)
-      ctx.fillStyle = c.accent;
-      const hex = String(ctx.fillStyle);
-      const rgb = [1, 3, 5].map((k) => Number.parseInt(hex.slice(k, k + 2), 16) || 0);
+      const rgb = rgbOf(c.accent);
       const img = new ImageData(n, n);
       for (let i = 0; i < n; i++) {
         for (let j = 0; j < n; j++) {
@@ -186,6 +198,7 @@ function Surface({
     <div className={styles.panel} data-testid="loss-surface">
       <div className={styles.head}>
         <span className={styles.title}>Loss surface</span>
+        {diverged ? <span data-testid="surface-diverged">Diverged</span> : null}
       </div>
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Loss surface of the two parameters" />

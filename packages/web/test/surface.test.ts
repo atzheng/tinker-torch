@@ -85,3 +85,24 @@ test('contourSegments: a bowl gives a ring at the right radius; flat and NaN cel
   expect(contourSegments(new Float32Array(n * n).fill(Number.NaN), n, n, 1)).toEqual([]);
   expect(contourSegments(Float32Array.of(2, 0, 0, 2), 2, 2, 1)).toHaveLength(8);
 });
+
+test('nextRange keeps the last good range when the path runs off (divergence)', () => {
+  const r0 = nextRange(null, [[1, 2]]);
+  const r1 = nextRange(r0, [
+    [1, 2],
+    [1e6, 2],
+  ]);
+  expect(r1).toBe(r0);
+  expect(
+    nextRange(r0, [
+      [1, 2],
+      [Number.NaN, 2],
+    ]),
+  ).toBe(r0);
+});
+
+test('axisLabels numbers two weights of one node', () => {
+  const a = { node: 'l', tensor: 'W' as const, index: 0 };
+  expect(axisLabels([a, { ...a, index: 1 }])).toEqual(['weight 1', 'weight 2']);
+  expect(axisLabels([a, { node: 'l', tensor: 'b', index: 0 }])).toEqual(['weight', 'bias']);
+});
