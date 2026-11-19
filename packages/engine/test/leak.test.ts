@@ -205,7 +205,11 @@ test('a softmax link shared with another consumer (non-fused cross-entropy) leav
   const a = loadFixture('prim_cross_entropy_softmax');
   const shared = loadFixture('prim_link_shared');
   const graph = structuredClone(a.graph);
-  const extra = (id: string) => shared.graph.nodes.find((n) => n.id === id)!;
+  const extra = (id: string) => {
+    const n = shared.graph.nodes.find((m) => m.id === id);
+    if (!n) throw new Error(id);
+    return n;
+  };
   graph.nodes = [
     ...graph.nodes.filter((n) => n.id !== 'loss'),
     extra('m1'),

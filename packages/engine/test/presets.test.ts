@@ -45,7 +45,11 @@ test.each(Object.keys(BEFORE))(
       state = r.state;
       if (i === 0 || i === 49 || i === 299) got.push(r.loss);
     }
-    want.losses.forEach((l, k) => expect(got[k]).toBe(l));
+    // float32 rounding noise only: the log loss was rewritten constant-free (tinker-oob), which moved
+    // the last digits of the logistic and xor curves (relative 2e-7)
+    want.losses.forEach((l, k) =>
+      expect(Math.abs((got[k] ?? NaN) - l)).toBeLessThanOrEqual(1e-5 * l),
+    );
     engine.dispose(state);
     engine.disposeModel(model);
   },
