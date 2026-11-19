@@ -130,7 +130,7 @@ describe('CSV to dataset', () => {
     if (!p.ok) throw new Error(p.error);
     const { csv } = p;
     expect(inferKind(csv, 2)).toBe('multiclass'); // text with 3 values
-    expect(inferKind(csv, 3)).toBe('multiclass'); // integer labels
+    expect(inferKind(csv, 3)).toBe('regression'); // numbers are regression, the Kind choice overrides
     expect(inferKind(csv, 0)).toBe('regression');
     expect(inferKind(csv, 4)).toBe(null); // 30 distinct strings
     expect(usableInputs(csv, 2)).toEqual([0, 1, 3]);
@@ -156,7 +156,7 @@ describe('CSV to dataset', () => {
     const bad = buildCsv(p.csv, { target: 2, inputs: [0, 1], kind: 'binary' });
     expect(!bad.ok && bad.error).toMatch(/Two classes are needed/);
     const one = buildCsv(p.csv, { target: 2, inputs: [0], kind: 'multiclass' });
-    expect(!one.ok && one.error).toMatch(/at least two numeric input columns/);
+    expect(one.ok).toBe(true); // a single input is fine for classification
     const tiny = parseCsv('x,y\n1,2\n2,3');
     if (!tiny.ok) throw new Error(tiny.error);
     const t = buildCsv(tiny.csv, { target: 1, inputs: [0], kind: 'regression' });
@@ -184,5 +184,27 @@ describe('grid2dSlice', () => {
     }
     expect(g.xRaw[3]).toBe(5); // first row: x4 at its low end
     expect(g.xRaw[4 * 3 + 3]).toBe(6); // fastest-varying column ends at its high end
+  });
+});
+
+describe('CSV details', () => {
+  it('accepts a trailing delimiter on every row', () => {
+    const r = parseCsv('a,b\n1,2,\n3,4,');
+    expect(r.ok && r.csv.rows).toEqual([
+      ['1', '2'],
+      ['3', '4'],
+    ]);
+  });
+  it('does not read hex, binary or Infinity as numbers; reads exponents', () => {
+    const r = parseCsv('a,b,c,d\n0x1A,0b11,Infinity,1e3\n2,3,4,.5');
+    if (!r.ok) throw new Error(r.error);
+    expect(r.csv.columns.map((c) => c.numeric)).toEqual([false, false, false, true]);
+  });
+  it('infers binary for exactly 0/1 numbers, regression for other numbers', () => {
+    const rows = Array.from({ length: 12 }, (_, i) => `${i},${i % 2},${i % 4}`);
+    const r = parseCsv(['x,z,w', ...rows].join('\n'));
+    if (!r.ok) throw new Error(r.error);
+    expect(inferKind(r.csv, 1)).toBe('binary');
+    expect(inferKind(r.csv, 2)).toBe('regression');
   });
 });

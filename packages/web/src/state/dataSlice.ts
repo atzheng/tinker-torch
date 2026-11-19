@@ -81,7 +81,8 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
           return;
         }
       }
-      get().setData({ set: name });
+      // A real dataset has raw columns on very different scales: start with Standardise on.
+      get().setData({ set: name, ...(isRealSet(name) ? { standardize: true } : {}) });
     },
     openCsv: (build, name) => {
       const { graph } = get();
@@ -91,6 +92,7 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
       // seed (which drives the split) changes too.
       get().setData({
         set: 'csv',
+        standardize: true,
         ...(graph.data.set === 'csv'
           ? {
               seed: makeRng(graph.data.seed)

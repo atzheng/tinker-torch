@@ -34,18 +34,52 @@ export async function fetchCsvText(
     };
   }
   if (!res.ok) return { ok: false, error: `The server answered ${res.status} for that address.` };
-  const text = await res.text();
-  if (text.length > MAX_BYTES) {
-    return {
-      ok: false,
-      error: `The file is larger than ${MAX_BYTES / 1_000_000} MB; at most ${CSV_LIMITS.rows} rows and ${CSV_LIMITS.columns} columns are supported.`,
-    };
+  const tooBig: Loaded = {
+    ok: false,
+    error: `The file is larger than ${MAX_BYTES / 1_000_000} MB; at most ${CSV_LIMITS.rows} rows and ${CSV_LIMITS.columns} columns are supported.`,
+  };
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BYTES) {
+    void res.body?.cancel();
+    return tooBig;
+  }
+  let text: string;
+  try {
+    text = await readCapped(res);
+  } catch (e) {
+    return e === OVER ? tooBig : { ok: false, error: 'The file could not be read.' };
   }
   if (/^\s*<(!doctype|html)/i.test(text)) {
     return { ok: false, error: 'That address returned a web page, not a CSV file.' };
   }
   const last = parsed.pathname.split('/').filter(Boolean).pop();
   return { ok: true, text, name: last ?? parsed.host };
+}
+
+const OVER = Symbol('over the size cap');
+
+/** The body as text, read in chunks and abandoned (the request is cancelled) once it passes MAX_BYTES. */
+async function readCapped(res: Response): Promise<string> {
+  if (!res.body) {
+    const t = await res.text();
+    if (new TextEncoder().encode(t).length > MAX_BYTES) throw OVER;
+    return t;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_BYTES) {
+      void reader.cancel();
+      throw OVER;
+    }
+    chunks.push(value);
+  }
+  const dec = new TextDecoder();
+  return chunks.map((c, i) => dec.decode(c, { stream: i < chunks.length - 1 })).join('');
 }
 
 /** Reads a local file chosen by the user. */

@@ -395,10 +395,16 @@ export function FitPlot2D() {
           </label>
         )}
         {d > 2 && (
-          <span className={styles.key} style={{ flexWrap: 'wrap' }} data-testid="slice-pickers">
+          <span
+            className={styles.key}
+            style={{ flexWrap: 'nowrap', whiteSpace: 'nowrap', gap: 4 }}
+            title="The other features are held at their mean"
+            data-testid="slice-pickers"
+          >
             <label className={styles.toggle}>
               x
               <select
+                style={{ maxWidth: 92, fontSize: 11, height: 24 }}
                 aria-label="Feature on the horizontal axis"
                 data-testid="slice-x"
                 value={ia}
@@ -417,6 +423,7 @@ export function FitPlot2D() {
             <label className={styles.toggle}>
               y
               <select
+                style={{ maxWidth: 92, fontSize: 11, height: 24 }}
                 aria-label="Feature on the vertical axis"
                 data-testid="slice-y"
                 value={ib}
@@ -432,9 +439,6 @@ export function FitPlot2D() {
                 ))}
               </select>
             </label>
-            <span className="tk-muted" title="The other features are held at their mean">
-              rest at mean
-            </span>
           </span>
         )}
         <PredictionPicker />

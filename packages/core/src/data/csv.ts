@@ -22,9 +22,12 @@ export type Fail = { ok: false; error: string };
 const MISSING = new Set(['', 'na', 'n/a', 'nan', 'null', '?', '-']);
 export const isMissing = (cell: string): boolean => MISSING.has(cell.trim().toLowerCase());
 
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/** A decimal number (not hex, binary or Infinity, which `Number` would accept); NaN otherwise. */
 function numberOf(cell: string): number {
   const t = cell.trim();
-  return t === '' ? NaN : Number(t);
+  return DECIMAL.test(t) ? Number(t) : NaN;
 }
 
 /** Splits text into rows of cells: quoted cells may hold the delimiter, quotes ("" inside) and newlines. */
@@ -132,6 +135,8 @@ export function parseCsv(input: string): { ok: true; csv: Csv } | Fail {
   });
   for (let r = 0; r < body.length; r++) {
     const row = body[r] as string[];
+    // a trailing delimiter on every row leaves empty cells past the header: ignore them
+    while (row.length > head.length && (row[row.length - 1] as string).trim() === '') row.pop();
     if (row.length > head.length) {
       return {
         ok: false,
@@ -158,18 +163,19 @@ export function parseCsv(input: string): { ok: true; csv: Csv } | Fail {
   return { ok: true, csv: { header, rows: body, columns } };
 }
 
-/** The kind a target column most likely is; null when it cannot be a target (many distinct text values, or empty). */
+/** The kind a target column most likely is (text: classes; numbers: regression, or binary for exactly 0 and 1); null when it cannot be a target (many distinct text values, or empty). */
 export function inferKind(csv: Csv, target: number): SetKind | null {
   const col = csv.columns[target];
   if (!col || col.distinct === 0) return null;
-  if (col.distinct === 2) return 'binary';
   if (col.numeric) {
-    const integers = csv.rows.every((r) => {
+    // numbers are regression unless they are exactly 0 and 1; the Kind choice overrides
+    const zeroOne = csv.rows.every((r) => {
       const c = r[target] as string;
-      return isMissing(c) || Number.isInteger(numberOf(c));
+      return isMissing(c) || numberOf(c) === 0 || numberOf(c) === 1;
     });
-    return integers && col.distinct <= 10 ? 'multiclass' : 'regression';
+    return zeroOne && col.distinct === 2 ? 'binary' : 'regression';
   }
+  if (col.distinct === 2) return 'binary';
   return col.distinct <= CSV_LIMITS.classes ? 'multiclass' : null;
 }
 
@@ -208,9 +214,6 @@ export function buildCsv(
     );
   }
   if (used.length === 0) return { ok: false, error: 'Choose at least one numeric input column.' };
-  if (kind !== 'regression' && used.length < 2) {
-    return { ok: false, error: 'Classification needs at least two numeric input columns.' };
-  }
   if (kind === 'regression' && !tcol.numeric) {
     return { ok: false, error: 'A regression target must be a numeric column.' };
   }
