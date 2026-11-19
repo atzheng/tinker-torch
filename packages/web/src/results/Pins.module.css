@@ -1,0 +1,77 @@
+.row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  flex: none;
+  padding: 2px 8px 4px;
+  min-width: 0;
+}
+
+.pinBtn {
+  flex: none;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+
+.pinBtn:disabled {
+  opacity: 0.5;
+}
+
+.chip {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--border); /* colour set inline from the pin's slot */
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.load {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 44px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  min-width: 0;
+}
+
+.thumb {
+  display: block;
+  width: calc(100% - 28px);
+  height: 18px;
+}
+
+.label {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--text-muted);
+}
+
+.remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+}

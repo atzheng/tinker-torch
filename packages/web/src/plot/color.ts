@@ -9,6 +9,8 @@ export type PlotColors = {
   val: string;
   truth: string;
   accent: string;
+  /** Colours of the pinned runs, by slot. */
+  pins: [string, string, string];
   /** Diverging ramp (class 0 to class 1) and sequential ramp stops, as CSS colour strings. */
   divNeg: string;
   divMid: string;
@@ -29,6 +31,7 @@ const FALLBACK: PlotColors = {
   val: '#d98200',
   truth: '#8a93a1',
   accent: '#2557d6',
+  pins: ['#0b8a6a', '#b5499b', '#8a6d00'],
   divNeg: '#e8a25f',
   divMid: '#f3f1ee',
   divPos: '#5b93e0',
@@ -51,6 +54,11 @@ export function readColors(el: Element): PlotColors {
     val: v('--series-val', FALLBACK.val),
     truth: v('--series-true', FALLBACK.truth),
     accent: v('--accent', FALLBACK.accent),
+    pins: [
+      v('--pin-1', FALLBACK.pins[0]),
+      v('--pin-2', FALLBACK.pins[1]),
+      v('--pin-3', FALLBACK.pins[2]),
+    ],
     divNeg: v('--div-neg', FALLBACK.divNeg),
     divMid: v('--div-mid', FALLBACK.divMid),
     divPos: v('--div-pos', FALLBACK.divPos),
