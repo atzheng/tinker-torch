@@ -15,7 +15,7 @@ function scaled(name: string, factor: number) {
   const { fx, graph, data } = loadFixture(name);
   const host = toHostParams(fx.params);
   for (const layer of Object.values(host)) {
-    layer.W = layer.W.map((w) => w * factor);
+    layer.W = layer.W?.map((w) => w * factor) ?? new Float32Array(0);
     if (layer.b) layer.b = layer.b.map((w) => w * factor);
   }
   return { fx, graph, data, host };
@@ -40,7 +40,7 @@ describe.each(['loss_log_loss', 'loss_cross_entropy'])('%s with huge logits', (n
       expect(r.diverged).toBe(false);
       expect(Number.isFinite(r.loss)).toBe(true);
       for (const layer of Object.values(engine.toHost(r.state.params))) {
-        for (const w of layer.W) expect(Number.isFinite(w)).toBe(true);
+        for (const w of layer.W ?? []) expect(Number.isFinite(w)).toBe(true);
       }
       engine.dispose(r.state);
     });

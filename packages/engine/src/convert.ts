@@ -1,13 +1,14 @@
 // HostParams <-> jax arrays. The only place arrays cross the package boundary (with predict's readback).
 import { numpy as np, tree } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
-import type { HostParams, NodeId } from '@tinker/core';
+import type { HostParams, NodeId, ParamShapes } from '@tinker/core';
 import type { Params } from './types.js';
 
-export type Layer = { W: JArray; b?: JArray };
-/** Parameters keyed by node id (linear nodes only). */
+/** The named tensors of one parameter-owning node (Linear: W and b). */
+export type Layer = Record<string, JArray>;
+/** Parameters keyed by node id (every node that owns parameters). */
 export type ParamTree = Record<NodeId, Layer>;
-export type LayerShape = { W: [number, number]; b?: [number] };
+export type LayerShape = ParamShapes;
 
 class ParamsImpl {
   readonly __brand = 'Params' as const;
@@ -58,28 +59,31 @@ export function cloneTree(src: ParamTree): ParamTree {
 export function hostToTree(shapes: ReadonlyMap<NodeId, LayerShape>, host: HostParams): ParamTree {
   const out: ParamTree = {};
   // Check everything first so that a mismatch allocates nothing.
+  const size = (shape: readonly number[]) => shape.reduce((n, d) => n * d, 1);
   for (const [id, s] of shapes) {
     const h = Object.hasOwn(host, id) ? host[id] : undefined;
     if (!h) throw new Error(`The parameters have no entry for "${id}".`);
-    if (h.W.length !== s.W[0] * s.W[1]) {
-      throw new Error(
-        `The weights of "${id}" have ${h.W.length} values, expected ${s.W[0] * s.W[1]}.`,
-      );
+    for (const [k, shape] of Object.entries(s)) {
+      const v = Object.hasOwn(h, k) ? h[k] : undefined;
+      if (v?.length !== size(shape)) {
+        throw new Error(
+          `The "${k}" parameters of "${id}" have ${v?.length ?? 0} values, expected ${size(shape)}.`,
+        );
+      }
     }
-    if (s.b && h.b?.length !== s.b[0]) {
-      throw new Error(`The bias of "${id}" must have ${s.b[0]} values.`);
+    for (const k of Object.keys(h)) {
+      if (!Object.hasOwn(s, k))
+        throw new Error(`"${id}" has no "${k}" parameters but the host gives some.`);
     }
-    if (!s.b && h.b !== undefined)
-      throw new Error(`"${id}" has no bias but the parameters give one.`);
   }
   for (const [id, s] of shapes) {
     const h = host[id];
     if (!h) continue;
-    const layer: Layer = {
-      W: np.array(Float32Array.from(h.W), { shape: [s.W[0], s.W[1]], dtype: np.float32 }),
-    };
-    if (s.b && h.b)
-      layer.b = np.array(Float32Array.from(h.b), { shape: [s.b[0]], dtype: np.float32 });
+    const layer: Layer = {};
+    for (const [k, shape] of Object.entries(s)) {
+      const v = h[k];
+      if (v) layer[k] = np.array(Float32Array.from(v), { shape, dtype: np.float32 });
+    }
     out[id] = layer;
   }
   return out;
@@ -94,7 +98,9 @@ function read(a: JArray): Float32Array {
 export function treeToHost(t: ParamTree): HostParams {
   const host = Object.create(null) as HostParams;
   for (const [id, l] of Object.entries(t)) {
-    host[id] = l.b ? { W: read(l.W), b: read(l.b) } : { W: read(l.W) };
+    const h: Record<string, Float32Array> = Object.create(null) as Record<string, Float32Array>;
+    for (const [k, a] of Object.entries(l)) h[k] = read(a);
+    host[id] = h;
   }
   return host;
 }

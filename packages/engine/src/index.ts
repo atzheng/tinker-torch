@@ -86,28 +86,25 @@ function makeEngine(): Engine {
       const layer = Object.hasOwn(t, nodeId) ? t[nodeId] : undefined;
       if (!layer) throw new Error(`There are no parameters for "${nodeId}".`);
       const size = (a: JArray): number => a.shape.reduce((p, q) => p * q, 1);
-      if (values.W && values.W.length !== size(layer.W)) {
-        throw new Error(`The weights of "${nodeId}" need ${size(layer.W)} values.`);
-      }
-      if (values.b && (!layer.b || values.b.length !== size(layer.b))) {
-        throw new Error(
-          layer.b
-            ? `The bias of "${nodeId}" needs ${size(layer.b)} values.`
-            : `"${nodeId}" has no bias.`,
-        );
+      for (const [k, v] of Object.entries(values)) {
+        const a = Object.hasOwn(layer, k) ? layer[k] : undefined;
+        if (!a) throw new Error(`"${nodeId}" has no "${k}" parameters.`);
+        if (v.length !== size(a)) {
+          throw new Error(`The "${k}" parameters of "${nodeId}" need ${size(a)} values.`);
+        }
       }
       const owned = takeParams(params);
       const old = owned[nodeId];
       if (!old) throw new Error('Internal error: the layer vanished.');
-      const next: ParamTree[string] = { W: old.W };
-      if (old.b) next.b = old.b;
-      if (values.W) {
-        next.W = np.array(Float32Array.from(values.W), { shape: old.W.shape, dtype: np.float32 });
-        old.W.dispose();
-      }
-      if (values.b && old.b) {
-        next.b = np.array(Float32Array.from(values.b), { shape: old.b.shape, dtype: np.float32 });
-        old.b.dispose();
+      const next: ParamTree[string] = {};
+      for (const [k, a] of Object.entries(old)) {
+        const v = Object.hasOwn(values, k) ? values[k] : undefined;
+        if (v) {
+          next[k] = np.array(Float32Array.from(v), { shape: a.shape, dtype: np.float32 });
+          a.dispose();
+        } else {
+          next[k] = a;
+        }
       }
       owned[nodeId] = next;
       return wrapParams(owned);

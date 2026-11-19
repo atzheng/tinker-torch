@@ -100,8 +100,8 @@ test('1-4-1: 8 weight edges whose colour follows the sign of the host weights', 
   expect(width('edge-lin1-0-3')).toBeGreaterThan(width('edge-lin1-0-2')); // |-1.2| > |0.3|
   // a new host with flipped signs repaints without a re-layout
   const flipped: HostParams = {
-    lin1: { W: HAND.lin1?.W.map((v) => -v) ?? new Float32Array(4), b: new Float32Array(4) },
-    lin2: { W: HAND.lin2?.W.map((v) => -v) ?? new Float32Array(4), b: new Float32Array(1) },
+    lin1: { W: HAND.lin1?.W?.map((v) => -v) ?? new Float32Array(4), b: new Float32Array(4) },
+    lin2: { W: HAND.lin2?.W?.map((v) => -v) ?? new Float32Array(4), b: new Float32Array(1) },
   };
   const node = must('edge-lin1-0-0');
   act(() => useStore.setState({ host: flipped }));

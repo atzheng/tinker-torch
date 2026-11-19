@@ -2,7 +2,7 @@
 import { installProbe } from '../src/probe.js';
 import { describe, expect, test, vi } from 'vitest';
 import { loadFixture, toBatch } from './util.js';
-import type { Batch } from '@tinker/core';
+import type { Batch, HostParams } from '@tinker/core';
 
 installProbe();
 // Logic tests, no timing assertions: a loaded machine (parallel agents, CI) must not fail them on vitest's 5 s default.
@@ -43,7 +43,7 @@ function single(name: string, seeds: number[], data: Batch[], steps: number) {
   });
 }
 
-function maxDiff(a: Record<string, { W: Float32Array; b?: Float32Array }>, b: typeof a): number {
+function maxDiff(a: HostParams, b: HostParams): number {
   let worst = 0;
   for (const id of Object.keys(a)) {
     for (const t of ['W', 'b'] as const) {
@@ -112,7 +112,7 @@ describe('trainMany divergence and arguments', () => {
     for (const r of out) {
       expect(r.diverged).toBe(true);
       for (const l of Object.values(r.params)) {
-        expect(Array.from(l.W).every(Number.isFinite)).toBe(true);
+        expect(Array.from(l.W ?? []).every(Number.isFinite)).toBe(true);
       }
     }
   });

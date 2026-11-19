@@ -61,7 +61,7 @@ describe('initParams', () => {
       let inW = 2;
       widths.forEach((w, i) => {
         const p = h[`l${i + 1}`];
-        expect(p?.W.length).toBe(inW * w);
+        expect(p?.W?.length).toBe(inW * w);
         expect(p?.b?.length).toBe(w);
         const bound = 1 / Math.sqrt(inW);
         for (const v of [...(p?.W ?? []), ...(p?.b ?? [])])
@@ -75,7 +75,7 @@ describe('initParams', () => {
 
   test('values spread over the range', () => {
     const g = net([64]);
-    const p = initParams(an(g), 1)['l1']!.W; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const p = initParams(an(g), 1)['l1']?.W ?? new Float32Array(0);
     expect(Math.max(...p)).toBeGreaterThan(0.5 / Math.SQRT2);
     expect(Math.min(...p)).toBeLessThan(-0.5 / Math.SQRT2);
   });
@@ -115,7 +115,7 @@ describe('initParams', () => {
       1,
     );
     for (const [id, p] of Object.entries(fx.params)) {
-      expect(h[id]?.W.length).toBe(p.W.length);
+      expect(h[id]?.W?.length).toBe(p.W?.length);
       expect(h[id]?.b?.length).toBe(p.b?.length);
     }
     expect(Object.keys(h)).toEqual(Object.keys(fx.params));
@@ -128,26 +128,27 @@ describe('reconcileParams', () => {
     const h1 = initParams(an(g1), 1);
     const g2 = net([5, 1]); // l1 resized, so l2 input width changes too
     const h2 = reconcileParams(h1, an(g1), an(g2), 1);
-    expect(h2['l1']?.W.length).toBe(10);
-    expect(h2['l2']?.W.length).toBe(5);
+    expect(h2['l1']?.W?.length).toBe(10);
+    expect(h2['l2']?.W?.length).toBe(5);
 
     const g3 = net([4, 1], { extra: true }); // l1, l2 unchanged
     const h3 = reconcileParams(h1, an(g1), an(g3), 1);
     expect(Array.from(h3['l1']?.W ?? [])).toEqual(Array.from(h1['l1']?.W ?? []));
     expect(Array.from(h3['l2']?.b ?? [])).toEqual(Array.from(h1['l2']?.b ?? []));
-    expect(h3['zz']?.W.length).toBe(3);
+    expect(h3['zz']?.W?.length).toBe(3);
   });
 
   test('keeps trained values, re-inits on bias toggle, does not mutate old', () => {
     const g1 = net([3]);
     const h1 = initParams(an(g1), 1);
-    h1['l1']!.W[0] = 42; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const w1 = h1['l1']?.W;
+    if (w1) w1[0] = 42;
     const same = reconcileParams(h1, an(g1), an(g1), 1);
-    expect(same['l1']?.W[0]).toBe(42);
+    expect(same['l1']?.W?.[0]).toBe(42);
     const g2 = net([3], { bias: false });
     const h2 = reconcileParams(h1, an(g1), an(g2), 1);
     expect(h2['l1']?.b).toBeUndefined();
-    expect(h2['l1']?.W[0]).toBe(42); // W kept when only bias was toggled
+    expect(h2['l1']?.W?.[0]).toBe(42); // W kept when only bias was toggled
     const back = reconcileParams(h2, an(g2), an(g1), 7);
     expect(back['l1']?.W).toBe(h1['l1']?.W);
     expect(back['l1']?.b?.length).toBe(3);
@@ -160,7 +161,7 @@ describe('reconcileParams', () => {
     const g2 = net([3, 2]); // l2 is [3, 2]
     const h2 = reconcileParams(h1, an(g1), an(g2), 1);
     expect(h2['l2']).not.toBe(h1['l2']);
-    expect(h2['l2']?.W.length).toBe(6);
+    expect(h2['l2']?.W?.length).toBe(6);
     expect(Array.from(h2['l2']?.W ?? [])).not.toEqual(Array.from(h1['l2']?.W ?? []));
   });
 
@@ -233,7 +234,7 @@ describe('live parameters', () => {
     expect(a.order).not.toContain('tap');
     const host = initParams(a, 3);
     expect(Object.keys(host).sort()).toEqual(['lin1', 'lin2', 'tap']);
-    expect(host['tap']?.W.length).toBe(2 * 2);
+    expect(host['tap']?.W?.length).toBe(2 * 2);
     expect(host['tap']?.b?.length).toBe(2);
   });
 
@@ -243,5 +244,84 @@ describe('live parameters', () => {
     const a = analyse(g.graph, info);
     const host = initParams(a, 7);
     expect(Object.keys(host).sort()).toEqual(Object.keys(mlp.params).sort());
+  });
+});
+
+describe('a non-Linear parameter owner (stub)', () => {
+  // No piece owns parameters besides Linear yet, so the owner is added to a real analysis by hand.
+  type A = ReturnType<typeof analyse>;
+  function withStub(
+    shapes: Record<string, number[]>,
+    init: A['paramInit'][string],
+    type = 'stub',
+  ): A {
+    const a = analyse(net([2]), info);
+    return {
+      ...a,
+      paramNodes: [...a.paramNodes, 'stub'],
+      paramShapes: { ...a.paramShapes, stub: shapes },
+      paramInit: { ...a.paramInit, stub: init },
+      paramType: { ...a.paramType, stub: type },
+    };
+  }
+  const uni = { kind: 'uniform', bound: 0.5 } as const;
+
+  test('init follows the shapes and the init spec; Linear is unchanged', () => {
+    const a = withStub({ g: [2, 3], s: [1] }, uni);
+    const h = initParams(a, 5);
+    expect(Object.keys(h['stub'] ?? {})).toEqual(['g', 's']);
+    expect(h['stub']?.['g']?.length).toBe(6);
+    expect(h['stub']?.['s']?.length).toBe(1);
+    for (const v of h['stub']?.['g'] ?? []) expect(Math.abs(v)).toBeLessThanOrEqual(0.5);
+    expect(initParams(a, 5)['stub']).toEqual(h['stub']);
+    expect(h['l1']).toEqual(initParams(analyse(net([2]), info), 5)['l1']);
+    const c = initParams(withStub({ W: [1, 1] }, { kind: 'const', value: 2 }), 5);
+    expect(Array.from(c['stub']?.['W'] ?? [])).toEqual([2]);
+    expect(countParams(h)).toBe(countParams(initParams(analyse(net([2]), info), 5)) + 7);
+  });
+
+  test('reconcile keeps unchanged tensors, re-inits a changed owner, adds and drops tensors', () => {
+    const a1 = withStub({ g: [2, 3] }, uni);
+    const h1 = initParams(a1, 5);
+    const same = reconcileParams(h1, a1, withStub({ g: [2, 3] }, uni), 9);
+    expect(same['stub']?.['g']).toBe(h1['stub']?.['g']);
+    const a2 = withStub({ g: [2, 3], s: [1] }, uni);
+    const grown = reconcileParams(h1, a1, a2, 9);
+    expect(grown['stub']?.['g']).toBe(h1['stub']?.['g']);
+    expect(grown['stub']?.['s']?.length).toBe(1);
+    const shrunk = reconcileParams(grown, a2, a1, 9);
+    expect(Object.keys(shrunk['stub'] ?? {})).toEqual(['g']);
+    const reshaped = reconcileParams(h1, a1, withStub({ g: [3, 3] }, uni), 9);
+    expect(reshaped['stub']?.['g']?.length).toBe(9);
+    expect(reshaped['stub']?.['g']).not.toBe(h1['stub']?.['g']);
+    // the same id and tensors under another piece type (a reused id): fresh values
+    const retyped = reconcileParams(h1, a1, withStub({ g: [2, 3] }, uni, 'other'), 9);
+    expect(retyped['stub']?.['g']).not.toBe(h1['stub']?.['g']);
+    // the owner is not in the old analysis: fresh
+    const fresh = reconcileParams(h1, analyse(net([2]), info), a1, 9);
+    expect(fresh['stub']?.['g']).not.toBe(h1['stub']?.['g']);
+  });
+
+  test('toJson / fromJson round trip, and a mismatched owner is dropped', () => {
+    const a = withStub({ g: [2, 3], s: [1] }, uni);
+    const h = initParams(a, 5);
+    const json = JSON.parse(JSON.stringify(paramsToJson(h))) as unknown;
+    const back = paramsFromJson(json, a);
+    expect(back.dropped).toEqual([]);
+    expect(Array.from(back.params['stub']?.['g'] ?? [])).toEqual(
+      Array.from(h['stub']?.['g'] ?? []),
+    );
+    expect(Array.from(back.params['l1']?.['b'] ?? [])).toEqual(Array.from(h['l1']?.['b'] ?? []));
+    const other = paramsFromJson(json, withStub({ g: [2, 4], s: [1] }, uni));
+    expect(other.dropped).toEqual(['stub']);
+    expect(other.params['l1']).toBeDefined();
+  });
+
+  test('an extra key on a Linear without bias is dropped, not thrown', () => {
+    const a = analyse(net([2], { bias: false }), info);
+    const w = Array.from(initParams(a, 1)['l1']?.['W'] ?? []);
+    const r = paramsFromJson({ l1: { W: w, b: [0, 0] } }, a);
+    expect(r.dropped).toEqual(['l1']);
+    expect(r.params['l1']).toBeUndefined();
   });
 });

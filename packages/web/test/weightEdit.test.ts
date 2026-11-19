@@ -18,7 +18,7 @@ beforeEach(() => {
 
 test('a hand-set weight is written into the model and is one undo step', () => {
   expect(s().canTrain).toBe(true);
-  const before = s().host?.lin1?.W[2];
+  const before = s().host?.lin1?.W?.[2];
   const pastBefore = s().past.length;
   const edit = beginWeightEdit({ kind: 'W', node: 'lin1', i: 0, j: 2 });
   expect(edit).not.toBeNull();
@@ -26,14 +26,14 @@ test('a hand-set weight is written into the model and is one undo step', () => {
   edit?.set(0.25);
   edit?.set(0.5); // a drag: many previews, no history yet
   expect(s().past.length).toBe(pastBefore);
-  expect(s().host?.lin1?.W[2]).toBeCloseTo(0.5, 6);
+  expect(s().host?.lin1?.W?.[2]).toBeCloseTo(0.5, 6);
   edit?.commit();
   expect(s().past.length).toBe(pastBefore + 1);
-  expect(s().host?.lin1?.W[2]).toBeCloseTo(0.5, 6);
+  expect(s().host?.lin1?.W?.[2]).toBeCloseTo(0.5, 6);
   s().undo();
-  expect(s().host?.lin1?.W[2]).toBe(before);
+  expect(s().host?.lin1?.W?.[2]).toBe(before);
   s().redo();
-  expect(s().host?.lin1?.W[2]).toBeCloseTo(0.5, 6);
+  expect(s().host?.lin1?.W?.[2]).toBeCloseTo(0.5, 6);
 });
 
 test('a published host snapshot is never written in place', () => {
@@ -104,10 +104,10 @@ test('a hand edit applied after a normal run never writes back by itself', () =>
   s().stepOnce();
   const e = beginWeightEdit({ kind: 'W', node: 'lin1', i: 0, j: 0 });
   e?.set(0.3);
-  const other = s().host?.lin1?.W[1];
+  const other = s().host?.lin1?.W?.[1];
   e?.commit();
-  expect(s().host?.lin1?.W[0]).toBeCloseTo(0.3, 6);
-  expect(s().host?.lin1?.W[1]).toBe(other);
+  expect(s().host?.lin1?.W?.[0]).toBeCloseTo(0.3, 6);
+  expect(s().host?.lin1?.W?.[1]).toBe(other);
 });
 
 test('undo after Reset does not bring stale weights back', () => {
@@ -123,14 +123,14 @@ test('undo after Reset does not bring stale weights back', () => {
 });
 
 test('a graph change in the middle of a drag takes the preview back', () => {
-  const start = s().host?.lin1?.W[0];
+  const start = s().host?.lin1?.W?.[0];
   const e = beginWeightEdit({ kind: 'W', node: 'lin1', i: 0, j: 0 });
   e?.set(2);
-  expect(s().host?.lin1?.W[0]).toBeCloseTo(2, 6);
+  expect(s().host?.lin1?.W?.[0]).toBeCloseTo(2, 6);
   const g = s().graph;
   const past = s().past.length;
   s().apply({ ok: true, graph: { ...g, train: { ...g.train, lr: 0.02 } } });
-  expect(s().host?.lin1?.W[0]).toBe(start);
+  expect(s().host?.lin1?.W?.[0]).toBe(start);
   e?.commit(); // ends quietly
   expect(s().past.length).toBe(past + 1);
 });

@@ -49,7 +49,7 @@ export function layerProps(
   if (outWidth !== undefined) props['outWidth'] = outWidth;
   if (node.type === 'linear' && inWidth !== undefined) {
     const entry = weights?.[node.id]; // undefined for a Linear off the loss path
-    if (entry && entry.W.length === inWidth * node.out) {
+    if (entry?.W && entry.W.length === inWidth * node.out) {
       props['weights'] = { W: entry.W, rows: inWidth, cols: node.out };
     }
   }

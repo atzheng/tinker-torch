@@ -61,7 +61,9 @@ export function beginWeightEdit(t: WeightTarget): WeightEdit | null {
   const node = s.graph.nodes.find((n) => n.id === t.node);
   const inW = s.analysis.inWidth[t.node];
   const layer = host?.[t.node];
-  if (!host || !layer || node?.type !== 'linear' || inW === undefined || !s.canTrain) return null;
+  const layerW = layer?.['W'];
+  if (!host || !layer || !layerW || node?.type !== 'linear' || inW === undefined || !s.canTrain)
+    return null;
   const shape = hostShape(host, t.node, s.dataInfo);
   const start =
     t.kind === 'W'
@@ -73,20 +75,20 @@ export function beginWeightEdit(t: WeightTarget): WeightEdit | null {
 
   const graph = s.graph;
   const gen = weightGeneration();
-  const before: LayerValues = { W: Float32Array.from(layer.W) };
+  const before: LayerValues = { W: Float32Array.from(layerW) };
   if (layer.b) before.b = Float32Array.from(layer.b);
   let last = start;
   let dead = false;
   /** Current value of the target in the live host, undefined when its shape changed. */
   const current = (): number | undefined => {
     const cur = useStore.getState().host?.[t.node];
-    if (!cur || cur.W.length !== before.W.length) return undefined;
+    if (!cur?.W || cur.W.length !== before.W.length) return undefined;
     return t.kind === 'W' ? cur.W[t.i * node.out + t.j] : cur.b?.[t.j];
   };
   // Written on top of the live layer, so values another action put there are kept.
   const write = (v: number): boolean => {
     const cur = useStore.getState().host?.[t.node];
-    if (!cur || cur.W.length !== before.W.length) return false;
+    if (!cur?.W || cur.W.length !== before.W.length) return false;
     if (t.kind === 'W') {
       const W = Float32Array.from(cur.W);
       W[t.i * node.out + t.j] = v;
@@ -123,7 +125,7 @@ export function beginWeightEdit(t: WeightTarget): WeightEdit | null {
       end();
       if (!live || last === start) return;
       const cur = st.host?.[t.node];
-      if (!cur) return;
+      if (!cur?.W) return;
       const after: LayerValues = { W: Float32Array.from(cur.W) };
       if (cur.b) after.b = Float32Array.from(cur.b);
       const copy = { ...graph };
