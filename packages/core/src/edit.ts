@@ -27,7 +27,7 @@ export type EditResult = { ok: true; graph: Graph; select?: NodeId } | { ok: fal
 /** `locked` is the preset field (CONTRACTS.md section 12). A locked node is never changed. */
 export type EditOptions = { locked?: readonly NodeId[] };
 
-const LOCKED_MESSAGE = 'This piece is locked.';
+export const LOCKED_MESSAGE = 'This piece is locked.';
 
 const fail = (error: string): EditResult => ({ ok: false, error });
 

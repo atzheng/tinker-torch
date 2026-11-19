@@ -6,6 +6,7 @@ import { createDataSlice, type DataSlice } from './dataSlice.js';
 import { createGraphSlice, type GraphSlice } from './graphSlice.js';
 import { createPresetSlice, type PresetSlice } from './presetSlice.js';
 import { attachTrainLoop, createTrainSlice, type TrainSlice } from './trainSlice.js';
+import { attachWeightHistory } from './weightHistory.js';
 import { createViewSlice, type ViewSlice } from './viewSlice.js';
 
 export type Store = GraphSlice & DataSlice & TrainSlice & ViewSlice & PresetSlice;
@@ -28,6 +29,8 @@ useStore.subscribe((s, prev) => {
 
 // After the data subscription: the train loop re-compiles on graph or dataset changes.
 attachTrainLoop(useStore);
+// After the train loop, so a resync has finished before undo or redo writes hand-set weights back.
+attachWeightHistory(useStore);
 
 // Host snapshots remember the graph they were published with (the neuron view checks shapes).
 useStore.subscribe((s, prev) => {
