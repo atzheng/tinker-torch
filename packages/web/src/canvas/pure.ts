@@ -66,11 +66,11 @@ export function fitTransform(
   return { scale, tx: (view.w - sw * scale) / 2, ty: (view.h - sh * scale) / 2 };
 }
 
+/** Room right of an output dot's centre (its radius 4.5 plus a margin) that a wire label's hit rectangle leaves to the dot. */
+const DOT_CLEAR = 6;
+
 /** Smallest touch target, in screen pixels (CONTRACTS.md section 10). */
 export const HIT_MIN_PX = 32;
-
-/** An output handle sits this far inside its piece's right edge, clear of the wire label's region. */
-export const PORT_INSET = 28;
 
 /**
  * Extra margin to add on each side of a shape that is `size` abstract units across so its hit
@@ -401,7 +401,7 @@ export type HitShape =
  * is narrower than 32 px, by at most 6 units, so it never reaches into the gap where labels sit.
  * `widths[i]` is the label text of wire edge i (null: no label, so no label shape); a wire in
  * `pills` (edge to the plain text of its weight pill) has a pill instead, sized by `pillSize`. `outputs` lists
- * the pieces that have an output port: each gets a 32 px square at the middle of its right edge,
+ * the pieces that have an output port: each gets a 32 px square centred on its output dot (the middle of its right edge),
  * painted above the pieces and below the labels (the handle a wire is dragged from).
  */
 export function layerHitShapes(
@@ -423,13 +423,18 @@ export function layerHitShapes(
     shapes.push({
       kind: 'port',
       node: id,
-      x: b.x + b.w - PORT_INSET - s / 2,
+      x: b.x + b.w - s / 2, // centred on the drawn dot (outputPortAt)
       y: b.y + b.h / 2 - s / 2,
       w: s,
       h: s,
     });
   }
-  const labels: { shape: HitShape & { kind: 'wire' }; cy: number; half: number }[] = [];
+  const labels: {
+    shape: HitShape & { kind: 'wire' };
+    cy: number;
+    half: number;
+    textLeft: number;
+  }[] = [];
   for (const w of layout.wires) {
     const pill = pills.get(w.edge);
     const width = widths[w.edge];
@@ -448,6 +453,7 @@ export function layerHitShapes(
       },
       cy: w.labelAt[1],
       half: lh / 2,
+      textLeft: w.labelAt[0] - lw / 2,
     });
   }
   // Two labels whose rectangles overlap (a skip wire's label sits just above a row of labels):
@@ -471,6 +477,21 @@ export function layerHitShapes(
       }
     }
     if (!moved) break;
+  }
+  // Zoomed out, a label's 32 px rectangle can cover the output dot to its left. The dot keeps its
+  // press: the label's rectangle starts just right of any dot it would cover, never inside its text.
+  const ports = shapes.filter((s): s is HitShape & { kind: 'port' } => s.kind === 'port');
+  for (const l of labels) {
+    const sl = l.shape;
+    for (const p of ports) {
+      const dx = p.x + p.w / 2;
+      const dy = p.y + p.h / 2;
+      if (dx < sl.x || dx > sl.x + sl.w || dy < sl.y || dy > sl.y + sl.h) continue;
+      const left = Math.min(dx + DOT_CLEAR, l.textLeft);
+      if (left <= sl.x) continue;
+      sl.w -= left - sl.x;
+      sl.x = left;
+    }
   }
   for (const l of labels) shapes.push(l.shape);
   return shapes;
