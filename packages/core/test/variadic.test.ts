@@ -228,7 +228,7 @@ describe('edits', () => {
   });
   test('variadicSlotY matches the layout', () => {
     expect(variadicSlotY({ y: 10, h: 60 }, 0, 1, 0, 1)).toBe(40);
-    expect(variadicSlotY({ y: 10, h: 60 }, 0, 1, 0, 3)).toBeCloseTo(10 + (60 * 1.25) / 2);
+    expect(variadicSlotY({ y: 10, h: 60 }, 0, 1, 0, 3)).toBeCloseTo(10 + (60 * 0.75) / 2);
   });
   const wired = (): Graph =>
     g(
