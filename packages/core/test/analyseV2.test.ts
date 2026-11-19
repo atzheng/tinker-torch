@@ -238,6 +238,19 @@ describe('analyse v2: loss pin', () => {
 });
 
 describe('analyse v2: prediction pins', () => {
+  test('a prediction cannot depend on the target', () => {
+    const gr = spec();
+    gr.predictions = ['diff']; // lin2 - y
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([
+      {
+        at: { node: 'diff', pin: { role: 'prediction', index: 0 } },
+        message: 'A prediction cannot depend on the target, but "diff" does.',
+      },
+    ]);
+    expect(a.trainable).toBe(false);
+  });
+
   test('width must match the target: 1 for regression and binary', () => {
     const gr = spec();
     gr.nodes[3] = lin('l2', 3);
