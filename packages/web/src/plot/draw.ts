@@ -6,7 +6,10 @@ export const MARGINS: Margins = { l: 42, r: 10, t: 8, b: 32 };
 
 export const fontOf = (c: PlotColors, px = 11) => `${px}px ${c.font}`;
 
-/** Grid lines, tick labels and the frame for a plot area. Tick arrays are in domain units. */
+/**
+ * Grid lines, tick labels and the frame for a plot area. Tick arrays are in domain units. The axis
+ * titles are maths, so they are HTML (`AxisLabels`), not canvas text.
+ */
 export function drawAxes(
   ctx: CanvasRenderingContext2D,
   c: PlotColors,
@@ -17,8 +20,6 @@ export function drawAxes(
   ys: Scale,
   xTicks: number[],
   yTicks: number[],
-  xLabel: string,
-  yLabel: string,
 ): void {
   const x0 = m.l;
   const x1 = w - m.r;
@@ -50,16 +51,6 @@ export function drawAxes(
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (const t of yTicks) ctx.fillText(formatTick(t), x0 - 4, ys.px(t));
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(xLabel, x1, h - 1);
-  ctx.save();
-  ctx.translate(11, y1 + 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(yLabel, 0, 0);
-  ctx.restore();
   ctx.restore();
 }
 

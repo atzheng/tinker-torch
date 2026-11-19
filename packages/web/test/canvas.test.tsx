@@ -33,6 +33,13 @@ const must = (id: string): Element => {
   return el;
 };
 
+/** The parameter-count sentence with its KaTeX part as TeX source (the span's aria-label). */
+const paramsText = () => {
+  const el = must('inspector-params');
+  const tex = el.querySelector('.tk-tex')?.getAttribute('aria-label') ?? '';
+  return `${tex}${el.lastElementChild?.textContent ?? ''}`;
+};
+
 /** A press and release on an element: what a click or a touch tap sends. */
 function tap(el: Element) {
   const ev = (type: string) => {
@@ -96,7 +103,7 @@ test('tapping a piece selects it and opens the inspector with its settings', () 
   tap(must('node-lin1'));
   expect(s().selection).toEqual({ kind: 'node', id: 'lin1' });
   expect(must('node-lin1').getAttribute('data-selected')).toBe('true');
-  expect(must('inspector-params').textContent).toBe('1 x 4 + 4 = 8 parameters');
+  expect(paramsText()).toBe('1 \\times 4 + 4 = 8 parameters');
   tap(must('canvas-svg'));
   expect(s().selection).toBeNull();
   expect(q('inspector')).toBeNull();
@@ -108,7 +115,7 @@ test('the inspector edits width and activation; undo restores both', () => {
   const lin1 = () => s().graph.nodes.find((n) => n.id === 'lin1');
   expect(lin1()).toMatchObject({ out: 6 });
   expect(must('wire-label-1').textContent).toBe('6');
-  expect(must('inspector-params').textContent).toBe('1 x 6 + 6 = 12 parameters');
+  expect(paramsText()).toBe('1 \\times 6 + 6 = 12 parameters');
 
   tap(must('node-act1'));
   setValue(must('field-fn'), 'tanh', HTMLSelectElement.prototype, 'change');

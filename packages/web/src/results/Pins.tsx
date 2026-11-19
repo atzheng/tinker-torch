@@ -3,6 +3,7 @@ import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { useStore } from '../state/store.js';
 import { GRID_N } from './FitPlot.js';
 import { PIN_LIMIT, makePin, snapshotFit, type Pin } from './pinsModel.js';
+import { TexText, plainOf } from '../tex/Tex.js';
 import styles from './Pins.module.css';
 
 /** A small picture of a pinned run's loss curve (validation when there is one, else training). */
@@ -91,17 +92,19 @@ export function Pins() {
             type="button"
             className={styles.load}
             onClick={() => load(p)}
-            title={`Load this run: ${p.label}`}
+            title={`Load this run: ${plainOf(p.label)}`}
             data-testid="pin-load"
           >
             <Thumb pin={p} />
-            <span className={styles.label}>{p.label}</span>
+            <span className={styles.label}>
+              <TexText>{p.label}</TexText>
+            </span>
           </button>
           <button
             type="button"
             className={styles.remove}
             onClick={() => removePin(p.id)}
-            aria-label={`Remove pin ${p.label}`}
+            aria-label={`Remove pin ${plainOf(p.label)}`}
             data-testid="pin-remove"
           >
             ×

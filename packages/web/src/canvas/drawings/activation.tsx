@@ -3,11 +3,12 @@ import { NodeShell } from './NodeShell.js';
 import { SelectField, editSetting } from './fields.js';
 import type { WebPiece } from './types.js';
 
+/** TeX of the function's symbol (neuron view units). */
 export const ACTIVATION_SYMBOL: Record<ActivationFn, string> = {
-  sigmoid: 'σ',
-  tanh: 'tanh',
-  relu: 'ReLU',
-  gelu: 'GELU',
+  sigmoid: '\\sigma',
+  tanh: '\\tanh',
+  relu: '\\mathrm{ReLU}',
+  gelu: '\\mathrm{GELU}',
 };
 export const ACTIVATION_LABEL: Record<ActivationFn, string> = {
   sigmoid: 'Sigmoid',
@@ -18,9 +19,9 @@ export const ACTIVATION_LABEL: Record<ActivationFn, string> = {
 
 /** The operation in the layer drawing's glyph slot; the name beside it is the function's name. */
 const ACTIVATION_GLYPH: Partial<Record<ActivationFn, string>> = {
-  sigmoid: 'σ(x)',
-  relu: 'max(0,x)',
-  gelu: 'x·Φ(x)',
+  sigmoid: '\\sigma(x)',
+  relu: '\\max(0,x)',
+  gelu: 'x\\cdot\\Phi(x)',
 };
 
 /** Layer drawing: the shared node with the function's symbol as its glyph. */

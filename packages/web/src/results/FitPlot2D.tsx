@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { grid2d, truth, truthMargin, unstandardizeRows } from '@tinker/core';
 import { formatTick, linearScale, niceTicks, paddedRange } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
+import { AxisLabels } from '../plot/AxisLabels.js';
 import { MARGINS, drawAxes } from '../plot/draw.js';
 import {
   column,
@@ -86,19 +87,7 @@ export function FitPlot2D() {
     const [x2lo, x2hi] = dataset.domain[1] ?? [0, 1];
     const xs = linearScale(x1lo, x1hi, m.l, w - m.r);
     const ys = linearScale(x2lo, x2hi, h - m.b, m.t);
-    drawAxes(
-      ctx,
-      c,
-      w,
-      h,
-      m,
-      xs,
-      ys,
-      niceTicks(x1lo, x1hi, 6),
-      niceTicks(x2lo, x2hi, 4),
-      'x1',
-      'x2',
-    );
+    drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(x1lo, x1hi, 6), niceTicks(x2lo, x2hi, 4));
     const lut = classification ? makeRamp([c.divNeg, c.divMid, c.divPos]) : makeRamp(c.seq);
     const [rlo, rhi] = fixed.range;
 
@@ -267,6 +256,7 @@ export function FitPlot2D() {
       <ResampleReadout />
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Fit plot" />
+        <AxisLabels x="$x_1$" y="$x_2$" />
       </div>
     </div>
   );

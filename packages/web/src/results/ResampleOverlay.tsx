@@ -1,6 +1,7 @@
 import type { PlotColors } from '../plot/color.js';
 import type { Scale } from '../plot/axes.js';
 import { useStore } from '../state/store.js';
+import { TexText } from '../tex/Tex.js';
 import styles from './Results.module.css';
 import {
   COPIES,
@@ -110,11 +111,11 @@ export function ResampleReadout() {
     if (result.fallbackSteps) notes.push('the run has 0 steps, so 500 are used');
     if (result.diverged > 0) notes.push(`${result.diverged} diverged and left out`);
     if (result.d === 2) notes.push('mean of the copies shown');
-    text = `bias² ${fmt(result.bias2)}  variance ${fmt(result.variance)}  (${notes.join('; ')})`;
+    text = `$\\mathrm{bias}^2$ ${fmt(result.bias2)}  variance ${fmt(result.variance)}  (${notes.join('; ')})`;
   }
   return (
     <div className={styles.readout} data-testid="resample-readout" role="status">
-      {text}
+      <TexText>{text}</TexText>
     </div>
   );
 }

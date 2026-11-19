@@ -3,22 +3,23 @@ import { PALETTE, type PaletteEntry } from '@tinker/core';
 import { dnd } from '../canvas/dnd.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
+import { Tex } from '../tex/Tex.js';
 import './palette.css';
 
 /** The glyph a palette chip shows, the same one the node it creates carries (roles get a badge). */
 const GLYPH: Record<string, string> = {
   input: 'x',
   target: 'y',
-  output: 'ŷ',
-  feature: 'x²',
+  output: '\\hat{y}',
+  feature: 'x^2',
   linear: 'W',
-  activation: 'σ',
+  activation: '\\sigma',
   dropout: 'p',
   add: '+',
 };
 function chipOf(entry: PaletteEntry): { role?: 'input' | 'pred' | 'loss'; glyph?: string } {
   if (entry.family === 'losses') return { role: 'loss', glyph: 'L' };
-  if (entry.family === 'penalties') return { glyph: 'λ' };
+  if (entry.family === 'penalties') return { glyph: '\\lambda' };
   const role =
     entry.key === 'input' || entry.key === 'target'
       ? 'input'
@@ -134,7 +135,7 @@ export function Palette() {
               <span className="tk-chip-label">{entry.label}</span>
               {chipOf(entry).glyph && (
                 <span className="tk-chip-glyph" aria-hidden="true">
-                  {chipOf(entry).glyph}
+                  <Tex src={chipOf(entry).glyph ?? ''} />
                 </span>
               )}
             </button>

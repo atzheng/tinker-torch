@@ -1,5 +1,6 @@
 /** Small inspector form controls shared by the piece `Fields`. Every change is one core edit. */
 import { useEffect, useState, type ReactNode } from 'react';
+import { TexText } from '../../tex/Tex.js';
 import {
   setLinearOut,
   setPenalty,
@@ -26,7 +27,9 @@ export const editPenalty = (id: NodeId, p: Penalty | null) =>
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="tk-field">
-      <span className="tk-field-label">{label}</span>
+      <span className="tk-field-label">
+        <TexText>{label}</TexText>
+      </span>
       {children}
     </label>
   );
