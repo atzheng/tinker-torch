@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { PieceType } from '@tinker/core';
-import { legibleAt } from '../pure.js';
+import { fitName, legibleAt } from '../pure.js';
 
 /**
  * The one node component (CONTRACTS.md section 10, "Visual language"). Every piece in layer view,
@@ -72,12 +72,13 @@ export function NodeShell(p: NodeShellProps) {
   const { w, h } = p;
   const lines = p.secondary ?? [];
   const small = legibleAt(p.scale, SECONDARY_PX);
+  const name = fitName(p.scale, p.name, w - PAD - 6, NAME_PX);
   const secondaryY = lines.length > 1 ? [h - 24, h - 10] : [h - 12];
   return (
     <g data-piece={p.piece} data-role={p.role}>
       <rect className="tk-body" x={0} y={0} width={w} height={h} rx={NODE_RADIUS} />
-      <text className="tk-name" x={PAD} y={NAME_PX + 4} fontSize={NAME_PX}>
-        {p.name}
+      <text className="tk-name" x={PAD} y={NAME_PX + 4} style={{ fontSize: name.size }}>
+        {name.text}
       </text>
       {p.tag && small && (
         <text className="tk-secondary" x={w - PAD} y={NAME_PX + 4} fontSize={11} textAnchor="end">
@@ -98,7 +99,7 @@ export function NodeShell(p: NodeShellProps) {
       ))}
       {p.slot ??
         (p.badge ? (
-          <g className="tk-badge" transform={`translate(${w - PAD - 10} ${NAME_PX + 4 - 5})`}>
+          <g className="tk-badge" transform={`translate(${w - PAD - 10} ${h / 2 + 4})`}>
             <circle r={10} />
             <text textAnchor="middle" dominantBaseline="central" y={1.5}>
               {p.glyph}
@@ -109,9 +110,9 @@ export function NodeShell(p: NodeShellProps) {
             <text
               className="tk-glyph"
               x={w - PAD}
-              y={h / 2 + 7}
+              y={h / 2 + 11}
               textAnchor="end"
-              fontSize={p.glyph.length > 4 ? 15 : 19}
+              style={{ fontSize: Math.min(name.size, p.glyph.length > 4 ? 13 : 15) }}
             >
               {p.glyph}
             </text>

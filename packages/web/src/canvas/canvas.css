@@ -503,3 +503,77 @@ path.tk-hit {
   border-color: var(--accent);
   color: var(--accent-text);
 }
+
+/* Discoverability (tinker-6f8): candidate targets, wire-end handles, tap-to-add banner, hints */
+.tk-node[data-valid='true'] .tk-ring {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 2 4;
+  stroke-linecap: round;
+}
+.tk-node[data-valid='true'][data-drop='true'] .tk-ring {
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+.tk-wire[data-valid='true']:not([data-drop='true']) .tk-wire-halo {
+  stroke: var(--accent);
+  opacity: 0.3;
+}
+.tk-wire[data-valid='true']:not([data-drop='true']) .tk-wire-line {
+  stroke: var(--accent);
+}
+.tk-wire[data-lifted='true'] {
+  opacity: 0.3;
+}
+.tk-wire-end {
+  cursor: grab;
+}
+.tk-wire-end-dot {
+  fill: var(--node-fill);
+  stroke: var(--accent);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.tk-wire[data-replace='true'] {
+  opacity: 0.45;
+}
+.tk-wire[data-replace='true'] .tk-wire-line {
+  stroke: var(--error);
+  stroke-dasharray: 5 4;
+}
+.tk-armed {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  max-width: calc(100% - 240px);
+  padding: 6px 12px;
+  color: var(--accent-text);
+  background: var(--accent);
+  border-radius: var(--radius);
+  font: var(--fs-md) var(--font);
+  pointer-events: none;
+}
+.tk-hints {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  z-index: 2;
+  max-width: 60%;
+  color: var(--text-muted);
+  font: var(--fs-sm) var(--font);
+  pointer-events: none;
+}
+.tk-hints p {
+  margin: 0 0 2px;
+}
+.tk-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  font: var(--fs-lg) var(--font);
+  pointer-events: none;
+}

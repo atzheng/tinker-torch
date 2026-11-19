@@ -1,6 +1,12 @@
 import { expect, test } from 'vitest';
 import { PALETTE, analyse, layoutLayers, type Graph, type PaletteEntry } from '@tinker/core';
-import { editForDrop, resolveDrop, type DragPayload } from '../src/canvas/dnd.js';
+import {
+  dnd,
+  dropCandidates,
+  editForDrop,
+  resolveDrop,
+  type DragPayload,
+} from '../src/canvas/dnd.js';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { PORT_INSET, hitAt, layerHitShapes } from '../src/canvas/pure.js';
 
@@ -130,4 +136,67 @@ test('output port handles are 32 px squares that win presses at the right edge o
     const top = hitAt(shapes, b.x + b.w - PORT_INSET, b.y + b.h / 2);
     expect(top?.kind === 'port' ? top.node : top, id).toBe(id);
   }
+});
+
+test('rewire: a wire end dropped on another input port moves the wire; the old port and its source do not', () => {
+  const { g, a, layout } = setup();
+  const payload: DragPayload = { kind: 'rewire', edge: 1, from: 'lin1', to: 'act1' }; // lin1 -> act1
+  const over = (id: string) =>
+    resolveDrop(payload, g, layout, a.edgeWidth, SCALE, centreOf(layout, id));
+  expect(over('lin2')).toEqual({ kind: 'port', node: 'lin2', port: 'lin2' });
+  expect(over('act1')).toBeNull(); // the port it already ends at
+  expect(over('lin1')).toBeNull(); // its own source
+  const edit = editForDrop(g, payload, { kind: 'port', node: 'lin2', port: 'lin2' });
+  expect(edit?.ok).toBe(true);
+  if (edit?.ok) {
+    expect(edit.graph.edges).toContainEqual(['lin1', 'lin2']);
+    expect(edit.graph.edges).not.toContainEqual(['lin1', 'act1']);
+  }
+});
+
+test('rewire onto a locked piece is refused; a cycle is refused', () => {
+  const { g } = setup();
+  const payload: DragPayload = { kind: 'rewire', edge: 1, from: 'lin1', to: 'act1' };
+  const target = { kind: 'port', node: 'lin2', port: 'lin2' } as const;
+  expect(editForDrop(g, payload, target, { locked: ['lin2'] })?.ok).toBe(false);
+  const loop = editForDrop(
+    g,
+    { kind: 'rewire', edge: 2, from: 'act1', to: 'lin2' },
+    { kind: 'port', node: 'lin1', port: 'lin1' },
+  );
+  expect(loop?.ok).toBe(false);
+});
+
+test('tap-to-add: arm toggles, and a tap applies the entry once then disarms', () => {
+  const g = initialGraph();
+  const committed: unknown[] = [];
+  const off = dnd.setHandler({
+    resolve: (_p, x) => (x > 0 ? { kind: 'wire', edge: 1 } : null),
+    commit: (p, t) => committed.push([p.kind, t]),
+  });
+  dnd.arm(entry('activation'));
+  expect(dnd.armed()?.key).toBe('activation');
+  dnd.arm(entry('activation')); // the same entry again cancels
+  expect(dnd.armed()).toBeNull();
+  dnd.arm(entry('activation'));
+  expect(dnd.tapAt(-1, 0)).toBe(false); // nothing there: cancel
+  expect(dnd.armed()).toBeNull();
+  expect(committed).toHaveLength(0);
+  dnd.arm(entry('activation'));
+  expect(dnd.tapAt(5, 0)).toBe(true);
+  expect(committed).toHaveLength(1);
+  expect(dnd.armed()).toBeNull();
+  expect(g.edges.length).toBeGreaterThan(1);
+  off();
+});
+
+test('dropCandidates: wires for insertable pieces, same-family pieces, the loss for a penalty', () => {
+  const g = initialGraph();
+  const act = dropCandidates(entry('activation'), g);
+  expect(act.edges.size).toBe(g.edges.length);
+  expect([...act.nodes]).toEqual(['act1']);
+  const pen = dropCandidates(entry('weight_penalty'), g);
+  expect(pen.edges.size).toBe(0);
+  expect([...pen.nodes]).toEqual(['loss']);
+  expect(dropCandidates(entry('input'), g).edges.size).toBe(0);
 });

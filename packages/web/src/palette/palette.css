@@ -128,3 +128,24 @@
     min-height: 32px;
   }
 }
+
+/* Header and hint (tinker-6f8) */
+.tk-palette-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 -12px;
+  padding: 8px 12px 6px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.tk-palette-hint {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+}
+.tk-palette-entry[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}

@@ -226,6 +226,28 @@ export function connect(g: Graph, from: PortRef, to: PortRef, opts?: EditOptions
 }
 
 /**
+ * Moves one end of an existing wire: `end: 'to'` points it at another input port (`ref`),
+ * `end: 'from'` makes another piece feed the same input. One edit, so one undo step. The old wire
+ * is removed first, so whatever already fed the new input port is replaced, as in `connect`.
+ * Refused when the wire does not exist, for a bad port, a cycle, and when the wire's old
+ * destination or the new destination is locked.
+ */
+export function rewireEdge(
+  g: Graph,
+  edgeIndex: number,
+  end: 'from' | 'to',
+  ref: PortRef,
+  opts?: EditOptions,
+): EditResult {
+  const old = resolveAll(g)[edgeIndex];
+  const e = g.edges[edgeIndex];
+  if (!old || !e) return fail('That wire does not exist.');
+  if (lockedAmong(opts, [old.to.node])) return fail(LOCKED_MESSAGE);
+  const rest: Graph = { ...g, edges: g.edges.filter((_, i) => i !== edgeIndex) };
+  return end === 'to' ? connect(rest, e[0], ref, opts) : connect(rest, ref, e[1], opts);
+}
+
+/**
  * Removes a piece and its wires. When it had exactly one wire in, at least one wire out, and the
  * width that reaches it equals the width it passes on (or either is not known yet), each wire out
  * is reconnected to the upstream piece, keeping its place in the edge list. Otherwise the wires
