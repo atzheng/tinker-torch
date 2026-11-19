@@ -285,17 +285,36 @@ describe('analyse v2: prediction pins', () => {
     ]);
   });
 
-  test('several prediction pins', () => {
+  test('several prediction pins are fine; each width is checked and modelOrder is the union', () => {
     const gr = spec();
     gr.predictions = ['l2', 'a1'];
     const a = analyse(gr, reg);
-    const several = a.issues.find((i) => i.message.includes('2 prediction pins'));
-    expect(several).toEqual({
-      at: { node: 'a1', pin: { role: 'prediction', index: 1 } },
-      message: 'The graph has 2 prediction pins; keep only one.',
-    });
-    expect(a.trainable).toBe(false);
+    // a1 has width 4, so only that pin complains
+    expect(a.issues.map((i) => i.at.pin)).toEqual([{ role: 'prediction', index: 1 }]);
     expect(a.predictions).toEqual(['l2', 'a1']);
+    const b = g(
+      [input(), lin('p', 1), lin('q', 1), tgt],
+      [
+        ['in', 'p'],
+        ['in', 'q'],
+      ],
+      ['p', 'q'],
+    );
+    const r = analyse(b, reg);
+    expect(r.modelOrder).toEqual(['in', 'p', 'q']);
+    expect(r.issues.some((i) => i.at.pin)).toBe(false);
+  });
+
+  test('the same node pinned twice is one issue on the duplicate', () => {
+    const gr = spec();
+    gr.predictions = ['l2', 'l2.out'];
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([
+      {
+        at: { node: 'l2', pin: { role: 'prediction', index: 1 } },
+        message: '"l2" is pinned as a prediction twice.',
+      },
+    ]);
   });
 
   test('a pin naming no node', () => {

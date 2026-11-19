@@ -293,6 +293,13 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
       issues.push({ at: { pin: { role: 'prediction', index } }, message: r.error });
       return;
     }
+    if (predictions.includes(r.at.node)) {
+      issues.push({
+        at: { node: r.at.node, pin: { role: 'prediction', index } },
+        message: `"${r.at.node}" is pinned as a prediction twice.`,
+      });
+      return;
+    }
     predictions.push(r.at.node);
     predPins.push({ index, node: r.at.node });
   });
@@ -306,12 +313,6 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
       at: {},
       message:
         'No loss is pinned; pin a single-number output as the loss so there is something to train.',
-    });
-  }
-  for (const p of predPins.slice(1)) {
-    issues.push({
-      at: { node: p.node, pin: { role: 'prediction', index: p.index } },
-      message: `The graph has ${predPins.length} prediction pins; keep only one.`,
     });
   }
 

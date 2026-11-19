@@ -233,7 +233,7 @@ Shapes come from the registry (`outShape`, section 3). Add and Subtract need equ
 Roles, each an issue when it fails:
 
 - L: a pin must be set ("No loss is pinned ..." with `at: {}`) and name a node (`at.pin`). Its shape must be a single number (an example-shaped L says to add a Mean; a weight matrix is also refused), and its ancestors must include a parameter (a Linear, or a Weights tap of one). Pin issues carry `pin` and the pinned `node`.
-- ŷ: more than one prediction pin is an issue on each pin after the first. Each pin must be per-example with width 1, or `numClasses` when the pinned node is a softmax link; a softmax ŷ needs a `binary` (classification) dataset. A graph with no ŷ pin still trains.
+- ŷ: several pins are allowed (the fit plot picks one, default the first); `modelOrder` is the union of their ancestors. A pin naming no node, or the same node pinned twice (one issue on the duplicate), is an issue. Each pin is checked on its own: it must be per-example with width 1, or `numClasses` when the pinned node is a softmax link; a softmax ŷ needs a `binary` (classification) dataset. A graph with no ŷ pin still trains.
 - Log loss and cross-entropy take probabilities: their `pred` must come from a `link` of the matching fn (sigmoid for log loss, softmax for cross-entropy; issue at the node and the pred wire otherwise), the dataset must be `binary`, and cross-entropy's pred width must be `numClasses`. A matching pair is listed in `fusable`.
 - The 10,000 parameter limit applies to `totalParams` (issue with `at: {}`).
 
