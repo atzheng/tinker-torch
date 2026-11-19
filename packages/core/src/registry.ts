@@ -22,7 +22,8 @@ export type Family =
   | 'losses'
   | 'reductions'
   | 'math'
-  | 'parameters';
+  | 'parameters'
+  | 'scalars';
 
 /**
  * What flows along a wire. `example`: one row of `width` numbers per training example (batch rows
@@ -193,6 +194,51 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     paramShapes: noParams,
     paramInit: noInit,
     torch: (node) => `x[:, [${node.columns.map((c, i) => columnIndex(c, i)).join(', ')}]]`,
+  },
+  column: {
+    family: 'inputs',
+    inputPorts: [],
+    defaults: () => ({ type: 'column', name: 'x1' }),
+    outShape: () => ({ kind: 'example', width: 1 }),
+    paramShapes: noParams,
+    paramInit: noInit,
+    torch: (node) => `x[:, [${columnIndex(node.name, 0)}]]`,
+  },
+  scalew: {
+    family: 'scalars',
+    inputPorts: ['in'],
+    defaults: () => ({ type: 'scalew' }),
+    outShape: exampleThrough('A weight'),
+    paramShapes: () => ({ W: [1, 1] }),
+    // A scalar model starts at the scale of nn.Linear(d, 1): uniform on +/- 1/sqrt(d).
+    paramInit: (_node, _inWidth, data) => ({
+      kind: 'uniform',
+      bound: 1 / Math.sqrt(Math.max(1, data.columns.length)),
+    }),
+    torch: () => 'w * x',
+  },
+  bias: {
+    family: 'scalars',
+    inputPorts: ['in'],
+    defaults: () => ({ type: 'bias' }),
+    outShape: exampleThrough('A bias'),
+    paramShapes: () => ({ b: [1] }),
+    paramInit: (_node, _inWidth, data) => ({
+      kind: 'uniform',
+      bound: 1 / Math.sqrt(Math.max(1, data.columns.length)),
+    }),
+    torch: () => 'x + b',
+  },
+  sum: {
+    family: 'structure',
+    inputPorts: ['in'],
+    variadicPorts: ['in'],
+    defaults: () => ({ type: 'sum' }),
+    // Analyse has already checked every wire into `in` has the same shape.
+    outShape: (_node, inShapes) => needInput('A sum', inShapes['in']),
+    paramShapes: noParams,
+    paramInit: noInit,
+    torch: () => 'torch.stack(xs).sum(0)',
   },
   target: {
     family: 'inputs',
@@ -439,11 +485,15 @@ export function ownsParams(node: Node): boolean {
 export const PALETTE: PaletteEntry[] = [
   piece('input', 'Input', 'input'),
   piece('target', 'Target', 'target'),
+  piece('column', 'Column', 'column'),
   piece('feature', 'Feature', 'feature'),
   piece('linear', 'Linear', 'linear'),
   piece('activation', 'Activation', 'activation'),
   piece('dropout', 'Dropout', 'dropout'),
   piece('add', 'Add', 'add'),
+  piece('sum', 'Sum', 'sum'),
+  piece('scalew', 'Weight', 'scalew'),
+  piece('bias', 'Bias', 'bias'),
   piece('sigmoid', 'Sigmoid', 'link', () => ({ type: 'link', fn: 'sigmoid' })),
   piece('softmax', 'Softmax', 'link', () => ({ type: 'link', fn: 'softmax' })),
   piece('subtract', 'Subtract', 'subtract'),

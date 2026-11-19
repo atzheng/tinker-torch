@@ -267,6 +267,12 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
         });
       }
     }
+    if (node.type === 'column' && !data.columns.includes(node.name)) {
+      issues.push({
+        at: { node: id },
+        message: `Column uses "${node.name}", which this dataset does not have.`,
+      });
+    }
     if (node.type === 'weights') {
       const target = byId.get(node.of);
       if (!target) {

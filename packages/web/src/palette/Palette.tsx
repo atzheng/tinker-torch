@@ -90,6 +90,7 @@ export const GROUPS: Group[] = [
   { id: 'errors', label: 'Errors', open: false, has: inFamily('errors') },
   { id: 'reductions', label: 'Reductions', open: false, has: inFamily('reductions') },
   { id: 'losses', label: 'Losses', open: false, has: inFamily('losses') },
+  { id: 'scalars', label: 'Scalars', open: true, has: inFamily('scalars') },
   { id: 'parameters', label: 'Parameters', open: false, has: inFamily('parameters') },
   { id: 'ready', label: 'Ready-made losses', open: true, has: (e) => e.kind === 'macro' },
 ];

@@ -1,5 +1,5 @@
 /**
- * Variadic input ports (CONTRACTS.md section 3). No real piece has one yet, so the registry's
+ * Variadic input ports (CONTRACTS.md section 3). The real variadic piece is Sum (scalar.test.ts); here the registry's
  * `add` entry is swapped for a stub with the single variadic input `in` while this file runs.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -13,7 +13,6 @@ import {
   isVariadicPort,
   layoutLayers,
   layoutNeurons,
-  PALETTE,
   resolveEdge,
   rewireEdge,
   swapPiece,
@@ -81,9 +80,6 @@ describe('registry flag', () => {
     expect(isVariadicPort('add', 'in')).toBe(true);
     expect(isVariadicPort('linear', 'in')).toBe(false);
     expect(variadicPortsOf('subtract')).toEqual([]);
-  });
-  test('not in the palette', () => {
-    expect(PALETTE.some((p) => p.kind === 'piece' && p.key === 'sum')).toBe(false);
   });
   test('resolveEdge accepts several wires into the port', () => {
     const nodes = base();

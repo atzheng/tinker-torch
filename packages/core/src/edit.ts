@@ -80,10 +80,14 @@ function noNode(id: NodeId): EditResult {
   return fail(`There is no piece called "${id}".`);
 }
 
+/** Id stems that differ from the piece type: columns are x1.., weights w1... */
+const ID_STEMS: Record<string, string> = { column: 'x', scalew: 'w' };
+
 /** Smallest free id of the form `${type}${k}`, k from 1. */
 function freshId(g: Graph, type: string): NodeId {
   const used = new Set(g.nodes.map((n) => n.id));
-  for (let k = 1; ; k++) if (!used.has(`${type}${k}`)) return `${type}${k}`;
+  const stem = ID_STEMS[type] ?? type;
+  for (let k = 1; ; k++) if (!used.has(`${stem}${k}`)) return `${stem}${k}`;
 }
 
 /** Whether `target` can be reached from `start` by following wires forwards. */
@@ -303,7 +307,13 @@ export function rewireEdge(
 /** Analysis for shape questions only: the dataset kind and class count do not change shapes. */
 function shapesOf(g: Graph): Analysis {
   return analyse(g, {
-    columns: [...new Set(g.nodes.flatMap((n) => (n.type === 'input' ? n.columns : [])))],
+    columns: [
+      ...new Set(
+        g.nodes.flatMap((n) =>
+          n.type === 'input' ? n.columns : n.type === 'column' ? [n.name] : [],
+        ),
+      ),
+    ],
     kind: 'regression',
     numClasses: 2,
   });
