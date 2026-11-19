@@ -126,7 +126,19 @@ export function insertOnWire(
   const node = { id, ...piece } as Node;
   const edges = g.edges.slice();
   edges.splice(edgeIndex, 1, [edge[0], ports.length === 1 ? id : `${id}.${first}`], [id, edge[1]]);
-  return finish(g, [...g.nodes, node], edges, id);
+  // A pin on the source follows the data when this is the source's only wire out.
+  const src = r.from.node;
+  const onlyOut = resolveAll(g).filter((x) => x?.from.node === src).length === 1;
+  const move = (ref: PortRef): PortRef => (onlyOut && pinNode(ref) === src ? id : ref);
+  const parsed = parseGraph({
+    ...g,
+    nodes: [...g.nodes, node],
+    edges,
+    predictions: g.predictions.map(move),
+    loss: g.loss === null ? null : move(g.loss),
+  });
+  if (!parsed.ok) return fail(parsed.error);
+  return { ok: true, graph: parsed.graph, select: id };
 }
 
 /** Keys that name which piece it is within its type; they are never carried over by a swap. */
@@ -153,6 +165,14 @@ export function swapPiece(
   const family = CORE_PIECES[old.type].family;
   if (CORE_PIECES[piece.type].family !== family) {
     return fail(`A ${old.type} piece can only be swapped for another piece of the same family.`);
+  }
+  // A swap keeps the wiring, so the two pieces must take the same input ports (and Input and
+  // Target, which both have none, are different data and never swap).
+  const same = inputPortsOf(old.type).join() === inputPortsOf(piece.type).join();
+  if (!same || (old.type !== piece.type && family === 'inputs')) {
+    return fail(
+      `A ${piece.type} cannot replace the ${old.type}; they are different kinds of piece.`,
+    );
   }
   const replace = (n: Node): Node[] => g.nodes.map((x) => (x.id === nodeId ? n : x));
 

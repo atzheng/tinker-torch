@@ -9,7 +9,7 @@ import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
 import type { Selection } from '../state/viewSlice.js';
 import { useStore } from '../state/store.js';
-import { PinBadge, roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
+import { PinBadge, pinRolesOf, roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 
 export type LayerViewProps = {
@@ -183,10 +183,9 @@ export function LayerView(p: LayerViewProps) {
               rx={NODE_RADIUS + 4}
             />
             <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
-            {(() => {
-              const role = roleOfNode(node, graph);
-              return role === 'pred' || role === 'loss' ? <PinBadge role={role} w={box.w} /> : null;
-            })()}
+            {pinRolesOf(node, graph).map((role, k) => (
+              <PinBadge key={role} role={role} w={box.w} slot={k} />
+            ))}
             {locked.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
         );

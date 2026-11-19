@@ -50,3 +50,12 @@ test('only inputs, the node pinned as ŷ and the node pinned as L carry a role',
   ).not.toBeNull();
   expect(host.querySelectorAll('[data-testid^="pin-badge-"]')).toHaveLength(2);
 });
+
+test('a node pinned as both ŷ and L shows both badges', () => {
+  act(() => root.unmount());
+  useStore.getState().loadGraph({ ...initialGraph(), predictions: ['loss'] });
+  root = createRoot(host);
+  act(() => root.render(<Canvas />));
+  const badges = host.querySelectorAll('[data-testid="node-loss"] [data-testid^="pin-badge-"]');
+  expect(badges).toHaveLength(2);
+});

@@ -220,16 +220,37 @@ describe('swapPiece', () => {
     expect(node(out, 'lin1')).toEqual({ id: 'lin1', type: 'linear', out: 9, bias: false });
   });
 
-  test('dropout <-> add moves wires by port position', () => {
+  test('pieces with different input ports never swap (dropout and add, weights and norm)', () => {
     const g = ok(insertOnWire(base(), 1, entry('dropout')));
-    const toAdd = ok(swapPiece(g, 'dropout1', entry('add')));
-    expect(toAdd.edges[1]).toEqual(['lin1', 'dropout1.a']);
-    expect(node(toAdd, 'dropout1')).toEqual({ id: 'dropout1', type: 'add' });
-    const back = ok(swapPiece(toAdd, 'dropout1', entry('dropout')));
-    expect(back.edges[1]).toEqual(['lin1', 'dropout1']);
-    // an Add with both inputs is refused as a dropout rather than silently losing b
-    const two = ok(connect(toAdd, 'x', 'dropout1.b'));
-    err(swapPiece(two, 'dropout1', entry('dropout')));
+    err(swapPiece(g, 'dropout1', entry('add')));
+    const pen = ok(insertMacro(base(), 'weight_penalty'));
+    err(swapPiece(pen, 'w_lin1', entry('l2')));
+    err(swapPiece(pen, 'n_lin1', entry('weights')));
+    err(swapPiece(pen, 'pen', entry('subtract')));
+    err(swapPiece(pen, 'loss', entry('scale')));
+  });
+
+  test('Input and Target never swap for each other', () => {
+    err(swapPiece(base(), 'y', entry('input')));
+    err(swapPiece(base(), 'x', entry('target')));
+  });
+
+  test('every swap the palette allows on a valid graph gives a valid graph', () => {
+    const graphs = [base(), ok(insertMacro(base(), 'weight_penalty'))];
+    const open = (g: Graph) =>
+      analyse(g, info).issues.filter((i) => /input/.test(i.message)).length;
+    for (const g of graphs) {
+      for (const n of g.nodes) {
+        for (const p of PALETTE) {
+          if (p.kind !== 'piece') continue;
+          const r = swapPiece(g, n.id, p.make());
+          if (!r.ok) continue;
+          ok(r);
+          expect(r.graph.edges).toHaveLength(g.edges.length);
+          expect(open(r.graph), `${n.id} -> ${p.key}`).toBe(open(g));
+        }
+      }
+    }
   });
 
   test('huber delta carries over huber -> huber', () => {
@@ -238,6 +259,25 @@ describe('swapPiece', () => {
     });
     const out = ok(swapPiece(g, 'err', entry('huber')));
     expect(node(out, 'err')).toMatchObject({ type: 'huber', delta: 3 });
+  });
+});
+
+describe('insertOnWire pins', () => {
+  test('a ŷ pin moves to the inserted node when it was the only wire out of the source', () => {
+    const g = base(); // lin2 carries the ŷ pin; its only wire out is edge 3
+    expect(ok(insertOnWire(g, 3, entry('sigmoid'))).predictions).toEqual(['link1']);
+    // a wire that does not leave the pinned node leaves the pin alone
+    expect(ok(insertOnWire(g, 5, entry('abs'))).predictions).toEqual(['lin2']);
+  });
+
+  test('an L pin moves too; a pin stays when the source has other wires out', () => {
+    const withL = base((j) => {
+      j['loss'] = 'diff';
+    });
+    expect(ok(insertOnWire(withL, 5, entry('scale'))).loss).toBe('scale1');
+    const fan = ok(connect(base(), 'lin2', 'loss')); // lin2 now also feeds the mean
+    const i = fan.edges.findIndex((e) => e[1] === 'diff.a');
+    expect(ok(insertOnWire(fan, i, entry('abs'))).predictions).toEqual(['lin2']);
   });
 });
 

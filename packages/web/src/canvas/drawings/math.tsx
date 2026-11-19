@@ -54,7 +54,6 @@ export const linkPiece: WebPiece<'link'> = {
       scale={scale}
       name={LINK_LABEL[node.fn]}
       glyph={LINK_GLYPH[node.fn]}
-      secondary={[node.fn === 'sigmoid' ? 'probability' : 'probabilities']}
       inPorts={1}
       outPort
     />
@@ -122,7 +121,6 @@ export const logLossPiece: WebPiece<'log_loss'> = {
     name: 'Log loss',
     glyph: '-\\log p',
     inPorts: 2,
-    secondary: ['per example'],
   }),
   Neuron: noNeuron('log_loss'),
   Fields: NoSettings,
@@ -134,7 +132,6 @@ export const crossEntropyPiece: WebPiece<'cross_entropy'> = {
     name: 'Cross-entropy',
     glyph: '-\\log p_y',
     inPorts: 2,
-    secondary: ['per example'],
   }),
   Neuron: noNeuron('cross_entropy'),
   Fields: NoSettings,
