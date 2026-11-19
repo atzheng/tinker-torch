@@ -340,6 +340,8 @@ def widths_v2(nodes, edges, d):
             w[i] = w[src[(i, "a")]]
         elif t in ("log_loss", "cross_entropy"):
             w[i] = 1
+        elif t == "bias" and (i, "in") not in src:
+            w[i] = 1  # unwired Bias: b broadcast to [n, 1]
         else:
             wi = w[src[(i, "in")]]
             if t == "feature":
@@ -400,7 +402,8 @@ class ModelV2(nn.Module):
             elif t == "scalew":
                 v[i] = get() * self.scal[i]
             elif t == "bias":
-                v[i] = get() + self.scal[i]
+                # unwired (optional port): b broadcast to one value per example
+                v[i] = get() + self.scal[i] if (i, "in") in self.src else self.scal[i].expand(x.shape[0], 1)
             elif t == "sum":
                 v[i] = torch.stack([v[a] for a in self.wires[(i, "in")]]).sum(0)
             elif t == "weights":
@@ -826,6 +829,12 @@ def main():
              ["y", "err.target"], ["err", "loss"]]
     add2("prim_cross_entropy_softmax_k3", nodes, edges, ["p"], "loss", d=2, ytype="cls3",
          optimizer="adam", lr=0.05, n=9)
+
+    # tinker-7ab: the mean as a weight. An unwired Bias is yhat = b for every example, with squared
+    # error and Mean as the loss (added last so earlier seeds do not move).
+    nodes = [n_("b", "bias"), TARGET, n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")]
+    edges = [["b", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]]
+    add2("intercept_only_mse", nodes, edges, ["b"], "loss", d=1, n=8, steps=4, lr=0.2)
 
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)

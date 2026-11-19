@@ -246,3 +246,106 @@ test('unwired (inert) pieces change nothing: same losses and parameters, no para
   expect(Object.keys(b.params)).not.toContain('lone_lin');
   expect(engine.liveArrays()).toBe(baseline);
 });
+
+// tinker-7ab: an unwired Bias is the mean as a weight (yhat = b for every example).
+test('intercept-only: an unwired Bias trains to the mean of y and evaluates to its variance', () => {
+  const { fx, graph, data } = loadFixture('intercept_only_mse');
+  const batch = toBatch(fx);
+  const g = { ...graph, train: { ...graph.train, optimizer: 'sgd' as const, lr: 0.2 } };
+  const model = engine.compile(g, data);
+  let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 0);
+  for (let t = 0; t < 200; t++) state = engine.step(model, state, batch).state;
+  const mean = batch.y.reduce((a, v) => a + v, 0) / batch.n;
+  const variance = batch.y.reduce((a, v) => a + (v - mean) ** 2, 0) / batch.n;
+  const b = engine.toHost(state.params)['b']?.['b']?.[0] ?? NaN;
+  expect(Math.abs(b - mean)).toBeLessThan(1e-4);
+  expect(Math.abs(engine.evaluate(model, state.params, batch) - variance)).toBeLessThan(1e-4);
+  const pred = predict0(engine, model, state.params, batch.x, batch.n);
+  expect(pred).toHaveLength(batch.n);
+  for (const p of pred) expect(Math.abs(p - mean)).toBeLessThan(1e-4);
+  engine.dispose(state);
+});
+
+test('intercept-only: lossGrid over b, trainMany, and wiring an input in makes it in + b', () => {
+  const { fx, graph, data } = loadFixture('intercept_only_mse');
+  const batch = toBatch(fx);
+  // lossGrid needs two parameters: an unwired Bias plus a Weight on a Column, added in a Sum
+  const two = parseGraph({
+    ...graph,
+    nodes: [
+      ...graph.nodes,
+      { id: 'c', type: 'column', name: 'x1' },
+      { id: 'w', type: 'scalew' },
+      { id: 's', type: 'sum' },
+    ],
+    edges: [
+      ['b', 's'],
+      ['c', 'w'],
+      ['w', 's'],
+      ['s', 'diff.a'],
+      ...graph.edges.filter(([a]) => a !== 'b'),
+    ],
+    predictions: ['s'],
+  });
+  if (!two.ok) throw new Error(two.error);
+  const tm = engine.compile(two.graph, data);
+  const tp = engine.init(tm, 1);
+  const grid = engine.lossGrid(
+    tm,
+    tp,
+    batch,
+    [
+      { node: 'b', tensor: 'b', index: 0 },
+      { node: 'w', tensor: 'W', index: 0 },
+    ],
+    Float32Array.from([0.3]),
+    Float32Array.from([0.5]),
+  );
+  const p = engine.write(engine.write(engine.clone(tp), 'b', { b: Float32Array.of(0.3) }), 'w', {
+    W: Float32Array.of(0.5),
+  });
+  expect(Math.abs((grid[0] ?? NaN) - engine.evaluate(tm, p, batch))).toBeLessThan(1e-5);
+  engine.dispose(p);
+  engine.dispose(tp);
+
+  const model = engine.compile(graph, data);
+  const params = engine.fromHost(model, toHostParams(fx.params));
+
+  const many = engine.trainMany(model, [1, 2], [batch, batch], 5);
+  expect(many).toHaveLength(2);
+
+  // wire a Column into the same Bias: the same b now shifts x
+  const wired = parseGraph({
+    ...graph,
+    nodes: [...graph.nodes, { id: 'c', type: 'column', name: 'x1' }],
+    edges: [...graph.edges, ['c', 'b']],
+  });
+  if (!wired.ok) throw new Error(wired.error);
+  const wm = engine.compile(wired.graph, data);
+  const wp = engine.fromHost(wm, toHostParams(fx.params));
+  const b0 = fx.params['b']?.b?.[0] ?? NaN;
+  const out = predict0(engine, wm, wp, batch.x, batch.n);
+  for (let i = 0; i < batch.n; i++) {
+    expect(Math.abs((out[i] ?? NaN) - ((batch.x[i] ?? NaN) + b0))).toBeLessThan(1e-5);
+  }
+  engine.dispose(wp);
+  engine.dispose(params);
+});
+
+test('intercept-only trains 3,000 steps with the live buffer count flat', () => {
+  const { fx, graph, data } = loadFixture('intercept_only_mse');
+  const model = engine.compile(graph, data);
+  const batch = toBatch(fx);
+  let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 1);
+  const once = (i: number) => {
+    state = engine.step(model, state, batch).state;
+    if (i % 10 === 0) engine.evaluate(model, state.params, batch);
+    if (i % 25 === 0) predict0(engine, model, state.params, batch.x, batch.n);
+  };
+  for (let i = 1; i <= 60; i++) once(i);
+  const baseline = engine.liveArrays();
+  expect(baseline).toBeGreaterThan(0);
+  for (let i = 1; i <= 3000; i++) once(i);
+  expect(engine.liveArrays()).toBe(baseline);
+  engine.dispose(state);
+});
