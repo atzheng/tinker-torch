@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { NodeId, PortRef } from '@tinker/core';
+import { PIN_LIMIT, type Pin } from '../results/pinsModel.js';
 
 /**
  * What the inspector shows. A wire is identified by its endpoints, not its edge index: indices
@@ -20,7 +21,6 @@ export type Grain = 'layer' | 'neuron';
  * View slice, owned by the canvas beads (tinker-27m.3 and later). Still to fill in by later beads:
  *   TODO hover: { kind: 'wire' | 'edge' | 'node'; id: string } | null
  *   TODO toggles: Record<string, boolean>   results view toggles (surface, overlay, ...)
- *   TODO pins: Pin[]                    pinned runs
  */
 export type ViewSlice = {
   /**
@@ -34,6 +34,14 @@ export type ViewSlice = {
   grain: Grain;
   /** Switch grain. A selected edge or unit exists only in neuron view, so it is cleared. */
   setGrain: (grain: Grain) => void;
+  /**
+   * Pinned runs (tinker-iej.2), oldest first: plain data, kept across graph edits, undo and
+   * dataset changes (they are comparisons, not part of the graph or its history).
+   */
+  pins: Pin[];
+  /** Add a pin; refused (false) when PIN_LIMIT pins exist. */
+  addPin: (pin: Pin) => boolean;
+  removePin: (id: string) => void;
 };
 
 export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set) => ({
@@ -49,4 +57,15 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
           ? null
           : s.selection,
     })),
+  pins: [],
+  addPin: (pin) => {
+    let ok = false;
+    set((s) => {
+      if (s.pins.length >= PIN_LIMIT) return s;
+      ok = true;
+      return { pins: [...s.pins, pin] };
+    });
+    return ok;
+  },
+  removePin: (id) => set((s) => ({ pins: s.pins.filter((p) => p.id !== id) })),
 });

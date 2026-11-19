@@ -24,6 +24,10 @@
   --series-train: #1f5fd1;
   --series-val: #d98200;
   --series-true: #8a93a1;
+  /* Pinned runs: bluish green, reddish purple, olive (apart from the blue and orange series). */
+  --pin-1: #0b8a6a;
+  --pin-2: #b5499b;
+  --pin-3: #8a6d00;
 
   /* 2-D fit plots: diverging ramp for probability (orange = class 0, blue = class 1), sequential
      ramp (viridis stops) for regression. Colour-blind safe; no red/green. */
@@ -61,6 +65,9 @@
     --series-train: #5b9dff;
     --series-val: #ffb454;
     --series-true: #8a93a1;
+    --pin-1: #2fc79a;
+    --pin-2: #e58fc6;
+    --pin-3: #e6c84a;
 
     --div-neg: #a85a1a;
     --div-mid: #2c313b;

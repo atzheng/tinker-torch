@@ -3,6 +3,8 @@ import { decimatePath, linearScale, logScale, logTicks, niceTicks } from '../plo
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { MARGINS, drawAxes, drawLegend } from '../plot/draw.js';
 import { lossRange } from '../plot/loss.js';
+import { Pins } from './Pins.js';
+import { mergeBounds } from './pinsModel.js';
 import { isMiniBatch } from '../state/trainSlice.js';
 import { useStore } from '../state/store.js';
 import styles from './Results.module.css';
@@ -14,11 +16,14 @@ export function LossCurves() {
   const restoreBest = useStore((s) => s.restoreBest);
   const canRestore = useStore((s) => s.canTrain);
   const miniBatch = useStore((s) => isMiniBatch(s.graph.train.batch, s.dataset.nTrain));
+  const pins = useStore((s) => s.pins);
   const [log, setLog] = useState(false);
 
   const draw: DrawFn = (ctx, w, h, c) => {
     const m = MARGINS;
-    const r = lossRange(history, log, best?.val);
+    let r = lossRange(history, log, best?.val);
+    // Pinned runs (tinker-iej.2) widen the axes so their curves are not clipped.
+    for (const p of pins) r = mergeBounds(r, lossRange(p.history, log), log);
     const xs = linearScale(0, r.stepMax, m.l, w - m.r);
     const ys = log ? logScale(r.lo, r.hi, h - m.b, m.t) : linearScale(r.lo, r.hi, h - m.b, m.t);
     const yTicks = log ? logTicks(r.lo, r.hi) : niceTicks(r.lo, r.hi, 4);
@@ -36,14 +41,18 @@ export function LossCurves() {
     ctx.clip();
     ctx.lineWidth = 1.5;
     ctx.lineJoin = 'round';
-    const series = (pick: (i: number) => number, color: string) => {
+    const series = (
+      pick: (i: number) => number,
+      color: string,
+      hist: readonly { step: number }[] = history,
+    ) => {
       const y = log ? (i: number) => (pick(i) > 0 ? pick(i) : Number.NaN) : pick;
       ctx.strokeStyle = color;
       ctx.beginPath();
       let started = false;
       decimatePath(
-        history.length,
-        (i) => history[i]?.step ?? 0,
+        hist.length,
+        (i) => hist[i]?.step ?? 0,
         y,
         xs.px,
         ys.px,
@@ -55,6 +64,14 @@ export function LossCurves() {
       );
       ctx.stroke();
     };
+    // Pinned runs under the current one: training faint, validation stronger, in the pin's colour.
+    for (const p of pins) {
+      const col = c.pins[p.slot] ?? c.accent;
+      ctx.globalAlpha = 0.3;
+      series((i) => p.history[i]?.train ?? Number.NaN, col, p.history);
+      ctx.globalAlpha = 0.7;
+      series((i) => p.history[i]?.val ?? Number.NaN, col, p.history);
+    }
     ctx.globalAlpha = miniBatch ? 0.3 : 0.75;
     series((i) => history[i]?.train ?? Number.NaN, c.train);
     ctx.globalAlpha = 1;
@@ -82,7 +99,7 @@ export function LossCurves() {
     ctx.restore();
   };
 
-  const ref = usePlotCanvas(draw, [history, best, log, miniBatch]);
+  const ref = usePlotCanvas(draw, [history, best, log, miniBatch, pins]);
   return (
     <div className={styles.panel} data-testid="loss-curves">
       <div className={styles.head}>
@@ -105,6 +122,7 @@ export function LossCurves() {
           Restore best
         </button>
       </div>
+      <Pins />
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Loss curves" />
       </div>
