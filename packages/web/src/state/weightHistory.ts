@@ -11,7 +11,7 @@ import type { Store } from './store.js';
  * Weights trained between two edits are not part of undo: undo restores the layer as it was
  * when the drag began.
  */
-export type LayerValues = { W: Float32Array; b?: Float32Array };
+export type LayerValues = { W?: Float32Array; b?: Float32Array };
 type Record_ = {
   prev: Graph;
   node: NodeId;

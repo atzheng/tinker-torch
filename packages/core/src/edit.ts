@@ -17,6 +17,7 @@ import {
   resolvePin,
   resolveEdge,
   inputPortsOf,
+  collapsedWeights,
   isVariadicPort,
   variadicPortsOf,
   type Edge,
@@ -159,6 +160,39 @@ export function insertOnWire(
     edges,
     predictions: g.predictions.map(move),
     loss: g.loss === null ? null : move(g.loss),
+  });
+  if (!parsed.ok) return fail(parsed.error);
+  return { ok: true, graph: parsed.graph, select: id };
+}
+
+/**
+ * Puts a new piece on the canvas with no wires (a source piece to start from, or a Sum, Weight or
+ * Bias to wire up by hand). `at` is the top-left corner of its box in layout units (kept within the same bounds as
+ * `moveNodes`); left out, the automatic layout places it. Selects the new node. One edit, so one
+ * undo step. Refused for a Weights tap (it needs the Linear it reads).
+ */
+export function addPiece(g: Graph, piece: NodeBody, at?: readonly [number, number]): EditResult {
+  if (piece.type === 'weights') return fail('A Weights tap needs the Linear it reads.');
+  const id = freshId(g, piece.type);
+  const node = { id, ...withFreshColumn(g, piece) } as Node;
+  let positions = g.positions;
+  if (at) {
+    if (!Number.isFinite(at[0]) || !Number.isFinite(at[1])) {
+      return fail('A piece can only be placed at a position given as numbers.');
+    }
+    const [maxX, maxY] = positionLimits(g.nodes.length + 1);
+    positions = {
+      ...g.positions,
+      [id]: [
+        Math.min(maxX, Math.max(LAYOUT.pad, at[0])),
+        Math.min(maxY, Math.max(LAYOUT.pad, at[1])),
+      ],
+    };
+  }
+  const parsed = parseGraph({
+    ...g,
+    nodes: [...g.nodes, node],
+    ...(positions ? { positions } : {}),
   });
   if (!parsed.ok) return fail(parsed.error);
   return { ok: true, graph: parsed.graph, select: id };
@@ -650,6 +684,15 @@ export function setColumns(
   );
 }
 
+/** Furthest a piece may be placed: two spare columns and rows past a drawing with every piece in its own. */
+function positionLimits(nodeCount: number): [number, number] {
+  const spare = nodeCount + 2;
+  return [
+    LAYOUT.pad + spare * (LAYOUT.boxW + LAYOUT.layerGap),
+    LAYOUT.pad + spare * (LAYOUT.boxH + LAYOUT.rowGap),
+  ];
+}
+
 /**
  * Puts pieces where the user dragged them (CONTRACTS.md section 2, `positions`): `moves` maps a
  * node id to the new top-left corner of its box, in layout units, clamped to `LAYOUT.pad` or more. One edit,
@@ -663,12 +706,13 @@ export function moveNodes(
 ): EditResult {
   // No further than two spare columns and rows past a drawing with every piece in its own column
   // and row, so a far drag cannot make the drawing (and the fit) grow without limit.
-  const spare = g.nodes.length + 2;
-  const maxX = LAYOUT.pad + spare * (LAYOUT.boxW + LAYOUT.layerGap);
-  const maxY = LAYOUT.pad + spare * (LAYOUT.boxH + LAYOUT.rowGap);
+  const [maxX, maxY] = positionLimits(g.nodes.length);
   const positions: Record<NodeId, [number, number]> = { ...g.positions };
+  const collapsed = collapsedWeights(g);
   for (const [id, xy] of Object.entries(moves)) {
     if (!findNode(g, id)) return noNode(id);
+    if (collapsed.has(id))
+      return fail('A weight drawn on its wire has no box: it follows its wire.');
     if (!Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) {
       return fail('A piece can only be moved to a position given as numbers.');
     }

@@ -615,3 +615,39 @@ path.tk-hit {
   bottom: 0;
   background: linear-gradient(to top, var(--bg), transparent);
 }
+
+/* Weight wires: the label of a wire that stands for a Weight is a control (raised, outlined,
+   accent when touched or selected), never a diagnostic. */
+.tk-wpill {
+  cursor: ns-resize;
+}
+.tk-wpill-bg {
+  fill: var(--ctl-fill);
+  stroke: var(--ctl-border);
+  stroke-width: 1;
+}
+.tk-wpill:hover .tk-wpill-bg {
+  fill: var(--ctl-fill-hover);
+  stroke: var(--accent);
+}
+.tk-wpill:active .tk-wpill-bg {
+  fill: var(--ctl-fill-press);
+}
+.tk-wpill[data-selected='true'] .tk-wpill-bg,
+.tk-wpill[data-drop='true'] .tk-wpill-bg {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.tk-wpill[data-error='true'] .tk-wpill-bg {
+  fill: var(--error-bg);
+  stroke: var(--error);
+}
+.tk-fo-box.tk-wpill-tex {
+  justify-content: center;
+  color: var(--ctl-fg);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.tk-wpill[data-error='true'] .tk-wpill-tex {
+  color: var(--error);
+}
