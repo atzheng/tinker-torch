@@ -136,7 +136,12 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       error: null,
     });
   },
-  loadGraph: (graph) =>
+  loadGraph: (loaded) => {
+    // Re-parse so a hand-built graph that left out optional fields gets the schema defaults;
+    // a field that is undefined would turn a controlled input uncontrolled. An invalid graph is
+    // kept as given, so the page shows its issues.
+    const reparsed = parseGraph(loaded);
+    const graph = reparsed.ok ? reparsed.graph : loaded;
     set({
       graph,
       past: [],
@@ -148,6 +153,7 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       canUndo: false,
       canRedo: false,
       error: null,
-    }),
+    });
+  },
   clearError: () => set({ error: null }),
 });
