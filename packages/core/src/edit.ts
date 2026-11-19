@@ -27,7 +27,7 @@ import {
   type NodeId,
   type PortRef,
 } from './graph.js';
-import { CORE_PIECES, PALETTE, type Shape } from './registry.js';
+import { CORE_PIECES, PALETTE, sameShape } from './registry.js';
 import type { Namer } from './macros.js';
 
 export type EditResult = { ok: true; graph: Graph; select?: NodeId } | { ok: false; error: string };
@@ -279,6 +279,13 @@ export function rewireEdge(
   const e = g.edges[edgeIndex];
   if (!old || !e) return fail('That wire does not exist.');
   if (lockedAmong(opts, [old.to.node])) return fail(LOCKED_MESSAGE);
+  if (end === 'to') {
+    // Dropping a wire back on its own port changes nothing (and must not move it in the fold order).
+    const dest = resolveEdge(g.nodes, [e[0], ref]);
+    if (dest.ok && dest.to.node === old.to.node && dest.to.port === old.to.port) {
+      return { ok: true, graph: g };
+    }
+  }
   const rest: Graph = { ...g, edges: g.edges.filter((_, i) => i !== edgeIndex) };
   if (end === 'to') return connect(rest, e[0], ref, opts);
   const res = connect(rest, ref, e[1], opts);
@@ -291,13 +298,6 @@ export function rewireEdge(
     return finish(g, res.graph.nodes, edges);
   }
   return res;
-}
-
-function sameShape(a: Shape, b: Shape): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === 'example') return a.width === (b as typeof a).width;
-  if (a.kind === 'param') return a.rows === (b as typeof a).rows && a.cols === (b as typeof a).cols;
-  return true;
 }
 
 /** Analysis for shape questions only: the dataset kind and class count do not change shapes. */

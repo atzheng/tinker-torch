@@ -105,7 +105,8 @@ export const describeShape = (s: Shape): string =>
       ? 'a single number'
       : `a ${s.rows} by ${s.cols} weight matrix`;
 
-const sameShape = (a: Shape, b: Shape): boolean =>
+/** Whether two wire shapes are the same kind and size. */
+export const sameShape = (a: Shape, b: Shape): boolean =>
   a.kind === b.kind &&
   (a.kind !== 'example' || a.width === (b as typeof a).width) &&
   (a.kind !== 'param' || (a.rows === (b as typeof a).rows && a.cols === (b as typeof a).cols));

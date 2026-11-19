@@ -318,8 +318,7 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
     // One slot per port; a variadic port's slot is a band (half a slot either side of its centre)
     // shared by its wires, and a lone wire sits at the centre as on any other port.
     const slot = slotOf.get(e.index);
-    const frac = slot ? k + 0.5 + (slot[0] + 1) / (slot[1] + 1) : k + 1;
-    const y1 = b.y + (b.h * frac) / (ports.length + 1);
+    const y1 = variadicSlotY(b, k, ports.length, slot?.[0] ?? 0, slot?.[1] ?? 1);
     const ca = col[e.from] ?? 0;
     const cb = col[e.to] ?? 0;
     const gapR = (colX[ca] ?? 0) + (colW[ca] ?? 0) + gap / 2;
@@ -334,6 +333,20 @@ function layoutCore(g: Graph, plan: (n: Node) => Plan, gap: number): Core {
     wires.push({ edge: e.index, points, labelAt: labelAnchor(points) });
   }
   return { boxes, wires, size: [width, height] };
+}
+
+/**
+ * Height at which wire `slot` (0-based, in wire order) of `count` wires enters input port `k` of
+ * `ports` on `box`. One wire (the default) enters at the port's centre, as on any port.
+ */
+export function variadicSlotY(
+  box: { y: number; h: number },
+  k: number,
+  ports: number,
+  slot = 0,
+  count = 1,
+): number {
+  return box.y + (box.h * (k + 0.5 + (slot + 1) / (count + 1))) / (ports + 1);
 }
 
 const boxPlan = (): Plan => ({ w: LAYOUT.boxW, h: LAYOUT.boxH, unit: null, count: 0 });

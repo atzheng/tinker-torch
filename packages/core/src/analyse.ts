@@ -8,6 +8,7 @@ import {
   CORE_PIECES,
   describeShape,
   ownsParams,
+  sameShape,
   type ParamInit,
   type ParamShapes,
   type ShapeCtx,
@@ -70,11 +71,6 @@ export type Analysis = {
   trainable: boolean;
 };
 
-const sameShape = (a: Shape, b: Shape): boolean =>
-  a.kind === b.kind &&
-  (a.kind !== 'example' || a.width === (b as typeof a).width) &&
-  (a.kind !== 'param' || (a.rows === (b as typeof a).rows && a.cols === (b as typeof a).cols));
-
 export const MAX_PARAMS = 10_000;
 
 // The registry's `{ [T]: CorePiece<NodeOf<T>> }` does not distribute over a `Node` we looked up by id, so
@@ -123,6 +119,13 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
       issues.push({
         at: { edge: index, node: r.to.node },
         message: `"${r.to.node}" has two wires into its ${r.to.port} input; each input takes only one.`,
+      });
+      return;
+    }
+    if (list?.some((x) => x.from === r.from.node)) {
+      issues.push({
+        at: { edge: index, node: r.to.node },
+        message: `"${r.from.node}" is wired into the ${r.to.port} input of "${r.to.node}" twice; remove one of the two wires.`,
       });
       return;
     }

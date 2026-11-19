@@ -18,6 +18,7 @@ import {
   rewireEdge,
   swapPiece,
   variadicPortsOf,
+  variadicSlotY,
   type DataInfo,
   type Edge,
   type Graph,
@@ -191,7 +192,44 @@ describe('analyse', () => {
   });
 });
 
+describe('duplicate wire from a file', () => {
+  test('the same source twice into a variadic port is one issue on the second edge', () => {
+    const gr = g(
+      base(),
+      [
+        ['x', 'a'],
+        ['a', 's'],
+        ['a', 's'],
+      ],
+      ['s'],
+    );
+    const a = analyse(gr, info);
+    const bad = a.issues.filter((i) => i.at.edge !== undefined);
+    expect(bad).toHaveLength(1);
+    expect(bad[0]?.at.edge).toBe(2);
+    expect(a.inputs['s']?.['in']).toEqual([{ edge: 1, from: 'a' }]);
+  });
+});
+
 describe('edits', () => {
+  test('rewireEdge onto the same variadic port changes nothing', () => {
+    const gr = g(
+      base(),
+      [
+        ['x', 'a'],
+        ['x', 'b'],
+        ['a', 's'],
+        ['b', 's'],
+      ],
+      ['s'],
+    );
+    const r = ok(rewireEdge(gr, 2, 'to', 's.in'));
+    expect(r.graph.edges).toEqual(gr.edges);
+  });
+  test('variadicSlotY matches the layout', () => {
+    expect(variadicSlotY({ y: 10, h: 60 }, 0, 1, 0, 1)).toBe(40);
+    expect(variadicSlotY({ y: 10, h: 60 }, 0, 1, 0, 3)).toBeCloseTo(10 + (60 * 1.25) / 2);
+  });
   const wired = (): Graph =>
     g(
       base(),
