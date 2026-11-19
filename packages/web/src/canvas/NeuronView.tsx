@@ -351,12 +351,13 @@ export function NeuronView(p: NeuronViewProps) {
             className="tk-node tk-unit"
             onPointerDown={pointerDownWith({
               // A drag on a plus circle sets that unit's bias; other units only select.
+              // Any other unit cell hands a drag to the edge nearest to where it began.
               ...(u.kind === 'sum'
                 ? weightDragHandlers(
                     () => ({ kind: 'b', node: u.node, j: u.index }),
                     () => p.select({ kind: 'unit', node: u.node, index: u.index }),
                   )
-                : {}),
+                : dragOfEdge(-1)),
               onTap: () => p.select({ kind: 'unit', node: u.node, index: u.index }),
             })}
           >
@@ -377,7 +378,15 @@ export function NeuronView(p: NeuronViewProps) {
       {graph.nodes.map((node) => {
         const box = layout.boxes[node.id];
         if (node.type !== 'linear' || !box) return null;
-        return <UnitButtons key={node.id} node={node} box={box} scale={scale} />;
+        return (
+          <UnitButtons
+            key={node.id}
+            node={node}
+            box={box}
+            scale={scale}
+            y={layout.size[1] - LAYOUT.pad + 4}
+          />
+        );
       })}
       {hover && (
         <EdgeTip layout={layout} hover={hover} dims={dims} fallback={p.fallback} scale={scale} />
@@ -493,6 +502,8 @@ function UnitButtons(p: {
   node: Extract<Node, { type: 'linear' }>;
   box: { x: number; y: number; w: number; h: number };
   scale: number;
+  /** Top of the button row: under every unit and edge, which never reach below the last box. */
+  y: number;
 }) {
   const { node, box, scale } = p;
   const change = (delta: number) => {
@@ -545,10 +556,7 @@ function UnitButtons(p: {
     );
   };
   return (
-    <g
-      transform={`translate(${box.x + box.w / 2} ${box.y + box.h + 6})`}
-      data-testid={`unitbtns-${node.id}`}
-    >
+    <g transform={`translate(${box.x + box.w / 2} ${p.y})`} data-testid={`unitbtns-${node.id}`}>
       {btn(-1)}
       {btn(1)}
     </g>

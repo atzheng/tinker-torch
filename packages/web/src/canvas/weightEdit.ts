@@ -1,8 +1,14 @@
+import { LOCKED_MESSAGE } from '@tinker/core';
 import type { DragHandlers, DragPoint } from '../gestures/drag.js';
 import { lockedIds } from '../state/locks.js';
 import { hostShape } from '../state/hostShape.js';
 import { useStore } from '../state/store.js';
-import { recordWeightEdit, type LayerValues } from '../state/weightHistory.js';
+import {
+  recordWeightEdit,
+  weightGeneration,
+  whileApplyingEdit,
+  type LayerValues,
+} from '../state/weightHistory.js';
 import { biasAt, weightAt } from './neuronPure.js';
 
 /** A weight `W[i][j]` or a bias `b[j]` of a Linear. */
@@ -14,9 +20,8 @@ export const WEIGHT_PER_PX = 0.01;
 /** Typed and dragged values are kept within this range. */
 export const WEIGHT_LIMIT = 100;
 
-/** Same sentence as the core edits give for a locked piece. */
-const LOCKED_MESSAGE = 'This piece is locked.';
 export const PAUSE_FIRST = 'Pause training to set a weight by hand.';
+export const DIVERGED_FIRST = 'Reset the run before setting a weight by hand.';
 
 export type WeightEdit = {
   /** Value when the edit began. */
@@ -44,6 +49,10 @@ export function beginWeightEdit(t: WeightTarget): WeightEdit | null {
     useStore.setState({ error: PAUSE_FIRST });
     return null;
   }
+  if (s.diverged) {
+    useStore.setState({ error: DIVERGED_FIRST });
+    return null;
+  }
   if (lockedIds().includes(t.node)) {
     useStore.setState({ error: LOCKED_MESSAGE });
     return null;
@@ -63,41 +72,68 @@ export function beginWeightEdit(t: WeightTarget): WeightEdit | null {
   if (start === undefined) return null;
 
   const graph = s.graph;
+  const gen = weightGeneration();
   const before: LayerValues = { W: Float32Array.from(layer.W) };
   if (layer.b) before.b = Float32Array.from(layer.b);
   let last = start;
+  let dead = false;
+  /** Current value of the target in the live host, undefined when its shape changed. */
+  const current = (): number | undefined => {
+    const cur = useStore.getState().host?.[t.node];
+    if (!cur || cur.W.length !== before.W.length) return undefined;
+    return t.kind === 'W' ? cur.W[t.i * node.out + t.j] : cur.b?.[t.j];
+  };
+  // Written on top of the live layer, so values another action put there are kept.
   const write = (v: number): boolean => {
+    const cur = useStore.getState().host?.[t.node];
+    if (!cur || cur.W.length !== before.W.length) return false;
     if (t.kind === 'W') {
-      const W = Float32Array.from(before.W);
+      const W = Float32Array.from(cur.W);
       W[t.i * node.out + t.j] = v;
       return useStore.getState().writeParams(t.node, { W });
     }
-    if (!before.b) return false;
-    const b = Float32Array.from(before.b);
+    if (!cur.b) return false;
+    const b = Float32Array.from(cur.b);
     b[t.j] = v;
     return useStore.getState().writeParams(t.node, { b });
+  };
+  // The graph changed under a drag in progress (Ctrl+Z, a toolbar edit): the preview has no undo
+  // step, so take it back and end the edit.
+  const unsub = useStore.subscribe(() => {
+    if (dead || useStore.getState().graph === graph) return;
+    dead = true;
+    unsub();
+    if (last !== start && current() === Math.fround(last)) write(start);
+  });
+  const end = () => {
+    dead = true;
+    unsub();
   };
   return {
     start,
     set: (v) => {
+      if (dead) return last;
       const c = clamp(Number.isFinite(v) ? v : start);
       if (write(c)) last = c;
       return last;
     },
     commit: () => {
       const st = useStore.getState();
-      if (last === start) return;
+      const live = !dead && st.graph === graph && weightGeneration() === gen;
+      end();
+      if (!live || last === start) return;
       const cur = st.host?.[t.node];
-      if (!cur || st.graph !== graph) return;
+      if (!cur) return;
       const after: LayerValues = { W: Float32Array.from(cur.W) };
       if (cur.b) after.b = Float32Array.from(cur.b);
       const copy = { ...graph };
       recordWeightEdit(graph, copy, t.node, before, after);
-      st.apply({ ok: true, graph: copy });
+      whileApplyingEdit(() => st.apply({ ok: true, graph: copy }));
     },
     cancel: () => {
-      if (last !== start) write(start);
+      if (!dead && last !== start) write(start);
       last = start;
+      end();
     },
   };
 }

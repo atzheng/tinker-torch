@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from 'react';
+import { useRef, useState, type ComponentType } from 'react';
 import type { Analysis, Graph, HostParams, Node, PieceType } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import { deleteSelection } from './actions.js';
@@ -92,8 +92,10 @@ function WireInspector({
 function ValueField(p: { testid: string; label: string; value: number; target: WeightTarget }) {
   const running = useStore((s) => s.running);
   const [draft, setDraft] = useState<string | null>(null);
+  const dropped = useRef(false); // Escape: the blur that follows must not commit
   const commit = () => {
-    const text = draft;
+    const text = dropped.current ? null : draft;
+    dropped.current = false;
     setDraft(null);
     if (text === null) return;
     const v = Number(text);
@@ -117,6 +119,7 @@ function ValueField(p: { testid: string; label: string; value: number; target: W
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur();
           else if (e.key === 'Escape') {
+            dropped.current = true;
             setDraft(null);
             e.currentTarget.blur();
           }

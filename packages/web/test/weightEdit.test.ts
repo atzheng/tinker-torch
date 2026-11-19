@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeAll, beforeEach, expect, test } from 'vitest';
-import { beginWeightEdit, PAUSE_FIRST } from '../src/canvas/weightEdit.js';
+import { beginWeightEdit, DIVERGED_FIRST, PAUSE_FIRST } from '../src/canvas/weightEdit.js';
 import { getEngine, loadEngine } from '../src/engine.js';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { useStore } from '../src/state/store.js';
@@ -74,4 +74,63 @@ test('many writes keep the live array count flat', () => {
   for (let k = 0; k < 20; k++) edit?.set(k / 10);
   expect(live()).toBe(n);
   edit?.cancel();
+});
+
+const maxAbs = () => Math.max(...Array.from(s().host?.lin1?.W ?? [0]).map(Math.abs));
+
+test('after a divergence a hand edit is refused; undoing an older edit never writes blown-up weights back', () => {
+  const e = beginWeightEdit({ kind: 'W', node: 'lin1', i: 0, j: 0 });
+  e?.set(0.3);
+  e?.commit();
+  s().setLearningRate(1e30);
+  for (let i = 0; i < 200 && !s().diverged; i++) s().stepOnce();
+  expect(s().diverged).toBe(true);
+  expect(beginWeightEdit({ kind: 'W', node: 'lin1', i: 0, j: 0 })).toBeNull();
+  expect(s().error).toBe(DIVERGED_FIRST);
+  s().setLearningRate(0.03); // restarts from fresh weights
+  expect(s().diverged).toBe(false);
+  expect(maxAbs()).toBeLessThan(10);
+  s().undo();
+  s().undo();
+  s().undo();
+  s().redo();
+  s().redo();
+  s().redo();
+  expect(maxAbs()).toBeLessThan(10);
+  expect(s().diverged).toBe(false);
+});
+
+test('a hand edit applied after a normal run never writes back by itself', () => {
+  s().stepOnce();
+  const e = beginWeightEdit({ kind: 'W', node: 'lin1', i: 0, j: 0 });
+  e?.set(0.3);
+  const other = s().host?.lin1?.W[1];
+  e?.commit();
+  expect(s().host?.lin1?.W[0]).toBeCloseTo(0.3, 6);
+  expect(s().host?.lin1?.W[1]).toBe(other);
+});
+
+test('undo after Reset does not bring stale weights back', () => {
+  const e = beginWeightEdit({ kind: 'W', node: 'lin1', i: 0, j: 1 });
+  e?.set(0.9);
+  e?.commit();
+  s().reset();
+  const fresh = Array.from(s().host?.lin1?.W ?? []);
+  s().undo();
+  expect(Array.from(s().host?.lin1?.W ?? [])).toEqual(fresh);
+  s().redo();
+  expect(Array.from(s().host?.lin1?.W ?? [])).toEqual(fresh);
+});
+
+test('a graph change in the middle of a drag takes the preview back', () => {
+  const start = s().host?.lin1?.W[0];
+  const e = beginWeightEdit({ kind: 'W', node: 'lin1', i: 0, j: 0 });
+  e?.set(2);
+  expect(s().host?.lin1?.W[0]).toBeCloseTo(2, 6);
+  const g = s().graph;
+  const past = s().past.length;
+  s().apply({ ok: true, graph: { ...g, train: { ...g.train, lr: 0.02 } } });
+  expect(s().host?.lin1?.W[0]).toBe(start);
+  e?.commit(); // ends quietly
+  expect(s().past.length).toBe(past + 1);
 });
