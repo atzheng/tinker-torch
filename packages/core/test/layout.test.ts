@@ -3,6 +3,7 @@ import {
   analyse,
   layoutLayers,
   layoutNeurons,
+  LAYOUT,
   type DataInfo,
   type Edge,
   type Graph,
@@ -374,5 +375,27 @@ describe('graph v2 shapes', () => {
         .map((u) => u.kind),
     );
     expect([...kinds]).toEqual(['out']);
+  });
+});
+
+describe('unit-column name strips', () => {
+  test('full-width name strips of neighbouring unit columns never overlap and stay clear of mid-gap wires', () => {
+    const gr = mlp(4);
+    const N = layoutNeurons(gr, analyse(gr, info));
+    const cols = gr.nodes
+      .filter((n) => N.units.some((u) => u.node === n.id))
+      .map((n) => N.boxes[n.id])
+      .filter((b) => b !== undefined)
+      .sort((a, b) => a.x - b.x);
+    expect(cols.length).toBeGreaterThanOrEqual(4);
+    for (let i = 1; i < cols.length; i++) {
+      const a = cols[i - 1];
+      const b = cols[i];
+      if (!a || !b) continue;
+      const centreGap = b.x + b.w / 2 - (a.x + a.w / 2);
+      expect(centreGap).toBeGreaterThan(LAYOUT.unitNameW + 8); // two full strips fit between centres
+    }
+    // The strip reaches into the gap by less than half of it, so mid-gap wires stay clear.
+    expect((LAYOUT.unitNameW - LAYOUT.unitW) / 2).toBeLessThan(LAYOUT.neuronGap / 2);
   });
 });

@@ -426,7 +426,7 @@ const UNIT_COLUMN_NAME: Partial<Record<Node['type'], string>> = {
 function UnitColumnName({ node, w, scale }: { node: Node; w: number; scale: number }) {
   const text = node.type === 'activation' ? ACTIVATION_LABEL[node.fn] : UNIT_COLUMN_NAME[node.type];
   if (!text) return null;
-  const name = fitName(scale, text, LAYOUT.unitW, 13, 16);
+  const name = fitName(scale, text, LAYOUT.unitNameW, 13, 16);
   return (
     <text
       className="tk-name"
