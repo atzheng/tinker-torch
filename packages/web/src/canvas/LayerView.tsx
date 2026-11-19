@@ -35,11 +35,13 @@ export function layerProps(
   box: { w: number; h: number },
   analysis: Analysis,
   weights: HostParams | undefined,
+  scale?: number,
 ): LayerProps<typeof node.type> {
   const inWidth = analysis.inWidth[node.id];
   const outWidth = analysis.outWidth[node.id];
   const base = { w: box.w, h: box.h, paramCount: analysis.params[node.id] ?? 0 };
   const props: Record<string, unknown> = { ...base, node };
+  if (scale !== undefined) props['scale'] = scale;
   if (inWidth !== undefined) props['inWidth'] = inWidth;
   if (outWidth !== undefined) props['outWidth'] = outWidth;
   if (node.type === 'linear' && inWidth !== undefined) {
@@ -143,7 +145,7 @@ export function LayerView(p: LayerViewProps) {
               height={hit.h}
             />
             <rect className="tk-ring" x={-4} y={-4} width={box.w + 8} height={box.h + 8} rx={12} />
-            <Layer {...layerProps(node, box, analysis, p.weights)} />
+            <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
             {locked.has(node.id) && <LockBadge x={box.w - 8} y={8} />}
           </g>
         );

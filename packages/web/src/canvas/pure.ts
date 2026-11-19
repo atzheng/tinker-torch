@@ -9,6 +9,14 @@ import {
   type PortRef,
 } from '@tinker/core';
 
+/** Smallest on-screen font size (px) at which secondary drawing text is still drawn. */
+export const MIN_TEXT_PX = 8;
+
+/** Whether text of `fontUnits` abstract units is legible at `scale` px per unit (unknown scale: yes). */
+export function legibleAt(scale: number | undefined, fontUnits: number): boolean {
+  return scale === undefined || fontUnits * scale >= MIN_TEXT_PX;
+}
+
 export type Transform = { scale: number; tx: number; ty: number };
 
 /** Scale and centre a drawing of `size` abstract units into a `view` of pixels, with a margin. */

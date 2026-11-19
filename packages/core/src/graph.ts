@@ -59,7 +59,7 @@ const nodeId = z.string({ error: 'must be text' }).regex(/^[a-z][a-z0-9_]*$/, {
 
 const penaltySchema = z.strictObject({
   kind: z.enum(['l2', 'l1'], { error: oneOf(['l2', 'l1']) }),
-  lambda: num('must be a number of at least 0', (n) => n >= 0),
+  lambda: num('must be a number from 0 to 100', (n) => n >= 0 && n <= 100),
 });
 
 const nodeSchema = z.discriminatedUnion('type', [

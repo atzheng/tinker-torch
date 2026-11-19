@@ -14,6 +14,7 @@ import {
   unit,
 } from '../plot/surface.js';
 import { useStore } from '../state/store.js';
+import { ResampleButton, ResampleReadout, useOverlay2D } from './ResampleOverlay.js';
 import styles from './Results.module.css';
 
 /** Grid points per side of the surface. Fixed: every new n makes the engine retrace. */
@@ -67,6 +68,10 @@ export function FitPlot2D() {
     return column(fixed.values, out, fixed.grid.n, 1);
   }, [host, predictGrid, fixed]);
 
+  // With the overlay on, the surface drawn is the average of the copies.
+  const overlay = useOverlay2D();
+  const shown = overlay?.mean ?? surface;
+
   const mapped = useMemo(
     () => (classification ? null : finiteRange(fixed.f)),
     [classification, fixed],
@@ -100,10 +105,10 @@ export function FitPlot2D() {
     ctx.clip();
 
     // surface: one pixel per grid point, smoothed up to the plot size
-    if (surface && fixed.off) {
+    if (shown && fixed.off) {
       const octx = fixed.off.getContext('2d');
       if (octx) {
-        fillGridImage(fixed.img.data, surface, GRID_2D, lut, rlo, rhi);
+        fillGridImage(fixed.img.data, shown, GRID_2D, lut, rlo, rhi);
         octx.putImageData(fixed.img, 0, 0);
         const cw = (xs.px(x1hi) - xs.px(x1lo)) / (GRID_2D - 1);
         const ch = (ys.px(x2lo) - ys.px(x2hi)) / (GRID_2D - 1);
@@ -136,14 +141,14 @@ export function FitPlot2D() {
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     // the model's 0.5 boundary: halo then line, readable on both ends of the ramp
-    if (classification && surface) {
+    if (classification && shown) {
       ctx.setLineDash([]);
       ctx.strokeStyle = c.bg;
       ctx.lineWidth = 4;
-      lines(surface, 0.5);
+      lines(shown, 0.5);
       ctx.strokeStyle = c.text;
       ctx.lineWidth = 2;
-      lines(surface, 0.5);
+      lines(shown, 0.5);
     }
     if (showTruth) {
       ctx.setLineDash([6, 4]);
@@ -209,7 +214,7 @@ export function FitPlot2D() {
   };
 
   // `surface` is a reused buffer, so `host` (a new object each frame) says that it changed.
-  const ref = usePlotCanvas(draw, [dataset, fixed, surface, host, showTruth, mapped]);
+  const ref = usePlotCanvas(draw, [dataset, fixed, shown, host, showTruth, mapped]);
   return (
     <div className={styles.panel} data-testid="fit-plot">
       <div className={`${styles.head} ${styles.headWrap}`}>
@@ -248,7 +253,9 @@ export function FitPlot2D() {
           />
           {classification ? 'True boundary' : 'True contours'}
         </label>
+        <ResampleButton />
       </div>
+      <ResampleReadout />
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Fit plot" />
       </div>

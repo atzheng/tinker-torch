@@ -9,3 +9,4 @@ export * from './edit.js';
 export * from './layout.js';
 export * from './params.js';
 export * from './file.js';
+export * from './stats.js';

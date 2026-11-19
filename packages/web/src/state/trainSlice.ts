@@ -29,7 +29,8 @@ import type { Store } from './store.js';
  *   (`reconcileParams`), clears the loss history, the best snapshot and the step counter, and pauses;
  * - a change to `graph.train` only (learning rate, optimizer, batch) recompiles and keeps the
  *   weights, the history and the best; a running loop keeps running; a diverged run may continue
- *   (the engine leaves the parameters unchanged on a diverged step);
+ *   (the engine leaves the parameters unchanged on a diverged step); after a divergence any edit
+ *   starts a new run from fresh weights (the old ones are blown up), with diverged cleared;
  * - an invalid graph disables training and shows its first issue; the weights are kept so that
  *   fixing the graph brings the model back.
  */
@@ -234,8 +235,11 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
    * Brings model, TrainState and params in line with the current graph and dataset. `fresh`
    * discards the parameters (Reset).
    */
-  function resync(fresh = false): void {
+  function resync(freshArg = false): void {
     const { graph, dataset, dataInfo } = get();
+    // A diverged run leaves huge (finite) weights behind, so no lr, optimizer, batch or data
+    // change could recover from them: the edit that follows a divergence starts from fresh weights.
+    const fresh = freshArg || get().diverged;
     const engine = rt.engine;
     const structural =
       fresh || !rt.lastGraph || structuralKey(graph) !== structuralKey(rt.lastGraph);
@@ -306,7 +310,6 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       }
     }
     const canTrain = rt.state !== null;
-    if (get().diverged) rt.trainLoss = null; // the last finite loss is from before the blow-up
     const keepRunning = !structural && wasRunning && canTrain;
     // One store update, so a reader never sees the new analysis with the old host.
     publish({ analysis, trainIssue: issue, canTrain, running: false, diverged: false });
@@ -445,15 +448,18 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const { engine, model, best } = rt;
       if (!engine || !model || !best) return;
       stopLoop();
+      let params: Params | null = null;
       try {
-        const params = engine.fromHost(model, best.params);
+        params = engine.fromHost(model, best.params);
         disposeState();
         rt.state = engine.startTraining(model, params, rt.seed);
+        params = null; // consumed
         rt.batches = batchSchedule(get().dataset.nTrain, get().graph.train.batch, rt.seed);
         rt.valLoss = best.val;
         rt.trainLoss = null; // no loss was computed for the restored parameters yet
         publish({ running: false, diverged: false });
       } catch (e) {
+        if (params) engine.dispose(params); // not consumed by startTraining
         set({
           trainIssue: e instanceof Error ? e.message : 'The best parameters could not be restored.',
           running: false,
@@ -473,10 +479,14 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const { engine, model } = rt;
       let issue: string | null = null;
       if (engine && model) {
+        let params: Params | null = null;
         try {
-          rt.state = engine.startTraining(model, engine.fromHost(model, merged), rt.seed);
+          params = engine.fromHost(model, merged);
+          rt.state = engine.startTraining(model, params, rt.seed);
+          params = null; // consumed
           evaluateInitial();
         } catch (e) {
+          if (params) engine.dispose(params); // not consumed by startTraining
           issue = e instanceof Error ? e.message : 'The saved weights could not be loaded.';
         }
       }
