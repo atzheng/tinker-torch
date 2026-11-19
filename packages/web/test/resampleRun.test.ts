@@ -20,7 +20,7 @@ vi.setConfig({ testTimeout: 120_000 });
 const { createEngine } = await import('@tinker/engine');
 const engine = await createEngine();
 
-// The bundled preset is a version 1 document: it opens through the migration.
+// The bundled preset is a native version 2 document.
 const parsed = parseGraph((sine as unknown as { graph: unknown }).graph);
 if (!parsed.ok) throw new Error(parsed.error);
 const base: Graph = parsed.graph;
@@ -37,7 +37,7 @@ function graphOf(width: number, n: number): Graph {
           ...base.edges.filter(
             ([f, t]) => !hidden.includes(parsePort(f).node) && !hidden.includes(parsePort(t).node),
           ),
-          ['lin1', 'loss_diff.a'],
+          ['lin1', 'diff.a'],
         ];
   return {
     ...base,

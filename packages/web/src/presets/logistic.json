@@ -1,9 +1,9 @@
 {
   "kind": "tinker",
-  "version": 1,
+  "version": 2,
   "title": "Logistic regression on blobs",
   "graph": {
-    "version": 1,
+    "version": 2,
     "nodes": [
       {
         "id": "x",
@@ -18,31 +18,38 @@
       },
       {
         "id": "yhat",
-        "type": "output",
-        "link": "sigmoid"
+        "type": "link",
+        "fn": "sigmoid"
       },
       {
         "id": "y",
         "type": "target"
       },
       {
+        "id": "err",
+        "type": "log_loss"
+      },
+      {
         "id": "loss",
-        "type": "loss",
-        "fn": "log_loss"
+        "type": "mean"
       }
     ],
     "edges": [
       ["x", "lin1"],
       ["lin1", "yhat"],
-      ["yhat", "loss.pred"],
-      ["y", "loss.target"]
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
     ],
+    "predictions": ["yhat"],
+    "loss": "loss",
     "data": {
       "set": "blobs",
       "n": 60,
       "noise": 0.3,
       "val": 0.3,
-      "seed": 7
+      "seed": 7,
+      "standardize": false
     },
     "train": {
       "optimizer": "sgd",
