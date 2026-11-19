@@ -37,10 +37,10 @@ describe('host conversion', () => {
     const model = engine.compile(graph, data);
     const p = engine.fromHost(model, host);
     const before = engine.evaluate(model, p, batch);
-    host['lin1']?.W.fill(123);
+    host['lin1']?.W?.fill(123);
     expect(engine.evaluate(model, p, batch)).toBe(before);
     const mutated = engine.toHost(p);
-    mutated['lin1']?.W.fill(7);
+    mutated['lin1']?.W?.fill(7);
     expect(engine.evaluate(model, p, batch)).toBe(before);
     engine.dispose(p);
   });
@@ -163,7 +163,7 @@ describe('compile', () => {
     for (const id of Object.keys(host)) {
       const w0 = host[id]?.W ?? new Float32Array();
       w0.forEach((w, i) => {
-        const d = Math.abs(w - (after[id]?.W[i] ?? NaN));
+        const d = Math.abs(w - (after[id]?.W?.[i] ?? NaN));
         // a zero gradient gives a zero update; otherwise the step is lr
         if (d > 1e-9) expect(Math.abs(d - lr)).toBeLessThan(1e-5);
       });

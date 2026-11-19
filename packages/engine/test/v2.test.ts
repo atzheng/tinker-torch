@@ -1,7 +1,9 @@
 // Graph v2 behaviour of the engine (tinker-8xw.3): pins, fusion, taps, no-prediction graphs,
 // leaks, lossGrid and trainMany on primitive graphs. Values against PyTorch are in reference.test.ts.
 import { installProbe } from '../src/probe.js';
+import { tree } from '@jax-js/jax';
 import { analyse } from '@tinker/core';
+import { hostToTree, treeToHost } from '../src/convert.js';
 import { describe, expect, test } from 'vitest';
 import { loadFixture, toBatch, toHostParams, withLr } from './util.js';
 
@@ -14,7 +16,7 @@ function scaledHost(name: string, factor: number) {
   const { fx, graph, data } = loadFixture(name);
   const host = toHostParams(fx.params);
   for (const layer of Object.values(host)) {
-    layer.W = layer.W.map((w) => w * factor);
+    layer.W = layer.W?.map((w) => w * factor) ?? new Float32Array(0);
     if (layer.b) layer.b = layer.b.map((w) => w * factor);
   }
   return { fx, graph, data, host, batch: toBatch(fx) };
@@ -53,7 +55,7 @@ describe('stable fusion', () => {
         expect(r.diverged).toBe(false);
         expect(Number.isFinite(r.loss)).toBe(true);
         for (const layer of Object.values(engine.toHost(r.state.params))) {
-          for (const w of layer.W) expect(Number.isFinite(w)).toBe(true);
+          for (const w of layer.W ?? []) expect(Number.isFinite(w)).toBe(true);
         }
         engine.dispose(r.state);
         engine.disposeModel(model);
@@ -176,7 +178,7 @@ describe('lossGrid and trainMany on primitive graphs', () => {
         const want = engine.toHost(state.params);
         for (const id of Object.keys(want)) {
           const g = res[i]?.params[id]?.W ?? new Float32Array(0);
-          g.forEach((v, k) => expect(v).toBeCloseTo(want[id]?.W[k] ?? NaN, 4));
+          g.forEach((v, k) => expect(v).toBeCloseTo(want[id]?.W?.[k] ?? NaN, 4));
         }
         engine.dispose(state);
       }
@@ -238,4 +240,28 @@ describe('leaks', () => {
     for (let i = 0; i < 200; i++) cycle(i);
     expect(engine.liveArrays()).toBe(baseline);
   }, 120_000);
+});
+
+describe('generic named parameter tensors (stub owner)', () => {
+  // No piece owns parameters besides Linear yet: exercise the tree conversions directly.
+  const shapes = new Map([['stub', { g: [2, 3], s: [1] }]]);
+  const host = {
+    stub: { g: Float32Array.from([1, 2, 3, 4, 5, 6]), s: Float32Array.from([7]) },
+  };
+
+  test('hostToTree / treeToHost round trip and mismatches throw', () => {
+    const t = hostToTree(shapes, host);
+    expect(t['stub']?.['g']?.shape).toEqual([2, 3]);
+    const back = treeToHost(t);
+    expect(Array.from(back['stub']?.['g'] ?? [])).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(Array.from(back['stub']?.['s'] ?? [])).toEqual([7]);
+    tree.dispose(t);
+    expect(() => hostToTree(shapes, { stub: { g: new Float32Array(5), s: host.stub.s } })).toThrow(
+      /expected 6/,
+    );
+    expect(() => hostToTree(shapes, { stub: { g: host.stub.g } })).toThrow(/expected 1/);
+    expect(() =>
+      hostToTree(shapes, { stub: { ...host.stub, extra: new Float32Array(1) } }),
+    ).toThrow(/"extra"/);
+  });
 });

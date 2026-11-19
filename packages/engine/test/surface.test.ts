@@ -39,7 +39,7 @@ test('two_param: lossGrid equals evaluate with the values written', async () => 
   for (let i = 0; i < a.length; i++)
     for (let j = 0; j < b.length; j++)
       expect(t[j * a.length + i]).toBeCloseTo(grid[i * b.length + j] ?? NaN, 5);
-  expect(engine.toHost(params)['lin1']?.W[0]).toBeCloseTo(fx.params['lin1']?.W[0] ?? NaN, 6);
+  expect(engine.toHost(params)['lin1']?.W?.[0]).toBeCloseTo(fx.params['lin1']?.W?.[0] ?? NaN, 6);
   engine.dispose(params);
 });
 

@@ -4,7 +4,15 @@
  */
 import type { DataInfo, Graph, Node, NodeId } from './graph.js';
 import { resolveEdge, resolvePin } from './graph.js';
-import { CORE_PIECES, describeShape, type ShapeCtx, type Shape } from './registry.js';
+import {
+  CORE_PIECES,
+  describeShape,
+  ownsParams,
+  type ParamInit,
+  type ParamShapes,
+  type ShapeCtx,
+  type Shape,
+} from './registry.js';
 
 export type Pin = { role: 'loss' } | { role: 'prediction'; index: number };
 export type Issue = {
@@ -13,7 +21,6 @@ export type Issue = {
   message: string;
 };
 export type Region = 'model' | 'objective';
-export type ParamShapes = { W?: [rows: number, cols: number]; b?: [number] };
 
 export type Analysis = {
   /** Topological order of what the roles need (ancestors of L and of the ŷ pins); every acyclic node when no role resolves. */
@@ -30,9 +37,11 @@ export type Analysis = {
   edgeWidth: (number | null)[];
   /** Parameters per node whose input width is known (0 for pieces with none). */
   params: Record<NodeId, number>;
-  /** Shapes of each Linear's W and b, for Linears whose input width is known. */
+  /** Named tensor shapes of each parameter-owning node (Linear: W, b) whose input width is known. */
   paramShapes: Record<NodeId, ParamShapes>;
-  /** Linears whose parameters are live: reached through data wires, or read by a Weights tap in `order`. In node order. */
+  /** The init of each node in `paramShapes` (from the piece's `paramInit`). */
+  paramInit: Record<NodeId, ParamInit>;
+  /** Parameter-owning nodes whose parameters are live: in `order`, or a Linear read by a Weights tap in `order`. In node order. */
   paramNodes: NodeId[];
   /** Sum of `params` over `paramNodes`. */
   totalParams: number;
@@ -63,6 +72,7 @@ type ShapeFn = (
   ctx: ShapeCtx,
 ) => Shape | { error: string };
 type ParamFn = (node: Node, inW: number) => ParamShapes;
+type InitFn = (node: Node, inW: number) => ParamInit;
 
 const record = <T>() => Object.create(null) as Record<NodeId, T>; // no prototype: ids like "constructor" are safe
 
@@ -168,6 +178,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   const outWidth = record<number>();
   const params = record<number>();
   const paramShapes = record<ParamShapes>();
+  const paramInit = record<ParamInit>();
   const computed = new Set<NodeId>();
   const visiting = new Set<NodeId>();
   let loopHit = false; // set when a shape lookup re-enters a node that is still being computed
@@ -271,11 +282,18 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     if (r.kind === 'example') outWidth[id] = r.width;
     const firstPort = ports[0];
     const firstIn = firstPort === undefined ? undefined : inS[firstPort];
-    if (firstIn?.kind === 'example') {
-      inWidth[id] = firstIn.width;
-      const ps = (piece.paramShapes as ParamFn)(node, firstIn.width);
-      params[id] = (ps.W ? ps.W[0] * ps.W[1] : 0) + (ps.b ? ps.b[0] : 0);
-      if (node.type === 'linear') paramShapes[id] = ps;
+    if (firstIn?.kind === 'example') inWidth[id] = firstIn.width;
+    // A piece with no input port that owns parameters (e.g. one learnable scalar) needs no width.
+    const w = firstIn?.kind === 'example' ? firstIn.width : ports.length === 0 ? 0 : undefined;
+    if (w !== undefined) {
+      const ps = (piece.paramShapes as ParamFn)(node, w);
+      let count = 0;
+      for (const k of Object.keys(ps)) count += (ps[k] ?? []).reduce((a, d) => a * d, 1);
+      params[id] = count;
+      if (Object.keys(ps).length > 0) {
+        paramShapes[id] = ps;
+        paramInit[id] = (piece.paramInit as InitFn)(node, w);
+      }
     }
   }
 
@@ -372,7 +390,10 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     if (done.has(lossNode)) {
       const hasParam = [...lossSet].some((id) => {
         const n = byId.get(id);
-        return n?.type === 'linear' || (n?.type === 'weights' && byId.get(n.of)?.type === 'linear');
+        return (
+          (n !== undefined && ownsParams(n)) ||
+          (n?.type === 'weights' && byId.get(n.of)?.type === 'linear')
+        );
       });
       if (!hasParam) {
         issues.push({
@@ -454,7 +475,10 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   // ---- parameter wires and the live Linears
   const paramWires: Analysis['paramWires'] = [];
   const live = new Set<NodeId>();
-  for (const id of order) if (byId.get(id)?.type === 'linear') live.add(id);
+  for (const id of order) {
+    const n = byId.get(id);
+    if (n && ownsParams(n)) live.add(id);
+  }
   for (const n of nodes) {
     if (n.type !== 'weights') continue;
     const t = byId.get(n.of);
@@ -491,6 +515,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     edgeWidth,
     params,
     paramShapes,
+    paramInit,
     paramNodes,
     totalParams,
     predictions,

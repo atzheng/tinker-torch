@@ -42,6 +42,11 @@ export type ShapeCtx = {
   weightShape(linearId: NodeId): [rows: number, cols: number] | undefined;
 };
 
+/** Named parameter tensors of one node (CONTRACTS.md section 5): Linear has W [in, out] and b [out]. */
+export type ParamShapes = Record<string, number[]>;
+/** How a node's tensors start: uniform on +/- bound, or every value `value`. Plain data, one spec per node. */
+export type ParamInit = { kind: 'uniform'; bound: number } | { kind: 'const'; value: number };
+
 export type CorePiece<N extends Node> = {
   /** Drop-to-swap is allowed only within a family. */
   family: Family;
@@ -52,8 +57,14 @@ export type CorePiece<N extends Node> = {
    * shape is unknown), which gives an error sentence. Every piece has the one output port `out`.
    */
   outShape(node: N, inShapes: Record<string, Shape>, ctx: ShapeCtx): Shape | ShapeError;
-  /** W is [in, out]. `inWidth` is the example width entering the node. Only Linear has parameters. */
-  paramShapes(node: N, inWidth: number): { W?: [rows: number, cols: number]; b?: [number] };
+  /**
+   * The node's named parameter tensors (empty for a piece with none). Linear: W [in, out] and b [out].
+   * `inWidth` is the example width entering the node (0 for a piece with no input port). A node owns
+   * parameters when this is non-empty (see `ownsParams`).
+   */
+  paramShapes(node: N, inWidth: number): ParamShapes;
+  /** How the node's tensors start. Called only when `paramShapes` is non-empty. */
+  paramInit(node: N, inWidth: number): ParamInit;
   /** Torch counterpart for the later code view. `inWidth` is the width entering the node, when known. */
   torch(node: N, inWidth?: number): string;
 };
@@ -147,6 +158,7 @@ function pairwise(label: string) {
 }
 
 const noParams = () => ({});
+const noInit = (): ParamInit => ({ kind: 'const', value: 0 });
 
 function columnIndex(name: string, position: number): number {
   const m = /^x(\d+)$/.exec(name);
@@ -171,6 +183,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
         ? { error: 'Input needs at least one data column switched on.' }
         : { kind: 'example', width: node.columns.length },
     paramShapes: noParams,
+    paramInit: noInit,
     torch: (node) => `x[:, [${node.columns.map((c, i) => columnIndex(c, i)).join(', ')}]]`,
   },
   target: {
@@ -180,6 +193,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     // 1 for regression and binary sets (a class index for softmax classification).
     outShape: () => ({ kind: 'example', width: 1 }),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: () => 'y',
   },
   feature: {
@@ -191,6 +205,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       return typeof d === 'number' ? { kind: 'example', width: featureWidth(d, node) } : d;
     },
     paramShapes: noParams,
+    paramInit: noInit,
     torch: (node, inWidth) => {
       const terms = ['x'];
       for (let k = 2; k <= node.degree; k++) terms.push(`x**${k}`);
@@ -215,8 +230,10 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: (node, inWidth) => ({
       W: [inWidth, node.out],
-      ...(node.bias ? { b: [node.out] as [number] } : {}),
+      ...(node.bias ? { b: [node.out] } : {}),
     }),
+    // nn.Linear default: W and b uniform on +/- 1/sqrt(in).
+    paramInit: (_node, inWidth) => ({ kind: 'uniform', bound: 1 / Math.sqrt(inWidth) }),
     torch: (node, inWidth) =>
       `nn.Linear(${inWidth ?? '?'}, ${node.out}, bias=${py.bool(node.bias)})`,
   },
@@ -226,6 +243,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'activation', fn: 'relu' }),
     outShape: exampleThrough('An activation'),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: (node) =>
       ({ sigmoid: 'nn.Sigmoid()', tanh: 'nn.Tanh()', relu: 'nn.ReLU()', gelu: 'nn.GELU()' })[
         node.fn
@@ -237,6 +255,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'dropout', p: 0.2 }),
     outShape: exampleThrough('Dropout'),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: (node) => `nn.Dropout(p=${py.float(node.p)})`,
   },
   add: {
@@ -245,6 +264,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'add' }),
     outShape: pairwise('Add'),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: () => 'a + b',
   },
   link: {
@@ -253,6 +273,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'link', fn: 'sigmoid' }),
     outShape: exampleThrough('A link'),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: (node) => (node.fn === 'sigmoid' ? 'nn.Sigmoid()' : 'nn.Softmax(dim=-1)'),
   },
   subtract: {
@@ -261,6 +282,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'subtract' }),
     outShape: pairwise('Subtract'),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: () => 'a - b',
   },
   square: {
@@ -269,6 +291,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'square' }),
     outShape: elementwise('Square'),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: () => 'x ** 2',
   },
   abs: {
@@ -277,6 +300,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'abs' }),
     outShape: elementwise('Absolute value'),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: () => 'x.abs()',
   },
   huber: {
@@ -285,6 +309,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'huber', delta: 1 }),
     outShape: elementwise('Huber'),
     paramShapes: noParams,
+    paramInit: noInit,
     // Per-element Huber of a difference d (0.5 d^2 inside delta, delta (|d| - 0.5 delta) outside).
     torch: (node) =>
       `F.huber_loss(d, torch.zeros_like(d), delta=${py.float(node.delta)}, reduction='none')`,
@@ -303,6 +328,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       return { kind: 'example', width: 1 };
     },
     paramShapes: noParams,
+    paramInit: noInit,
     // The engine fuses a sigmoid link into this (BCE with logits).
     torch: () => "F.binary_cross_entropy(p, y, reduction='none')",
   },
@@ -318,6 +344,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       return { kind: 'example', width: 1 };
     },
     paramShapes: noParams,
+    paramInit: noInit,
     // The engine fuses a softmax link into this (log-softmax, then pick the target class).
     torch: () => "F.nll_loss(torch.log(p), y.long(), reduction='none')",
   },
@@ -330,6 +357,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       return typeof w === 'number' ? { kind: 'scalar' } : w;
     },
     paramShapes: noParams,
+    paramInit: noInit,
     torch: () => 'x.mean()',
   },
   scale: {
@@ -338,6 +366,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     defaults: () => ({ type: 'scale', c: 1 }),
     outShape: elementwise('Scale'),
     paramShapes: noParams,
+    paramInit: noInit,
     torch: (node) => `${py.float(node.c)} * x`,
   },
   weights: {
@@ -351,6 +380,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
         : { error: `Weights reads the Linear piece "${node.of}", whose size is not known yet.` };
     },
     paramShapes: noParams,
+    paramInit: noInit,
     torch: (node) => `${node.of}.weight`,
   },
   norm: {
@@ -368,6 +398,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       return { kind: 'scalar' };
     },
     paramShapes: noParams,
+    paramInit: noInit,
     torch: (node) => (node.kind === 'l2' ? 'w.pow(2).sum()' : 'w.abs().sum()'),
   },
 };
@@ -391,6 +422,12 @@ const loss = (key: LossKind, label: string): PaletteEntry => ({
  * The palette, in display order: single pieces first, then the ready-made groups. A macro inserts
  * primitive nodes and edges, never a node of its own (CONTRACTS.md section 3).
  */
+/** True when the node has parameter tensors of its own (Linear; later the scalar-weight and bias pieces). */
+export function ownsParams(node: Node): boolean {
+  const piece = CORE_PIECES[node.type] as unknown as CorePiece<Node>;
+  return Object.keys(piece.paramShapes(node, 1)).length > 0;
+}
+
 export const PALETTE: PaletteEntry[] = [
   piece('input', 'Input', 'input'),
   piece('target', 'Target', 'target'),

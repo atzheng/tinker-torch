@@ -14,7 +14,14 @@
 import { jit, numpy as np, random, tree, valueAndGrad } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import * as optax from '@jax-js/optax';
-import { analyse, type Analysis, type Graph, type Node, resolveEdge } from '@tinker/core';
+import {
+  analyse,
+  ownsParams,
+  type Analysis,
+  type Graph,
+  type Node,
+  resolveEdge,
+} from '@tinker/core';
 import type { Batch, DataInfo, HostParams } from '@tinker/core';
 import { treeToHost } from './convert.js';
 import type { Layer, LayerShape, ParamTree } from './convert.js';
@@ -127,7 +134,7 @@ function makePlan(
     const own = [...(ports.get(id) ?? new Map<string, NodeId>())];
     steps.push({ node, ports: own });
     for (const [, src] of own) uses.set(src, (uses.get(src) ?? 0) + 1);
-    if (node.type === 'linear') layerUses.set(id, (layerUses.get(id) ?? 0) + 1);
+    if (ownsParams(node)) layerUses.set(id, (layerUses.get(id) ?? 0) + 1);
     if (node.type === 'weights') layerUses.set(node.of, (layerUses.get(node.of) ?? 0) + 1);
   }
   for (const o of outputs) uses.set(o, (uses.get(o) ?? 0) + 1);
@@ -175,7 +182,7 @@ export function compile(graph: Graph, data: DataInfo): Model {
   const shapes = new Map<NodeId, LayerShape>();
   for (const id of analysis.paramNodes) {
     const s = analysis.paramShapes[id];
-    if (s?.W) shapes.set(id, { W: s.W, ...(s.b ? { b: s.b } : {}) });
+    if (s) shapes.set(id, s);
   }
 
   let predictFn: PredictFn | null = null;
@@ -328,7 +335,7 @@ function walk(
     if (!l || left === undefined) throw new Error(`Internal error: "${id}" has no parameters.`);
     if (left > 1) {
       layerLeft.set(id, left - 1);
-      return l.b ? { W: l.W.ref, b: l.b.ref } : { W: l.W.ref };
+      return Object.fromEntries(Object.entries(l).map(([k, a]) => [k, a.ref]));
     }
     layerLeft.delete(id);
     return l;
@@ -337,12 +344,11 @@ function walk(
     const { node } = s;
     const inputs: Record<string, JArray> = {};
     for (const [port, src] of s.ports) inputs[port] = take(src);
-    const layer =
-      node.type === 'linear'
-        ? takeLayer(node.id)
-        : node.type === 'weights'
-          ? takeLayer(node.of)
-          : undefined;
+    const layer = ownsParams(node)
+      ? takeLayer(node.id)
+      : node.type === 'weights'
+        ? takeLayer(node.of)
+        : undefined;
     // The piece table is indexed by node.type; TypeScript cannot correlate the two here.
     const piece = ENGINE_PIECES[node.type] as unknown as {
       forward(n: Node, i: Record<string, JArray>, l: Layer | undefined, c: PieceCtx): JArray;
@@ -357,8 +363,7 @@ function walk(
   // parameters this pass never reads (e.g. a Linear only the loss uses, in a predict pass)
   for (const [id, l] of Object.entries(params)) {
     if (plan.layerUses.has(id)) continue;
-    l.W.dispose();
-    l.b?.dispose();
+    tree.dispose(l);
   }
   return out;
 }
@@ -431,8 +436,13 @@ export function checkTree(m: Internals, t: ParamTree): void {
   if (ids.length !== m.shapes.size) throw bad;
   for (const [id, s] of m.shapes) {
     const l = Object.hasOwn(t, id) ? t[id] : undefined;
-    if (!l || !same(l.W.shape, s.W)) throw bad;
-    if (s.b ? !l.b || !same(l.b.shape, s.b) : l.b !== undefined) throw bad;
+    if (!l) throw bad;
+    const names = Object.keys(s);
+    if (Object.keys(l).length !== names.length) throw bad;
+    for (const k of names) {
+      const a = Object.hasOwn(l, k) ? l[k] : undefined;
+      if (!a || !same(a.shape, s[k] ?? [])) throw bad;
+    }
   }
 }
 

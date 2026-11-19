@@ -132,17 +132,13 @@ export function trainMany(
   const inits = seeds.map((s) => initParams(m.analysis, s));
   let params: ParamTree = {};
   for (const [id, s] of m.shapes) {
-    const layer: ParamTree[string] = {
-      W: stacked(
-        inits.map((h) => h[id]?.W ?? new Float32Array(0)),
-        s.W,
-      ),
-    };
-    if (s.b)
-      layer.b = stacked(
-        inits.map((h) => h[id]?.b ?? new Float32Array(0)),
-        s.b,
+    const layer: ParamTree[string] = {};
+    for (const [k, shape] of Object.entries(s)) {
+      layer[k] = stacked(
+        inits.map((h) => h[id]?.[k] ?? new Float32Array(0)),
+        shape,
       );
+    }
     params[id] = layer;
   }
   let opt = tree.map(
@@ -190,8 +186,9 @@ export function trainMany(
     for (let c = 0; c < k; c++) {
       const hp = Object.create(null) as HostParams;
       for (const [id, l] of Object.entries(params)) {
-        const W = host(l.W, c, size(l.W) / k);
-        hp[id] = l.b ? { W, b: host(l.b, c, size(l.b) / k) } : { W };
+        const h = Object.create(null) as HostParams[string];
+        for (const [name, a] of Object.entries(l)) h[name] = host(a, c, size(a) / k);
+        hp[id] = h;
       }
       result.push({ params: hp, diverged: diverged[c] ?? false });
     }
