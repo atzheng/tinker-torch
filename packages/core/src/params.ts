@@ -1,7 +1,6 @@
 /** Host-side parameters (CONTRACTS.md section 5): plain Float32Arrays, no jax-js. */
 import type { Analysis } from './analyse.js';
-import type { Graph, Node, NodeId } from './legacy/graph.js';
-import { CORE_PIECES } from './legacy/registry.js';
+import type { NodeId } from './common.js';
 import { makeRng } from './rng.js';
 
 /** W row-major [in, out]; b [out]. Only linear nodes on `analysis.order` have an entry. */
@@ -10,21 +9,20 @@ export type JsonParams = Record<NodeId, { W: number[]; b?: number[] }>;
 
 type Shapes = { W: [number, number]; b?: [number] };
 
-/** Param shapes of the linear nodes on the loss path whose input width is known. */
-function linearShapes(graph: Graph, analysis: Analysis): Map<NodeId, Shapes> {
-  const byId = new Map<NodeId, Node>(graph.nodes.map((n) => [n.id, n]));
+/**
+ * Param shapes of every live Linear (`analysis.paramNodes`) whose input width is known. A Linear read
+ * only through a Weights tap is live too, though it is not in `analysis.order`.
+ */
+function linearShapes(analysis: Analysis): Map<NodeId, Shapes> {
   const out = new Map<NodeId, Shapes>();
-  for (const id of analysis.order) {
-    const node = byId.get(id);
-    const w = analysis.inWidth[id];
-    if (!node || node.type !== 'linear' || w === undefined) continue;
-    const s = CORE_PIECES.linear.paramShapes(node, w);
-    if (s.W) out.set(id, { W: s.W, ...(s.b ? { b: s.b } : {}) });
+  for (const id of analysis.paramNodes) {
+    const s = analysis.paramShapes[id];
+    if (s?.W) out.set(id, { W: s.W, ...(s.b ? { b: s.b } : {}) });
   }
   return out;
 }
 
-/** One node's initial parameters (shared with the version 2 `initParams`). */
+/** One node's initial parameters. */
 export function initNode(
   shapes: Shapes,
   seed: number,
@@ -53,9 +51,9 @@ function matches(
 }
 
 /** nn.Linear default: W and b uniform on +/- 1/sqrt(in). */
-export function initParams(graph: Graph, analysis: Analysis, seed: number): HostParams {
+export function initParams(analysis: Analysis, seed: number): HostParams {
   const host: HostParams = Object.create(null) as HostParams;
-  for (const [id, s] of linearShapes(graph, analysis)) host[id] = initNode(s, seed, id);
+  for (const [id, s] of linearShapes(analysis)) host[id] = initNode(s, seed, id);
   return host;
 }
 
@@ -63,20 +61,18 @@ export function initParams(graph: Graph, analysis: Analysis, seed: number): Host
  * Keep each node's arrays (same objects, bit-identical) when their shapes are unchanged between the old and
  * new graph. W is kept when [in, out] is unchanged, even if bias was toggled; b is kept when W and b exist in
  * both, drawn fresh when bias is turned on, and dropped when it is turned off. Everything else is re-inited.
- * Nodes no longer on the loss path are dropped. Does not mutate `old`. The returned arrays are shared with
+ * Nodes that are no longer live are dropped. Does not mutate `old`. The returned arrays are shared with
  * `old` and must never be written in place.
  */
 export function reconcileParams(
   old: HostParams,
-  oldGraph: Graph,
   oldAnalysis: Analysis,
-  graph: Graph,
   analysis: Analysis,
   seed: number,
 ): HostParams {
-  const oldShapes = linearShapes(oldGraph, oldAnalysis);
+  const oldShapes = linearShapes(oldAnalysis);
   const host: HostParams = Object.create(null) as HostParams;
-  for (const [id, s] of linearShapes(graph, analysis)) {
+  for (const [id, s] of linearShapes(analysis)) {
     const prev = Object.hasOwn(old, id) ? old[id] : undefined;
     const os = oldShapes.get(id);
     const sameW =
@@ -125,13 +121,12 @@ export function paramsToJson(host: HostParams): JsonParams {
  */
 export function paramsFromJson(
   json: unknown,
-  graph: Graph,
   analysis: Analysis,
 ): { params: HostParams; dropped: NodeId[] } {
   const params: HostParams = Object.create(null) as HostParams;
   const dropped: NodeId[] = [];
   if (typeof json !== 'object' || json === null || Array.isArray(json)) return { params, dropped };
-  const shapes = linearShapes(graph, analysis);
+  const shapes = linearShapes(analysis);
   const isNums = (v: unknown): v is number[] => {
     if (!Array.isArray(v)) return false;
     for (let i = 0; i < v.length; i++) if (!Number.isFinite(v[i])) return false; // also catches holes

@@ -3,7 +3,7 @@
 import { init, numpy as np, random, tree } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import type * as optax from '@jax-js/optax';
-import { CORE_NAME, v2 } from '@tinker/core';
+import { CORE_NAME, type Graph, initParams } from '@tinker/core';
 import type { Batch, DataInfo, HostParams, NodeId } from '@tinker/core';
 import {
   batchArrays,
@@ -61,13 +61,13 @@ export function createEngine(): Promise<Engine> {
 
 function makeEngine(): Engine {
   const engine: Engine = {
-    compile(graph: v2.Graph, data: DataInfo): Model {
+    compile(graph: Graph, data: DataInfo): Model {
       return compile(graph, data);
     },
 
     init(model, seed) {
       const m = internals(model);
-      return engine.fromHost(model, v2.initParams(m.analysis, seed));
+      return engine.fromHost(model, initParams(m.analysis, seed));
     },
 
     /** Borrows `host`: the values are copied. Throws when it does not fit the model. */

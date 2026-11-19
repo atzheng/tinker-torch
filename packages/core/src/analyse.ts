@@ -1,45 +1,74 @@
-/** Analysis (CONTRACTS.md section 4): order, widths, parameter counts and the issues that disable Train. */
-import type { DataInfo, Graph, LossFn, Node, NodeId } from './legacy/graph.js';
-import { resolveEdge } from './legacy/graph.js';
-import { CORE_PIECES } from './legacy/registry.js';
+/**
+ * Analysis for graph v2 (CONTRACTS.md section 4): shapes, roles, regions, order, parameter counts and
+ * the issues that disable Train. Pure; no DOM.
+ */
+import type { DataInfo, Graph, Node, NodeId } from './graph.js';
+import { resolveEdge, resolvePin } from './graph.js';
+import { CORE_PIECES, describeShape, type ShapeCtx, type Shape } from './registry.js';
 
-export type Issue = { at: { node?: NodeId; edge?: number }; message: string };
+export type Pin = { role: 'loss' } | { role: 'prediction'; index: number };
+export type Issue = {
+  /** `edge` is an index into graph.edges; `pin` names the pin (its node is in `node` too). */
+  at: { node?: NodeId; edge?: number; pin?: Pin };
+  message: string;
+};
+export type Region = 'model' | 'objective';
+export type ParamShapes = { W?: [rows: number, cols: number]; b?: [number] };
+
 export type Analysis = {
-  /** Topological order of the nodes on the path to the loss (all acyclic nodes when there is no single loss). */
+  /** Topological order of what the roles need (ancestors of L and of the ŷ pins); every acyclic node when no role resolves. */
   order: NodeId[];
-  /** Width entering each node. Absent when unknown, for pieces with no input, and for Add when its inputs disagree. */
+  /** What each node outputs. Absent where unknown. */
+  shape: Record<NodeId, Shape>;
+  /** Example width entering each node (its first input), absent when unknown or the node has no per-example input. */
   inWidth: Record<NodeId, number>;
-  /** Width leaving each node. Absent when unknown; a loss has none. */
+  /** Example width leaving each node; absent for scalars, parameter matrices and unknowns. */
   outWidth: Record<NodeId, number>;
-  /** Per `graph.edges` index: the width the wire carries, null where unknown. */
+  /** Per graph.edges index: the shape the wire carries, null where unknown. */
+  edgeShape: (Shape | null)[];
+  /** Per graph.edges index: the example width, null for scalars, matrices and unknowns. */
   edgeWidth: (number | null)[];
   /** Parameters per node whose input width is known (0 for pieces with none). */
   params: Record<NodeId, number>;
-  /** Sum of `params` over `order`. */
+  /** Shapes of each Linear's W and b, for Linears whose input width is known. */
+  paramShapes: Record<NodeId, ParamShapes>;
+  /** Linears whose parameters are live: reached through data wires, or read by a Weights tap in `order`. In node order. */
+  paramNodes: NodeId[];
+  /** Sum of `params` over `paramNodes`. */
   totalParams: number;
-  predNode: NodeId | null;
+  /** The nodes carrying the ŷ pins, in pin order (pins that name no node are skipped). */
+  predictions: NodeId[];
+  /** The node carrying the L pin, or null. */
   lossNode: NodeId | null;
+  /** Membership: absent = neither. Model = ancestors of the ŷ pins; objective = ancestors of L not in the model. */
+  region: Record<NodeId, Region>;
+  /** `order` restricted to the model region: what predict() runs (dropout off). */
+  modelOrder: NodeId[];
+  /** Weights taps: the dashed parameter wire from a Linear to the Weights node reading it. */
+  paramWires: { linear: NodeId; weights: NodeId }[];
+  /** Link nodes that feed a matching loss (sigmoid -> log_loss, softmax -> cross_entropy): the engine may fuse them. */
+  fusable: { link: NodeId; loss: NodeId }[];
   issues: Issue[];
+  /** True when there are no issues. */
   trainable: boolean;
 };
 
 export const MAX_PARAMS = 10_000;
 
-const LOSS_LABEL: Record<LossFn, string> = {
-  squared_error: 'Squared error',
-  absolute_error: 'Absolute error',
-  huber: 'Huber loss',
-  log_loss: 'Log loss',
-  cross_entropy: 'Cross-entropy',
-};
+// The registry's `{ [T]: CorePiece<NodeOf<T>> }` does not distribute over a `Node` we looked up by id, so
+// these casts re-state the shape. Safe: each call passes the node whose own `type` selects the piece.
+type ShapeFn = (
+  node: Node,
+  inShapes: Record<string, Shape>,
+  ctx: ShapeCtx,
+) => Shape | { error: string };
+type ParamFn = (node: Node, inW: number) => ParamShapes;
 
-function isWidthError(v: number | { error: string }): v is { error: string } {
-  return typeof v !== 'number';
-}
+const record = <T>() => Object.create(null) as Record<NodeId, T>; // no prototype: ids like "constructor" are safe
 
 export function analyse(graph: Graph, data: DataInfo): Analysis {
   const issues: Issue[] = [];
-  // Defensive: `parseGraph` rejects duplicate ids, but an unparsed graph may have them. The first wins.
+  // Defensive: parseGraph rejects duplicate ids, but an unparsed graph may have them. The first wins.
   const seen = new Set<NodeId>();
   const nodes: Node[] = [];
   for (const n of graph.nodes) {
@@ -64,8 +93,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     }
     let ports = inEdges.get(r.to.node);
     if (!ports) inEdges.set(r.to.node, (ports = new Map()));
-    const prior = ports.get(r.to.port);
-    if (prior) {
+    if (ports.has(r.to.port)) {
       issues.push({
         at: { edge: index, node: r.to.node },
         message: `"${r.to.node}" has two wires into its ${r.to.port} input; each input takes only one.`,
@@ -76,7 +104,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     used.push({ index, from: r.from.node, to: r.to.node, port: r.to.port });
   });
 
-  // ---- topological sort (Kahn, in node order so the result is stable)
+  // ---- topological sort (Kahn, node order). Data wires only: `weights.of` is no dependency.
   const indeg = new Map<NodeId, number>(nodes.map((n) => [n.id, 0]));
   const succ = new Map<NodeId, NodeId[]>(nodes.map((n) => [n.id, []]));
   for (const e of used) {
@@ -122,29 +150,59 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     }
   }
 
-  // ---- widths, in topological order (unknown stays absent)
-  const ctx = { dataColumns: data.columns.length, numClasses: data.numClasses };
-  const inWidth: Record<NodeId, number> = Object.create(null) as Record<NodeId, number>; // no prototype: ids like "constructor" are safe
-  const outWidth: Record<NodeId, number> = Object.create(null) as Record<NodeId, number>; // no prototype: ids like "constructor" are safe
-  const params: Record<NodeId, number> = Object.create(null) as Record<NodeId, number>; // no prototype: ids like "constructor" are safe
+  // ---- shapes. Memoised and demand-driven, because a Weights tap needs the size of its Linear's input,
+  // which may come later in topological order (there is no data wire between them).
+  const ctx: ShapeCtx = {
+    dataColumns: data.columns.length,
+    numClasses: data.numClasses,
+    weightShape: (linearId) => {
+      const lin = byId.get(linearId);
+      if (lin?.type !== 'linear') return undefined;
+      const src = inEdges.get(linearId)?.get('in');
+      const s = src ? shapeOf(src.from) : undefined;
+      return s?.kind === 'example' ? [s.width, lin.out] : undefined;
+    },
+  };
+  const shape = record<Shape>();
+  const inWidth = record<number>();
+  const outWidth = record<number>();
+  const params = record<number>();
+  const paramShapes = record<ParamShapes>();
+  const computed = new Set<NodeId>();
+  const visiting = new Set<NodeId>();
+  let loopHit = false; // set when a shape lookup re-enters a node that is still being computed
 
-  for (const id of topo) {
+  function shapeOf(id: NodeId): Shape | undefined {
+    if (computed.has(id)) return shape[id];
     const node = byId.get(id);
-    if (!node) continue;
-    if (node.type === 'loss') continue; // checked below
-    const ports = CORE_PIECES[node.type].inputPorts;
-    const inW: Record<string, number> = {};
+    if (!node || !done.has(id)) return undefined;
+    if (visiting.has(id)) {
+      loopHit = true;
+      return undefined;
+    }
+    visiting.add(id);
+    compute(node);
+    visiting.delete(id);
+    computed.add(id);
+    return shape[id];
+  }
+
+  function compute(node: Node): void {
+    const id = node.id;
+    const piece = CORE_PIECES[node.type];
+    const ports = piece.inputPorts;
+    const inS: Record<string, Shape> = {};
     let unknownUpstream = false;
-    const missing: string[] = [];
+    let missing = false;
     for (const port of ports) {
       const edge = inEdges.get(id)?.get(port);
       if (!edge) {
-        missing.push(port);
+        missing = true;
         continue;
       }
-      const w = outWidth[edge.from];
-      if (w === undefined) unknownUpstream = true;
-      else inW[port] = w;
+      const s = shapeOf(edge.from);
+      if (s === undefined) unknownUpstream = true;
+      else inS[port] = s;
     }
     if (node.type === 'input') {
       const dup = node.columns.filter((c, i) => node.columns.indexOf(c) !== i);
@@ -162,167 +220,253 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
         });
       }
     }
-    if (missing.length > 0) {
+    if (node.type === 'weights') {
+      const target = byId.get(node.of);
+      if (!target) {
+        issues.push({
+          at: { node: id },
+          message: `Weights reads "${node.of}", which is not a piece in this graph.`,
+        });
+        return;
+      }
+      if (target.type !== 'linear') {
+        issues.push({
+          at: { node: id },
+          message: `Weights must read a Linear piece, but "${node.of}" is not one.`,
+        });
+        return;
+      }
+      loopHit = false;
+      if (ctx.weightShape(node.of) === undefined) {
+        // Otherwise the root cause is at the Linear's input and has its own issue.
+        if (loopHit) {
+          issues.push({
+            at: { node: id },
+            message: `"${id}" reads the weights of "${node.of}", which depends on "${id}" itself.`,
+          });
+        }
+        return;
+      }
+    }
+    const r = (piece.outShape as ShapeFn)(node, inS, ctx);
+    if (missing) {
       // The piece's own sentence ("Linear needs an input.") from the registry.
-      const r = (CORE_PIECES[node.type].outWidth as WidthFn)(node, inW, ctx);
       issues.push({
         at: { node: id },
-        message: isWidthError(r) ? r.error : `${node.type} has an input that is not connected.`,
+        message: 'error' in r ? r.error : `${node.type} has an input that is not connected.`,
       });
-      continue;
+      return;
     }
-    if (unknownUpstream) continue;
-    const r = (CORE_PIECES[node.type].outWidth as WidthFn)(node, inW, ctx);
-    if (isWidthError(r)) {
+    if (unknownUpstream) return;
+    if ('error' in r) {
       const at: Issue['at'] = { node: id };
-      if (node.type === 'add') {
+      if (node.type === 'add' || node.type === 'subtract') {
         const b = inEdges.get(id)?.get('b');
         if (b) at.edge = b.index;
       }
       issues.push({ at, message: r.error });
-      continue;
+      return;
     }
-    outWidth[id] = r;
-    const single =
-      ports.length === 1 ? inW[ports[0] ?? ''] : node.type === 'add' ? inW['a'] : undefined;
-    if (single !== undefined) inWidth[id] = single;
-  }
-
-  // ---- parameters
-  for (const n of nodes) {
-    const w = inWidth[n.id];
-    if (w === undefined) continue;
-    const shapes = (CORE_PIECES[n.type].paramShapes as ShapeFn)(n, w);
-    params[n.id] = (shapes.W ? shapes.W[0] * shapes.W[1] : 0) + (shapes.b ? shapes.b[0] : 0);
-  }
-
-  // ---- loss, output and target
-  const losses = nodes.filter((n) => n.type === 'loss');
-  let lossNode: NodeId | null = null;
-  let predNode: NodeId | null = null;
-  const firstLoss = losses[0];
-  if (losses.length === 0) {
-    issues.push({ at: {}, message: 'Add a loss to the graph so there is something to train.' });
-  } else if (losses.length > 1) {
-    for (const l of losses.slice(1)) {
-      issues.push({
-        at: { node: l.id },
-        message: `The graph has ${losses.length} losses; keep only one.`,
-      });
-    }
-  } else if (firstLoss?.type === 'loss') {
-    lossNode = firstLoss.id;
-    const loss = firstLoss;
-    const label = LOSS_LABEL[loss.fn];
-    const pred = inEdges.get(loss.id)?.get('pred');
-    const target = inEdges.get(loss.id)?.get('target');
-    const predSrc = pred ? byId.get(pred.from) : undefined;
-    const targetSrc = target ? byId.get(target.from) : undefined;
-    if (!pred) {
-      issues.push({ at: { node: loss.id }, message: 'Connect the output to the loss.' });
-    } else if (predSrc?.type !== 'output') {
-      issues.push({
-        at: { edge: pred.index, node: loss.id },
-        message: `${label} compares the Output piece with the target, so connect the Output to it.`,
-      });
-    } else {
-      predNode = predSrc.id;
-    }
-    if (!target) {
-      issues.push({ at: { node: loss.id }, message: 'Connect the target to the loss.' });
-    } else if (targetSrc?.type !== 'target') {
-      issues.push({
-        at: { edge: target.index, node: loss.id },
-        message: `${label} needs the Target piece on its target input.`,
-      });
-    }
-    const predWidth = pred ? outWidth[pred.from] : undefined;
-    if (predWidth !== undefined) inWidth[loss.id] = predWidth;
-
-    // Output/loss/target table (CONTRACTS.md section 4).
-    if (predSrc?.type === 'output') {
-      const link = predSrc.link;
-      const w = outWidth[predSrc.id];
-      if (loss.fn === 'log_loss') {
-        if (link !== 'sigmoid') {
-          issues.push({
-            at: { node: predSrc.id },
-            message: 'Log loss needs a sigmoid output.',
-          });
-        }
-      } else if (loss.fn === 'cross_entropy') {
-        if (link !== 'softmax') {
-          issues.push({
-            at: { node: predSrc.id },
-            message: 'Cross-entropy needs a softmax output.',
-          });
-        }
-      } else if (link === 'softmax') {
-        issues.push({
-          at: { node: predSrc.id },
-          message: `${label} needs an identity or sigmoid output, not softmax.`,
-        });
-      }
-      if (w !== undefined) {
-        const want = loss.fn === 'cross_entropy' ? data.numClasses : 1;
-        if (w !== want) {
-          issues.push({
-            at: { node: predSrc.id },
-            message:
-              loss.fn === 'cross_entropy'
-                ? `Cross-entropy needs an output of width ${want}, one per class, but this output has width ${w}.`
-                : `${label} needs an output of width 1, but this output has width ${w}.`,
-          });
-        }
-      }
-    }
-    if ((loss.fn === 'log_loss' || loss.fn === 'cross_entropy') && data.kind !== 'binary') {
-      issues.push({
-        at: { node: loss.id },
-        message: `${label} needs a dataset with two classes, but this dataset is regression.`,
-      });
+    shape[id] = r;
+    if (r.kind === 'example') outWidth[id] = r.width;
+    const firstPort = ports[0];
+    const firstIn = firstPort === undefined ? undefined : inS[firstPort];
+    if (firstIn?.kind === 'example') {
+      inWidth[id] = firstIn.width;
+      const ps = (piece.paramShapes as ParamFn)(node, firstIn.width);
+      params[id] = (ps.W ? ps.W[0] * ps.W[1] : 0) + (ps.b ? ps.b[0] : 0);
+      if (node.type === 'linear') paramShapes[id] = ps;
     }
   }
 
-  // ---- wiring rules: the target only feeds the loss; the output only feeds the loss
-  for (const e of used) {
-    const from = byId.get(e.from);
-    const to = byId.get(e.to);
-    if (!from || !to) continue;
-    if (from.type === 'target' && !(to.type === 'loss' && e.port === 'target')) {
-      issues.push({
-        at: { edge: e.index },
-        message: 'The target can only be connected to the loss.',
-      });
-    } else if (from.type === 'output' && !(to.type === 'loss' && e.port === 'pred')) {
-      issues.push({
-        at: { edge: e.index },
-        message: 'The output can only be connected to the loss.',
-      });
-    }
-  }
+  for (const id of topo) shapeOf(id);
 
-  // ---- order: ancestors of the single loss, else every acyclic node
-  let order = topo;
-  if (lossNode !== null && done.has(lossNode)) {
-    const keep = new Set<NodeId>([lossNode]);
-    const stack = [lossNode];
+  // ---- ancestors over data wires (the first wire into each port)
+  const ancestors = (roots: NodeId[]): Set<NodeId> => {
+    const stack = roots.filter((r) => done.has(r));
+    const keep = new Set<NodeId>(stack);
     while (stack.length > 0) {
       const cur = stack.pop();
       if (cur === undefined) break;
-      for (const used of inEdges.get(cur)?.values() ?? []) {
-        if (!keep.has(used.from)) {
-          keep.add(used.from);
-          stack.push(used.from);
+      for (const u of inEdges.get(cur)?.values() ?? []) {
+        if (!keep.has(u.from)) {
+          keep.add(u.from);
+          stack.push(u.from);
         }
       }
     }
-    order = topo.filter((id) => keep.has(id));
+    return keep;
+  };
+
+  // ---- pins: the ŷ pins and L
+  const predictions: NodeId[] = [];
+  const predPins: { index: number; node: NodeId }[] = [];
+  graph.predictions.forEach((ref, index) => {
+    const r = resolvePin(nodes, ref);
+    if (!r.ok) {
+      issues.push({ at: { pin: { role: 'prediction', index } }, message: r.error });
+      return;
+    }
+    if (predictions.includes(r.at.node)) {
+      issues.push({
+        at: { node: r.at.node, pin: { role: 'prediction', index } },
+        message: `"${r.at.node}" is pinned as a prediction twice.`,
+      });
+      return;
+    }
+    predictions.push(r.at.node);
+    predPins.push({ index, node: r.at.node });
+  });
+  let lossNode: NodeId | null = null;
+  if (graph.loss !== null) {
+    const r = resolvePin(nodes, graph.loss);
+    if (r.ok) lossNode = r.at.node;
+    else issues.push({ at: { pin: { role: 'loss' } }, message: r.error });
+  } else {
+    issues.push({
+      at: {},
+      message:
+        'No loss is pinned; pin a single-number output as the loss so there is something to train.',
+    });
   }
+
+  // ---- region sets and order
+  const roots = [...predictions, ...(lossNode !== null ? [lossNode] : [])].filter((r) =>
+    done.has(r),
+  );
+  const modelSet = ancestors(predictions);
+  const lossSet = lossNode !== null ? ancestors([lossNode]) : new Set<NodeId>();
+  const needed = new Set<NodeId>([...modelSet, ...lossSet]);
+  const order = roots.length > 0 ? topo.filter((id) => needed.has(id)) : topo;
+  const region = record<Region>();
+  for (const id of order) {
+    if (modelSet.has(id)) region[id] = 'model';
+    else if (lossSet.has(id)) region[id] = 'objective';
+  }
+  const modelOrder = order.filter((id) => region[id] === 'model');
+  const inOrder = new Set(order);
+  // Safety net: trainable must never hold with a missing shape.
+  if (issues.length === 0) {
+    const bare = order.find((id) => shape[id] === undefined);
+    if (bare !== undefined) {
+      issues.push({
+        at: { node: bare },
+        message: `The size of "${bare}" could not be worked out.`,
+      });
+    }
+  }
+
+  // ---- L: a single number that depends on a parameter
+  if (lossNode !== null) {
+    const pin: Pin = { role: 'loss' };
+    const s = shape[lossNode];
+    if (s !== undefined && s.kind !== 'scalar') {
+      issues.push({
+        at: { node: lossNode, pin },
+        message:
+          s.kind === 'example'
+            ? `The loss must be a single number, but "${lossNode}" gives ${describeShape(s)}; add a Mean to average over the examples.`
+            : `The loss must be a single number, but "${lossNode}" is ${describeShape(s)}.`,
+      });
+    }
+    if (done.has(lossNode)) {
+      const hasParam = [...lossSet].some((id) => {
+        const n = byId.get(id);
+        return n?.type === 'linear' || (n?.type === 'weights' && byId.get(n.of)?.type === 'linear');
+      });
+      if (!hasParam) {
+        issues.push({
+          at: { node: lossNode, pin },
+          message: `The loss "${lossNode}" does not depend on any parameter, so there is nothing to train.`,
+        });
+      }
+    }
+  }
+
+  // ---- ŷ pins: width equals the dataset target; a softmax prediction needs a classification dataset
+  for (const { index, node } of predPins) {
+    const pin: Pin = { role: 'prediction', index };
+    const s = shape[node];
+    if (s === undefined) continue;
+    if ([...ancestors([node])].some((id) => byId.get(id)?.type === 'target')) {
+      issues.push({
+        at: { node, pin },
+        message: `A prediction cannot depend on the target, but "${node}" does.`,
+      });
+    }
+    const n = byId.get(node);
+    const softmax = n?.type === 'link' && n.fn === 'softmax';
+    const want = softmax ? data.numClasses : 1;
+    if (s.kind !== 'example') {
+      issues.push({
+        at: { node, pin },
+        message: `A prediction must be one row per example, but "${node}" is ${describeShape(s)}.`,
+      });
+    } else if (s.width !== want) {
+      issues.push({
+        at: { node, pin },
+        message: softmax
+          ? `This dataset has ${want} classes, so the softmax prediction needs width ${want}, but "${node}" has width ${s.width}.`
+          : `This dataset's target has width 1, so the prediction needs width 1, but "${node}" has width ${s.width}.`,
+      });
+    }
+    if (softmax && data.kind !== 'binary') {
+      issues.push({
+        at: { node, pin },
+        message:
+          'A softmax prediction needs a dataset with classes, but this dataset is regression.',
+      });
+    }
+  }
+
+  // ---- log loss and cross-entropy take probabilities from a matching link
+  const fusable: Analysis['fusable'] = [];
+  for (const id of order) {
+    const n = byId.get(id);
+    if (n?.type !== 'log_loss' && n?.type !== 'cross_entropy') continue;
+    const label = n.type === 'log_loss' ? 'Log loss' : 'Cross-entropy';
+    if (data.kind !== 'binary') {
+      issues.push({
+        at: { node: id },
+        message: `${label} needs a dataset with two classes, but this dataset is regression.`,
+      });
+    }
+    const pred = inEdges.get(id)?.get('pred');
+    if (!pred) continue;
+    const src = byId.get(pred.from);
+    const wantFn = n.type === 'log_loss' ? 'sigmoid' : 'softmax';
+    if (src?.type === 'link' && src.fn === wantFn) fusable.push({ link: src.id, loss: id });
+    else {
+      issues.push({
+        at: { edge: pred.index, node: id },
+        message: `${label} takes probabilities, so wire a ${wantFn === 'sigmoid' ? 'Sigmoid' : 'Softmax'} link straight into its pred input.`,
+      });
+    }
+    const w = shape[pred.from];
+    if (n.type === 'cross_entropy' && w?.kind === 'example' && w.width !== data.numClasses) {
+      issues.push({
+        at: { edge: pred.index, node: id },
+        message: `Cross-entropy needs one probability per class (${data.numClasses}), but its pred input has width ${w.width}.`,
+      });
+    }
+  }
+
+  // ---- parameter wires and the live Linears
+  const paramWires: Analysis['paramWires'] = [];
+  const live = new Set<NodeId>();
+  for (const id of order) if (byId.get(id)?.type === 'linear') live.add(id);
+  for (const n of nodes) {
+    if (n.type !== 'weights') continue;
+    const t = byId.get(n.of);
+    if (t?.type !== 'linear') continue;
+    paramWires.push({ linear: t.id, weights: n.id });
+    if (inOrder.has(n.id)) live.add(t.id);
+  }
+  const paramNodes = nodes.filter((n) => live.has(n.id)).map((n) => n.id);
 
   // ---- parameter limit
   let totalParams = 0;
-  for (const id of order) totalParams += params[id] ?? 0;
+  for (const id of paramNodes) totalParams += params[id] ?? 0;
   if (totalParams > MAX_PARAMS) {
     issues.push({
       at: {},
@@ -330,29 +474,32 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     });
   }
 
-  // ---- wire widths
+  // ---- wire shapes
+  const edgeShape: (Shape | null)[] = graph.edges.map(() => null);
   const edgeWidth: (number | null)[] = graph.edges.map(() => null);
-  for (const e of used) edgeWidth[e.index] = outWidth[e.from] ?? null;
+  for (const e of used) {
+    edgeShape[e.index] = shape[e.from] ?? null;
+    edgeWidth[e.index] = outWidth[e.from] ?? null;
+  }
 
   return {
     order,
+    shape,
     inWidth,
     outWidth,
+    edgeShape,
     edgeWidth,
     params,
+    paramShapes,
+    paramNodes,
     totalParams,
-    predNode,
+    predictions,
     lossNode,
+    region,
+    modelOrder,
+    paramWires,
+    fusable,
     issues,
     trainable: issues.length === 0,
   };
 }
-
-// The registry's `{ [T]: CorePiece<NodeOf<T>> }` does not distribute over a `Node` we looked up by id, so
-// these two casts re-state the shape. Safe: each call passes the node whose own `type` selects the piece.
-type WidthFn = (
-  node: Node,
-  inW: Record<string, number>,
-  ctx: { dataColumns: number; numClasses: number },
-) => number | { error: string };
-type ShapeFn = (node: Node, inW: number) => { W?: [number, number]; b?: [number] };

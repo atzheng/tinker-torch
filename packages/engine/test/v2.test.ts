@@ -1,7 +1,7 @@
 // Graph v2 behaviour of the engine (tinker-8xw.3): pins, fusion, taps, no-prediction graphs,
 // leaks, lossGrid and trainMany on primitive graphs. Values against PyTorch are in reference.test.ts.
 import { installProbe } from '../src/probe.js';
-import { v2 } from '@tinker/core';
+import { analyse } from '@tinker/core';
 import { describe, expect, test } from 'vitest';
 import { loadFixture, toBatch, toHostParams, withLr } from './util.js';
 
@@ -25,7 +25,7 @@ describe('stable fusion', () => {
     '%s: analyse lists the fusable pair',
     (name) => {
       const { graph, data } = loadFixture(name);
-      expect(v2.analyse(graph, data).fusable.length).toBe(1);
+      expect(analyse(graph, data).fusable.length).toBe(1);
     },
   );
 

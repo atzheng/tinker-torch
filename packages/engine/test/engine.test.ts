@@ -1,6 +1,5 @@
-import { v2 } from '@tinker/core';
+import { analyse, type Graph } from '@tinker/core';
 
-type Graph = v2.Graph;
 import { beforeAll, describe, expect, test } from 'vitest';
 import { createEngine } from '../src/index.js';
 import type { Engine, Model, TrainState } from '../src/index.js';
@@ -102,7 +101,7 @@ describe('compile', () => {
   test('an invalid graph throws the first issue sentence', () => {
     const { graph, data } = mlp();
     const broken: Graph = { ...graph, edges: graph.edges.filter((e) => e[0] !== 'act1') };
-    const issues = v2.analyse(broken, data).issues;
+    const issues = analyse(broken, data).issues;
     expect(issues.length).toBeGreaterThan(0);
     expect(() => engine.compile(broken, data)).toThrow(issues[0]?.message);
     const noLoss: Graph = { ...graph, loss: null };

@@ -14,7 +14,7 @@
 import { jit, numpy as np, random, tree, valueAndGrad } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import * as optax from '@jax-js/optax';
-import { v2 } from '@tinker/core';
+import { analyse, type Analysis, type Graph, type Node, resolveEdge } from '@tinker/core';
 import type { Batch, DataInfo, HostParams } from '@tinker/core';
 import { treeToHost } from './convert.js';
 import type { Layer, LayerShape, ParamTree } from './convert.js';
@@ -24,7 +24,6 @@ import type { PieceCtx } from './pieces/index.js';
 import type { Model } from './types.js';
 
 type NodeId = string;
-type Node = v2.Node;
 type Mode = 'predict' | 'loss';
 /** One node of a plan: the node and, per input port, the node that feeds it. */
 type Step = { node: Node; ports: [port: string, src: NodeId][] };
@@ -54,8 +53,8 @@ type StepFn = (
 
 /** Private compiled state behind a Model. */
 export type Internals = {
-  graph: v2.Graph;
-  analysis: v2.Analysis;
+  graph: Graph;
+  analysis: Analysis;
   dataColumns: readonly string[];
   /** Shapes of the Linears with live parameters (`analysis.paramNodes`). */
   shapes: Map<NodeId, LayerShape>;
@@ -136,8 +135,8 @@ function makePlan(
 }
 
 /** Throws Error(first issue) when the graph is not trainable. Borrows its arguments. */
-export function compile(graph: v2.Graph, data: DataInfo): Model {
-  const analysis = v2.analyse(graph, data);
+export function compile(graph: Graph, data: DataInfo): Model {
+  const analysis = analyse(graph, data);
   if (!analysis.trainable || analysis.lossNode === null) {
     throw new Error(analysis.issues[0]?.message ?? 'This graph cannot be trained.');
   }
@@ -151,7 +150,7 @@ export function compile(graph: v2.Graph, data: DataInfo): Model {
   // graph never gets here.
   const wired = new Map<NodeId, Map<string, NodeId>>();
   for (const e of graph.edges) {
-    const r = v2.resolveEdge(graph.nodes, e);
+    const r = resolveEdge(graph.nodes, e);
     if (!r.ok) continue;
     const ports = wired.get(r.to.node) ?? new Map<string, NodeId>();
     if (!ports.has(r.to.port)) ports.set(r.to.port, r.from.node);

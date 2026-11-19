@@ -14,7 +14,7 @@ import type { Graph } from './graph.js';
 import type { Node } from './graph.js';
 import type { Edge, NodeId, PortRef } from './common.js';
 import { parsePort } from './common.js';
-import { resolveEdge, type Graph as GraphV1, type Node as NodeV1 } from './legacy/graph.js';
+import { resolveEdge, type Graph as GraphV1, type Node as NodeV1 } from './v1.js';
 import { lossSubgraph, weightPenaltySubgraph, type Namer, type Subgraph } from './macros.js';
 
 type OutputNode = Extract<NodeV1, { type: 'output' }>;

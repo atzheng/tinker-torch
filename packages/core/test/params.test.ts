@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import fixture from '../../engine/test/fixtures/linear_bias_d2.json';
+import mlp from '../../engine/test/fixtures/mlp_tanh_sgd_5steps.json';
+import tapOnly from '../../engine/test/fixtures/prim_weights_tap_only.json';
 import {
   analyse,
   countParams,
   initParams,
   paramsFromJson,
+  parseGraph,
   paramsToJson,
   reconcileParams,
   type DataInfo,
@@ -30,13 +33,19 @@ function net(widths: number[], opts: { extra?: boolean; bias?: boolean } = {}): 
     edges.push([prev, 'zz']);
     prev = 'zz';
   }
-  nodes.push({ id: 'out', type: 'output', link: 'identity' }, { id: 'y', type: 'target' });
-  nodes.push({ id: 'loss', type: 'loss', fn: 'squared_error' });
-  edges.push([prev, 'out'], ['out', 'loss.pred'], ['y', 'loss.target']);
+  nodes.push(
+    { id: 'y', type: 'target' },
+    { id: 'diff', type: 'subtract' },
+    { id: 'err', type: 'square' },
+    { id: 'loss', type: 'mean' },
+  );
+  edges.push([prev, 'diff.a'], ['y', 'diff.b'], ['diff', 'err'], ['err', 'loss']);
   return {
-    version: 1,
+    version: 2,
     nodes,
     edges,
+    predictions: [prev],
+    loss: 'loss',
     data: { set: 'line', n: 100, noise: 0.1, val: 0.2, seed: 1, standardize: false },
     train: { optimizer: 'sgd', lr: 0.1, batch: 'full', seed: 1 },
   };
@@ -48,7 +57,7 @@ describe('initParams', () => {
     for (const widths of [[1], [4, 1], [16, 8, 1], [64, 1]]) {
       const g = net(widths);
       const a = an(g);
-      const h = initParams(g, a, 3);
+      const h = initParams(a, 3);
       let inW = 2;
       widths.forEach((w, i) => {
         const p = h[`l${i + 1}`];
@@ -66,28 +75,28 @@ describe('initParams', () => {
 
   test('values spread over the range', () => {
     const g = net([64]);
-    const p = initParams(g, an(g), 1)['l1']!.W; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const p = initParams(an(g), 1)['l1']!.W; // eslint-disable-line @typescript-eslint/no-non-null-assertion
     expect(Math.max(...p)).toBeGreaterThan(0.5 / Math.SQRT2);
     expect(Math.min(...p)).toBeLessThan(-0.5 / Math.SQRT2);
   });
 
   test('no bias gives no b', () => {
     const g = net([3], { bias: false });
-    expect(initParams(g, an(g), 1)['l1']?.b).toBeUndefined();
+    expect(initParams(an(g), 1)['l1']?.b).toBeUndefined();
   });
 
   test('same seed same values, different seed different', () => {
     const g = net([4, 1]);
     const a = an(g);
-    expect(paramsToJson(initParams(g, a, 5))).toEqual(paramsToJson(initParams(g, a, 5)));
-    expect(paramsToJson(initParams(g, a, 5))).not.toEqual(paramsToJson(initParams(g, a, 6)));
+    expect(paramsToJson(initParams(a, 5))).toEqual(paramsToJson(initParams(a, 5)));
+    expect(paramsToJson(initParams(a, 5))).not.toEqual(paramsToJson(initParams(a, 6)));
   });
 
   test('adding a node leaves the other nodes unchanged', () => {
     const g1 = net([4, 1]);
     const g2 = net([4, 1], { extra: true });
-    const h1 = initParams(g1, an(g1), 9);
-    const h2 = initParams(g2, an(g2), 9);
+    const h1 = initParams(an(g1), 9);
+    const h2 = initParams(an(g2), 9);
     expect(h2['zz']).toBeDefined();
     expect(h2['l1']).toEqual(h1['l1']);
     expect(h2['l2']).toEqual(h1['l2']);
@@ -95,12 +104,13 @@ describe('initParams', () => {
 
   test('layout matches a torch fixture', () => {
     const fx = fixture as unknown as {
-      graph: Graph;
+      graph: unknown;
       params: Record<string, { W: number[]; b?: number[] }>;
     };
-    const g = fx.graph;
+    const parsed = parseGraph(fx.graph);
+    if (!parsed.ok) throw new Error(parsed.error);
+    const g = parsed.graph;
     const h = initParams(
-      g,
       analyse(g, { columns: ['x1', 'x2'], kind: 'regression', numClasses: 2 }),
       1,
     );
@@ -115,14 +125,14 @@ describe('initParams', () => {
 describe('reconcileParams', () => {
   test('keeps unchanged nodes bit-identical and re-inits a resized Linear', () => {
     const g1 = net([4, 1]);
-    const h1 = initParams(g1, an(g1), 1);
+    const h1 = initParams(an(g1), 1);
     const g2 = net([5, 1]); // l1 resized, so l2 input width changes too
-    const h2 = reconcileParams(h1, g1, an(g1), g2, an(g2), 1);
+    const h2 = reconcileParams(h1, an(g1), an(g2), 1);
     expect(h2['l1']?.W.length).toBe(10);
     expect(h2['l2']?.W.length).toBe(5);
 
     const g3 = net([4, 1], { extra: true }); // l1, l2 unchanged
-    const h3 = reconcileParams(h1, g1, an(g1), g3, an(g3), 1);
+    const h3 = reconcileParams(h1, an(g1), an(g3), 1);
     expect(Array.from(h3['l1']?.W ?? [])).toEqual(Array.from(h1['l1']?.W ?? []));
     expect(Array.from(h3['l2']?.b ?? [])).toEqual(Array.from(h1['l2']?.b ?? []));
     expect(h3['zz']?.W.length).toBe(3);
@@ -130,15 +140,15 @@ describe('reconcileParams', () => {
 
   test('keeps trained values, re-inits on bias toggle, does not mutate old', () => {
     const g1 = net([3]);
-    const h1 = initParams(g1, an(g1), 1);
+    const h1 = initParams(an(g1), 1);
     h1['l1']!.W[0] = 42; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    const same = reconcileParams(h1, g1, an(g1), g1, an(g1), 1);
+    const same = reconcileParams(h1, an(g1), an(g1), 1);
     expect(same['l1']?.W[0]).toBe(42);
     const g2 = net([3], { bias: false });
-    const h2 = reconcileParams(h1, g1, an(g1), g2, an(g2), 1);
+    const h2 = reconcileParams(h1, an(g1), an(g2), 1);
     expect(h2['l1']?.b).toBeUndefined();
     expect(h2['l1']?.W[0]).toBe(42); // W kept when only bias was toggled
-    const back = reconcileParams(h2, g2, an(g2), g1, an(g1), 7);
+    const back = reconcileParams(h2, an(g2), an(g1), 7);
     expect(back['l1']?.W).toBe(h1['l1']?.W);
     expect(back['l1']?.b?.length).toBe(3);
     expect(h1['l1']?.b).toBeDefined();
@@ -146,9 +156,9 @@ describe('reconcileParams', () => {
 
   test('re-inits when the shape changes but the element count does not', () => {
     const g1 = net([2, 3]); // l2 is [2, 3]
-    const h1 = initParams(g1, an(g1), 1);
+    const h1 = initParams(an(g1), 1);
     const g2 = net([3, 2]); // l2 is [3, 2]
-    const h2 = reconcileParams(h1, g1, an(g1), g2, an(g2), 1);
+    const h2 = reconcileParams(h1, an(g1), an(g2), 1);
     expect(h2['l2']).not.toBe(h1['l2']);
     expect(h2['l2']?.W.length).toBe(6);
     expect(Array.from(h2['l2']?.W ?? [])).not.toEqual(Array.from(h1['l2']?.W ?? []));
@@ -156,9 +166,9 @@ describe('reconcileParams', () => {
 
   test('drops nodes that left the graph', () => {
     const g1 = net([4, 1]);
-    const h1 = initParams(g1, an(g1), 1);
+    const h1 = initParams(an(g1), 1);
     const g2 = net([4]);
-    expect(Object.keys(reconcileParams(h1, g1, an(g1), g2, an(g2), 1))).toEqual(['l1']);
+    expect(Object.keys(reconcileParams(h1, an(g1), an(g2), 1))).toEqual(['l1']);
   });
 });
 
@@ -173,44 +183,65 @@ describe('json', () => {
       ['1', 0, 0, 0],
     ];
     for (const W of bad) {
-      const r = paramsFromJson({ l1: { W, b: [0, 0] } }, g, a);
+      const r = paramsFromJson({ l1: { W, b: [0, 0] } }, a);
       expect(r.dropped).toEqual(['l1']);
       expect(Object.keys(r.params)).toEqual([]);
     }
-    expect(paramsFromJson({ l1: { W: [0, 0, 0, 0], b: [0, NaN] } }, g, a).dropped).toEqual(['l1']);
+    expect(paramsFromJson({ l1: { W: [0, 0, 0, 0], b: [0, NaN] } }, a).dropped).toEqual(['l1']);
   });
 
   test('paramsToJson has no prototype', () => {
     const g = net([2]);
-    expect(Object.getPrototypeOf(paramsToJson(initParams(g, an(g), 1)))).toBeNull();
+    expect(Object.getPrototypeOf(paramsToJson(initParams(an(g), 1)))).toBeNull();
   });
 
   test('round trip', () => {
     const g = net([4, 1]);
     const a = an(g);
-    const h = initParams(g, a, 2);
+    const h = initParams(a, 2);
     const json = JSON.parse(JSON.stringify(paramsToJson(h))) as unknown;
-    const { params, dropped } = paramsFromJson(json, g, a);
+    const { params, dropped } = paramsFromJson(json, a);
     expect(dropped).toEqual([]);
     expect(params).toEqual(h);
   });
 
   test('mismatched shapes are dropped and reported', () => {
     const g1 = net([4, 1]);
-    const json = paramsToJson(initParams(g1, an(g1), 2));
+    const json = paramsToJson(initParams(an(g1), 2));
     const g2 = net([5, 1]);
-    const { params, dropped } = paramsFromJson(json, g2, an(g2));
+    const { params, dropped } = paramsFromJson(json, an(g2));
     expect(dropped.sort()).toEqual(['l1', 'l2']);
     expect(Object.keys(params)).toEqual([]);
     const g3 = net([4, 2]);
-    const r = paramsFromJson(json, g3, an(g3));
+    const r = paramsFromJson(json, an(g3));
     expect(r.dropped).toEqual(['l2']);
     expect(Object.keys(r.params)).toEqual(['l1']);
   });
 
   test('malformed and unknown entries are dropped', () => {
     const g = net([2]);
-    const r = paramsFromJson({ l1: { W: 'no' }, ghost: { W: [1] } }, g, an(g));
+    const r = paramsFromJson({ l1: { W: 'no' }, ghost: { W: [1] } }, an(g));
     expect(r.dropped.sort()).toEqual(['ghost', 'l1']);
+  });
+});
+
+describe('live parameters', () => {
+  test('a Linear read only through a Weights tap is initialised', () => {
+    const g = parseGraph(tapOnly.graph);
+    if (!g.ok) throw new Error('parse');
+    const a = analyse(g.graph, info);
+    expect(a.order).not.toContain('tap');
+    const host = initParams(a, 3);
+    expect(Object.keys(host).sort()).toEqual(['lin1', 'lin2', 'tap']);
+    expect(host['tap']?.W.length).toBe(2 * 2);
+    expect(host['tap']?.b?.length).toBe(2);
+  });
+
+  test('a migrated version 1 graph initialises its Linears under their old ids', () => {
+    const g = parseGraph(mlp.graph);
+    if (!g.ok) throw new Error('parse');
+    const a = analyse(g.graph, info);
+    const host = initParams(a, 7);
+    expect(Object.keys(host).sort()).toEqual(Object.keys(mlp.params).sort());
   });
 });

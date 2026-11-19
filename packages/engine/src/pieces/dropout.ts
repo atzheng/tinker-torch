@@ -1,4 +1,4 @@
-import type { v2 } from '@tinker/core';
+import type { NodeOf } from '@tinker/core';
 import type { EnginePiece } from './types.js';
 
 /**
@@ -6,7 +6,7 @@ import type { EnginePiece } from './types.js';
  * The 0/1 keep mask comes from `ctx.dropoutMask` (sampled outside the differentiated function by
  * the step; injected by the test-only seam, CONTRACTS.md section 11). Consumes `inputs.in`.
  */
-export const dropout: EnginePiece<v2.NodeOf<'dropout'>> = {
+export const dropout: EnginePiece<NodeOf<'dropout'>> = {
   forward(node, inputs, _layer, ctx) {
     const x = inputs['in'];
     if (!x) throw new Error('A Dropout piece is missing its input.');

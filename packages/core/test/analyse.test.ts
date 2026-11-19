@@ -1,22 +1,35 @@
+/// <reference types="node" />
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   analyse,
+  parseGraph,
+  parsePort,
+  sample,
+  weightPenaltySubgraph,
+  type Analysis,
   type DataInfo,
   type Edge,
   type Graph,
-  type LossFn,
   type Node,
-  type OutputLink,
 } from '../src/index.js';
 
 const reg: DataInfo = { columns: ['x1'], kind: 'regression', numClasses: 2 };
 const bin: DataInfo = { columns: ['x1', 'x2'], kind: 'binary', numClasses: 2 };
 
-function g(nodes: Node[], edges: Edge[]): Graph {
+function g(
+  nodes: Node[],
+  edges: Edge[],
+  predictions: string[] = [],
+  loss: string | null = null,
+): Graph {
   return {
-    version: 1,
+    version: 2,
     nodes,
     edges,
+    predictions,
+    loss,
     data: { set: 'line', n: 100, noise: 0.1, val: 0.2, seed: 1, standardize: false },
     train: { optimizer: 'adam', lr: 0.01, batch: 'full', seed: 1 },
   };
@@ -24,327 +37,83 @@ function g(nodes: Node[], edges: Edge[]): Graph {
 const input = (columns = ['x1']): Node => ({ id: 'in', type: 'input', columns });
 const lin = (id: string, out: number, bias = true): Node => ({ id, type: 'linear', out, bias });
 const act = (id: string): Node => ({ id, type: 'activation', fn: 'tanh' });
-const outp = (link: OutputLink = 'identity'): Node => ({ id: 'out', type: 'output', link });
 const tgt: Node = { id: 'y', type: 'target' };
-const loss = (fn: LossFn, id = 'loss'): Node =>
-  fn === 'huber' ? { id, type: 'loss', fn, delta: 1 } : { id, type: 'loss', fn };
+const messages = (a: Analysis) => a.issues.map((i) => i.message);
 
-/** The SPEC example: 1 -> 4 -> 4 -> 1. */
+/** The SPEC example: 1 -> 4 -> 4 -> 1, squared error: sub -> sq -> loss (mean). ŷ = l2, L = loss. */
 function spec(): Graph {
   return g(
-    [input(), lin('l1', 4), act('a1'), lin('l2', 1), outp(), tgt, loss('squared_error')],
+    [
+      input(),
+      lin('l1', 4),
+      act('a1'),
+      lin('l2', 1),
+      tgt,
+      { id: 'diff', type: 'subtract' },
+      { id: 'err', type: 'square' },
+      { id: 'loss', type: 'mean' },
+    ],
     [
       ['in', 'l1'],
       ['l1', 'a1'],
       ['a1', 'l2'],
-      ['l2', 'out'],
-      ['out', 'loss.pred'],
-      ['y', 'loss.target'],
+      ['l2', 'diff.a'],
+      ['y', 'diff.b'],
+      ['diff', 'err'],
+      ['err', 'loss'],
     ],
+    ['l2'],
+    'loss',
   );
 }
-const messages = (a: ReturnType<typeof analyse>) => a.issues.map((i) => i.message);
 
-describe('analyse: the SPEC example', () => {
-  test('widths, parameters, order and trainable', () => {
+describe('analyse v2: the SPEC example', () => {
+  test('shapes, parameters, order, regions', () => {
     const a = analyse(spec(), reg);
     expect(a.issues).toEqual([]);
     expect(a.trainable).toBe(true);
-    expect(a.order).toEqual(['in', 'y', 'l1', 'a1', 'l2', 'out', 'loss']);
-    expect(a.order[a.order.length - 1]).toBe('loss');
-    expect(a.outWidth).toMatchObject({ in: 1, l1: 4, a1: 4, l2: 1, out: 1, y: 1 });
-    expect(a.inWidth).toMatchObject({ l1: 1, a1: 4, l2: 4, out: 1, loss: 1 });
+    expect(a.order).toEqual(['in', 'y', 'l1', 'a1', 'l2', 'diff', 'err', 'loss']);
+    expect(a.shape['l1']).toEqual({ kind: 'example', width: 4 });
+    expect(a.shape['loss']).toEqual({ kind: 'scalar' });
+    expect(a.outWidth).toMatchObject({ in: 1, l1: 4, a1: 4, l2: 1, y: 1, diff: 1, err: 1 });
+    expect(a.outWidth['loss']).toBeUndefined();
+    expect(a.inWidth).toMatchObject({ l1: 1, a1: 4, l2: 4, diff: 1, loss: 1 });
     expect(a.params).toMatchObject({ l1: 8, l2: 5, a1: 0 });
+    expect(a.paramShapes['l1']).toEqual({ W: [1, 4], b: [4] });
+    expect(a.paramNodes).toEqual(['l1', 'l2']);
     expect(a.totalParams).toBe(13);
-    expect(a.predNode).toBe('out');
+    expect(a.predictions).toEqual(['l2']);
     expect(a.lossNode).toBe('loss');
+    expect(a.region).toEqual({
+      in: 'model',
+      l1: 'model',
+      a1: 'model',
+      l2: 'model',
+      y: 'objective',
+      diff: 'objective',
+      err: 'objective',
+      loss: 'objective',
+    });
+    expect(a.modelOrder).toEqual(['in', 'l1', 'a1', 'l2']);
+    expect(a.edgeWidth).toEqual([1, 4, 4, 1, 1, 1, 1]);
+    expect(a.edgeShape[6]).toEqual({ kind: 'example', width: 1 });
+    expect(a.paramWires).toEqual([]);
+    expect(a.fusable).toEqual([]);
   });
 
-  test('edgeWidth for every edge', () => {
-    expect(analyse(spec(), reg).edgeWidth).toEqual([1, 4, 4, 1, 1, 1]);
-  });
-
-  test('bias off removes the bias parameters', () => {
+  test('a graph with no ŷ pin still trains', () => {
     const gr = spec();
-    gr.nodes[1] = lin('l1', 4, false);
-    expect(analyse(gr, reg).totalParams).toBe(4 + 5);
-  });
-});
-
-describe('analyse: width rules', () => {
-  test('columns switched off at the Input change downstream widths', () => {
-    const edit = (cols: string[]) => {
-      const gr = spec();
-      gr.nodes[0] = input(cols);
-      return analyse(gr, bin);
-    };
-    const two = edit(['x1', 'x2']);
-    expect(two.inWidth['l1']).toBe(2);
-    expect(two.params['l1']).toBe(2 * 4 + 4);
-    const one = edit(['x2']);
-    expect(one.inWidth['l1']).toBe(1);
-    expect(one.params['l1']).toBe(8);
-    expect(one.edgeWidth[0]).toBe(1);
-  });
-
-  test('all columns off gives an issue and unknown widths downstream', () => {
-    const gr = spec();
-    gr.nodes[0] = input([]);
-    const a = analyse(gr, reg);
-    expect(a.trainable).toBe(false);
-    expect(messages(a)).toEqual(['Input needs at least one data column switched on.']);
-    expect(a.issues[0]?.at).toEqual({ node: 'in' });
-    expect(a.edgeWidth).toEqual([null, null, null, null, null, 1]);
-    expect(a.outWidth['l1']).toBeUndefined();
-    expect(a.params['l1']).toBeUndefined();
-  });
-
-  test('a column the dataset lacks is an issue', () => {
-    const gr = spec();
-    gr.nodes[0] = input(['x1', 'x3']);
-    const a = analyse(gr, reg);
-    expect(messages(a)).toEqual(['Input uses "x3", which this dataset does not have.']);
-  });
-
-  test('feature expansion widths', () => {
-    const gr = g(
-      [
-        input(['x1', 'x2']),
-        { id: 'f', type: 'feature', degree: 2, sin: true, cos: false, products: true },
-        lin('l', 1),
-        outp(),
-        tgt,
-        loss('squared_error'),
-      ],
-      [
-        ['in', 'f'],
-        ['f', 'l'],
-        ['l', 'out'],
-        ['out', 'loss.pred'],
-        ['y', 'loss.target'],
-      ],
-    );
-    const a = analyse(gr, bin);
-    expect(a.outWidth['f']).toBe(2 * 2 + 2 + 1);
-    expect(a.params['l']).toBe(7 + 1);
-    expect(a.trainable).toBe(true);
-  });
-
-  test('dropout passes width through and has no parameters', () => {
-    const gr = spec();
-    gr.nodes.push({ id: 'd', type: 'dropout', p: 0.5 });
-    gr.edges[2] = ['a1', 'd'];
-    gr.edges.push(['d', 'l2']);
+    gr.predictions = [];
     const a = analyse(gr, reg);
     expect(a.trainable).toBe(true);
-    expect(a.outWidth['d']).toBe(4);
-    expect(a.params['d']).toBe(0);
-  });
-});
-
-/** in -> l1(4) -> act -> add.a, and l1 -> add.b (skip) or via a layer of another width. */
-function skip(bWidth: number | null): Graph {
-  const nodes: Node[] = [
-    input(),
-    lin('l1', 4),
-    act('a1'),
-    { id: 'add', type: 'add' },
-    lin('l2', 1),
-    outp(),
-    tgt,
-    loss('squared_error'),
-  ];
-  const edges: Edge[] = [
-    ['in', 'l1'],
-    ['l1', 'a1'],
-    ['a1', 'add.a'],
-    ['add', 'l2'],
-    ['l2', 'out'],
-    ['out', 'loss.pred'],
-    ['y', 'loss.target'],
-  ];
-  if (bWidth === null) edges.push(['l1', 'add.b']);
-  else {
-    nodes.push(lin('side', bWidth));
-    edges.push(['a1', 'side'], ['side', 'add.b']);
-  }
-  return g(nodes, edges);
-}
-
-describe('analyse: skip connection through Add', () => {
-  test('matching widths', () => {
-    const a = analyse(skip(null), reg);
-    expect(a.issues).toEqual([]);
-    expect(a.outWidth['add']).toBe(4);
-    expect(a.inWidth['add']).toBe(4);
-    expect(a.params['l2']).toBe(5);
-    expect(a.edgeWidth[2]).toBe(4);
-    expect(a.edgeWidth[7]).toBe(4);
+    expect(a.modelOrder).toEqual([]);
+    expect(a.order).toContain('loss');
+    expect(a.region['l2']).toBe('objective');
   });
 
-  test('matching widths through a side layer', () => {
-    const a = analyse(skip(4), reg);
-    expect(a.issues).toEqual([]);
-    expect(a.totalParams).toBe(8 + 20 + 5);
-  });
-
-  test('mismatching widths: red wire (edge into b), plain sentence, downstream unknown', () => {
-    const gr = skip(8);
-    const a = analyse(gr, reg);
-    expect(a.trainable).toBe(false);
-    expect(a.issues).toEqual([
-      {
-        at: { node: 'add', edge: 8 },
-        message: 'Add needs both inputs to have the same width: 4 and 8.',
-      },
-    ]);
-    expect(a.outWidth['add']).toBeUndefined();
-    expect(a.edgeWidth[2]).toBe(4);
-    expect(a.edgeWidth[8]).toBe(8);
-    expect(a.edgeWidth[3]).toBeNull(); // add -> l2
-    expect(a.edgeWidth[5]).toBeNull();
-    expect(a.params['l2']).toBeUndefined();
-  });
-
-  test('Add with one input connected', () => {
-    const gr = skip(null);
-    gr.edges.pop();
-    const a = analyse(gr, reg);
-    expect(messages(a)).toEqual(['Add needs both of its inputs connected.']);
-    expect(a.issues[0]?.at).toEqual({ node: 'add' });
-  });
-});
-
-describe('analyse: structure', () => {
-  test('a cycle', () => {
-    const gr = g(
-      [
-        input(),
-        { id: 'p', type: 'add' },
-        lin('q', 4),
-        lin('l2', 1),
-        outp(),
-        tgt,
-        loss('squared_error'),
-      ],
-      [
-        ['in', 'p.a'],
-        ['p', 'q'],
-        ['q', 'p.b'],
-        ['q', 'l2'],
-        ['l2', 'out'],
-        ['out', 'loss.pred'],
-        ['y', 'loss.target'],
-      ],
-    );
-    const a = analyse(gr, reg);
-    expect(a.trainable).toBe(false);
-    const loop = a.issues.find((i) => i.message.includes('loop'));
-    expect(loop?.message).toBe(
-      'The wires form a loop through "p", "q"; remove one wire to break it.',
-    );
-    expect(loop?.at).toEqual({ node: 'p' });
-    expect(a.outWidth['p']).toBeUndefined();
-    expect(a.edgeWidth[0]).toBe(1);
-    expect(a.edgeWidth[1]).toBeNull();
-    expect(a.order).not.toContain('p');
-  });
-
-  test('a self loop', () => {
+  test('order is topological for any node order and leaves out dangling nodes', () => {
     const gr = spec();
-    gr.edges.push(['l1', 'a1']);
-    const a = analyse(gr, reg);
-    // a1.in has two wires, and a1 feeds nothing back; only the double feed is reported.
-    expect(messages(a)).toEqual([
-      '"a1" has two wires into its in input; each input takes only one.',
-    ]);
-    const self = g(
-      [input(), act('s')],
-      [
-        ['s', 's'],
-        ['in', 's'],
-      ],
-    );
-    expect(analyse(self, reg).issues.some((i) => i.message.includes('wired to itself'))).toBe(true);
-  });
-
-  test('missing loss', () => {
-    const gr = spec();
-    gr.nodes.pop();
-    gr.edges.splice(4, 2);
-    const a = analyse(gr, reg);
-    expect(a.lossNode).toBeNull();
-    expect(a.predNode).toBeNull();
-    expect(a.trainable).toBe(false);
-    expect(messages(a)).toEqual(['Add a loss to the graph so there is something to train.']);
-    expect(a.outWidth['out']).toBe(1);
-  });
-
-  test('two losses', () => {
-    const gr = spec();
-    gr.nodes.push(loss('absolute_error', 'loss2'));
-    gr.edges.push(['out', 'loss2.pred'], ['y', 'loss2.target']);
-    const a = analyse(gr, reg);
-    expect(a.trainable).toBe(false);
-    expect(a.lossNode).toBeNull();
-    expect(a.issues).toEqual([
-      { at: { node: 'loss2' }, message: 'The graph has 2 losses; keep only one.' },
-    ]);
-  });
-
-  test('unconnected input port on Linear', () => {
-    const gr = spec();
-    gr.edges.splice(2, 1); // a1 -> l2
-    const a = analyse(gr, reg);
-    expect(a.issues).toEqual([{ at: { node: 'l2' }, message: 'Linear needs an input.' }]);
-    expect(a.edgeWidth).toEqual([1, 4, null, null, 1]);
-    expect(a.inWidth['l2']).toBeUndefined();
-  });
-
-  test('loss ports unconnected', () => {
-    const gr = spec();
-    gr.edges.splice(4, 2);
-    const a = analyse(gr, reg);
-    expect(a.issues).toEqual([
-      { at: { node: 'loss' }, message: 'Connect the output to the loss.' },
-      { at: { node: 'loss' }, message: 'Connect the target to the loss.' },
-    ]);
-    expect(a.predNode).toBeNull();
-    expect(a.lossNode).toBe('loss');
-  });
-
-  test('target missing only', () => {
-    const gr = spec();
-    gr.edges.pop();
-    expect(messages(analyse(gr, reg))).toEqual(['Connect the target to the loss.']);
-  });
-
-  test('doubly fed port reports the extra wire and keeps the first', () => {
-    const gr = spec();
-    gr.nodes.push(lin('extra', 4));
-    gr.edges.push(['in', 'extra'], ['extra', 'l2']);
-    const a = analyse(gr, reg);
-    expect(a.issues).toEqual([
-      {
-        at: { edge: 7, node: 'l2' },
-        message: '"l2" has two wires into its in input; each input takes only one.',
-      },
-    ]);
-    expect(a.edgeWidth[7]).toBeNull();
-    expect(a.edgeWidth[6]).toBe(1);
-    expect(a.order).not.toContain('extra');
-  });
-
-  test('a bad edge is an issue on that edge', () => {
-    const gr = spec();
-    gr.edges.push(['ghost', 'l1']);
-    const a = analyse(gr, reg);
-    expect(a.issues[0]?.at).toEqual({ edge: 6 });
-    expect(a.edgeWidth[6]).toBeNull();
-  });
-
-  test('pieces off the path to the loss are left out of order and the total', () => {
-    const gr = spec();
+    gr.nodes.reverse();
     gr.nodes.push(lin('stray', 8));
     gr.edges.push(['in', 'stray']);
     const a = analyse(gr, reg);
@@ -352,291 +121,673 @@ describe('analyse: structure', () => {
     expect(a.order).not.toContain('stray');
     expect(a.params['stray']).toBe(16);
     expect(a.totalParams).toBe(13);
+    const pos = new Map(a.order.map((id, i) => [id, i]));
+    for (const [from, to] of gr.edges) {
+      const f = pos.get(parsePort(from).node);
+      const t = pos.get(parsePort(to).node);
+      if (f !== undefined && t !== undefined) expect(f).toBeLessThan(t);
+    }
   });
 
-  test('the target only feeds the loss', () => {
-    const gr = spec();
-    gr.nodes.push(lin('t', 1));
-    gr.edges.push(['y', 't']);
-    const a = analyse(gr, reg);
-    expect(a.issues).toEqual([
-      { at: { edge: 6 }, message: 'The target can only be connected to the loss.' },
-    ]);
-  });
-
-  test('the output only feeds the loss', () => {
-    const gr = spec();
-    gr.nodes.push(lin('t', 1));
-    gr.edges.push(['out', 't']);
-    expect(messages(analyse(gr, reg))).toEqual(['The output can only be connected to the loss.']);
-  });
-
-  test('a loss fed by something other than the Output or Target', () => {
-    const gr = spec();
-    gr.edges[4] = ['l2', 'loss.pred'];
-    gr.edges[5] = ['in', 'loss.target'];
-    const a = analyse(gr, reg);
-    expect(messages(a)).toEqual([
-      'Squared error compares the Output piece with the target, so connect the Output to it.',
-      'Squared error needs the Target piece on its target input.',
-    ]);
-    expect(a.predNode).toBeNull();
-  });
-
-  test('a model with no Input piece', () => {
-    const gr = g(
-      [lin('l', 1), outp(), tgt, loss('squared_error')],
-      [
-        ['l', 'out'],
-        ['out', 'loss.pred'],
-        ['y', 'loss.target'],
-      ],
-    );
-    const a = analyse(gr, reg);
-    expect(a.issues.map((i) => i.message)).toContain('Linear needs an input.');
-  });
-
-  test('an empty graph does not throw', () => {
-    const a = analyse(g([], []), reg);
-    expect(a.trainable).toBe(false);
-    expect(a.order).toEqual([]);
-    expect(a.totalParams).toBe(0);
+  test('a node shared by model and objective stays in the model', () => {
+    const a = analyse(spec(), reg);
+    expect(a.region['l2']).toBe('model');
+    expect(a.region['diff']).toBe('objective');
   });
 });
 
-describe('analyse: output / loss / target table', () => {
-  /** in -> linear(width) -> output(link) -> loss. */
-  function build(fn: LossFn, link: OutputLink, width: number): Graph {
-    return g(
-      [input(['x1', 'x2']), lin('l', width), outp(link), tgt, loss(fn)],
-      [
-        ['in', 'l'],
-        ['l', 'out'],
-        ['out', 'loss.pred'],
-        ['y', 'loss.target'],
-      ],
-    );
-  }
-  const REG_LOSSES: LossFn[] = ['squared_error', 'absolute_error', 'huber'];
-
-  test.each(REG_LOSSES)('%s: identity and sigmoid, width 1, regression or binary', (fn) => {
-    for (const link of ['identity', 'sigmoid'] as const) {
-      for (const d of [reg, bin]) {
-        const a = analyse(build(fn, link, 1), { ...d, columns: ['x1', 'x2'] });
-        expect(a.issues).toEqual([]);
-        expect(a.trainable).toBe(true);
-      }
-    }
-  });
-
-  test.each(REG_LOSSES)('%s: softmax and wrong width are issues', (fn) => {
-    const soft = analyse(build(fn, 'softmax', 1), bin);
-    expect(soft.trainable).toBe(false);
-    expect(soft.issues).toHaveLength(1);
-    expect(soft.issues[0]?.message).toMatch(/needs an identity or sigmoid output, not softmax\.$/);
-    expect(soft.issues[0]?.at).toEqual({ node: 'out' });
-    const wide = analyse(build(fn, 'identity', 3), bin);
-    expect(wide.issues).toHaveLength(1);
-    expect(wide.issues[0]?.message).toMatch(
-      /needs an output of width 1, but this output has width 3\.$/,
-    );
-  });
-
-  test('log loss: sigmoid, width 1, binary', () => {
-    expect(analyse(build('log_loss', 'sigmoid', 1), bin).trainable).toBe(true);
-    for (const link of ['identity', 'softmax'] as const) {
-      const a = analyse(build('log_loss', link, 1), bin);
-      expect(messages(a)).toEqual(['Log loss needs a sigmoid output.']);
-      expect(a.issues[0]?.at).toEqual({ node: 'out' });
-    }
-    expect(messages(analyse(build('log_loss', 'sigmoid', 2), bin))).toEqual([
-      'Log loss needs an output of width 1, but this output has width 2.',
-    ]);
-    expect(
-      messages(analyse(build('log_loss', 'sigmoid', 1), { ...reg, columns: ['x1', 'x2'] })),
-    ).toEqual(['Log loss needs a dataset with two classes, but this dataset is regression.']);
-  });
-
-  test('cross-entropy: softmax, width numClasses, binary', () => {
-    expect(analyse(build('cross_entropy', 'softmax', 2), bin).trainable).toBe(true);
-    for (const link of ['identity', 'sigmoid'] as const) {
-      expect(messages(analyse(build('cross_entropy', link, 2), bin))).toEqual([
-        'Cross-entropy needs a softmax output.',
-      ]);
-    }
-    expect(messages(analyse(build('cross_entropy', 'softmax', 1), bin))).toEqual([
-      'Cross-entropy needs an output of width 2, one per class, but this output has width 1.',
-    ]);
-    expect(messages(analyse(build('cross_entropy', 'softmax', 3), bin))).toEqual([
-      'Cross-entropy needs an output of width 2, one per class, but this output has width 3.',
-    ]);
-    expect(
-      messages(analyse(build('cross_entropy', 'softmax', 2), { ...reg, columns: ['x1', 'x2'] })),
-    ).toEqual(['Cross-entropy needs a dataset with two classes, but this dataset is regression.']);
-  });
-
-  test('numClasses drives the cross-entropy width', () => {
-    const a = analyse(build('cross_entropy', 'softmax', 3), { ...bin, numClasses: 3 });
-    expect(a.trainable).toBe(true);
-  });
-
-  test('a weight penalty does not change analysis', () => {
-    const gr = build('squared_error', 'identity', 1);
-    gr.nodes[4] = {
-      id: 'loss',
-      type: 'loss',
-      fn: 'squared_error',
-      penalty: { kind: 'l1', lambda: 0.1 },
-    };
-    expect(analyse(gr, bin).trainable).toBe(true);
-  });
-});
-
-describe('analyse: parameter limit', () => {
-  /** 1 -> a -> b -> c -> d -> 1, all with bias; total = 2a + (ab+b) + (bc+c) + (cd+d) + (d+1). */
-  function chain(widths: number[], lastBias = true): Graph {
-    const ids = widths.map((_, i) => `h${i}`);
-    const nodes: Node[] = [
-      input(),
-      ...widths.map((w, i) => lin(ids[i] ?? '', w)),
-      lin('last', 1, lastBias),
-    ];
-    nodes.push(outp(), tgt, loss('squared_error'));
-    const edges: Edge[] = [['in', ids[0] ?? '']];
-    for (let i = 1; i < ids.length; i++) edges.push([ids[i - 1] ?? '', ids[i] ?? '']);
-    edges.push(
-      [ids[ids.length - 1] ?? '', 'last'],
-      ['last', 'out'],
-      ['out', 'loss.pred'],
-      ['y', 'loss.target'],
-    );
-    return g(nodes, edges);
-  }
-
-  test('exactly 10,000 is allowed', () => {
-    const a = analyse(chain([34, 57, 64, 64]), reg);
-    expect(a.totalParams).toBe(10000);
-    expect(a.issues).toEqual([]);
-    expect(a.trainable).toBe(true);
-  });
-
-  test('10,001 is not, and the sentence has thousands separators', () => {
-    const a = analyse(chain([33, 63, 64, 56]), reg);
-    expect(a.totalParams).toBe(10001);
+describe('analyse v2: loss pin', () => {
+  test('no loss pinned', () => {
+    const gr = spec();
+    gr.loss = null;
+    const a = analyse(gr, reg);
     expect(a.trainable).toBe(false);
+    expect(a.lossNode).toBeNull();
     expect(a.issues).toEqual([
       {
         at: {},
-        message: `This model has ${a.totalParams.toLocaleString('en-US')} parameters; the limit is 10,000.`,
+        message:
+          'No loss is pinned; pin a single-number output as the loss so there is something to train.',
       },
     ]);
-    expect(a.issues[0]?.message).toMatch(
-      /^This model has 10,001 parameters; the limit is 10,000\.$/,
-    );
+    expect(a.order).toEqual(['in', 'l1', 'a1', 'l2']);
   });
 
-  test('exactly one over: 10,001', () => {
-    // Removing the final bias from the 10,000 model and adding a one-unit side layer is fiddly;
-    // instead check 10,000 + 1 via a Linear with bias on top of a model of 9,999 parameters.
-    const a = analyse(chain([34, 57, 64, 64], false), reg);
-    expect(a.totalParams).toBe(9999);
-    expect(a.trainable).toBe(true);
-  });
-});
-
-describe('analyse: inputs the parser accepts', () => {
-  test('a self-edge is reported and does not break widths or order', () => {
+  test('a loss that is one value per example needs a Mean', () => {
     const gr = spec();
-    gr.nodes.push(act('s'));
-    gr.edges.push(['s', 's']);
+    gr.loss = 'err';
     const a = analyse(gr, reg);
+    expect(a.trainable).toBe(false);
     expect(a.issues).toEqual([
-      { at: { node: 's' }, message: '"s" is wired to itself; remove that wire.' },
+      {
+        at: { node: 'err', pin: { role: 'loss' } },
+        message:
+          'The loss must be a single number, but "err" gives 1 per example; add a Mean to average over the examples.',
+      },
     ]);
-    expect(a.order).not.toContain('s');
-    expect(a.outWidth['l2']).toBe(1);
-    expect(a.edgeWidth[6]).toBeNull();
-    expect(a.trainable).toBe(false);
   });
 
-  test('a self-edge on a node on the model path blocks it without throwing', () => {
+  test('a loss that is a weight matrix', () => {
     const gr = spec();
-    gr.nodes[2] = { id: 'a1', type: 'activation', fn: 'tanh' };
-    gr.edges[1] = ['a1', 'a1'];
+    gr.nodes.push({ id: 'w', type: 'weights', of: 'l1' });
+    gr.loss = 'w';
     const a = analyse(gr, reg);
-    expect(a.issues.map((i) => i.message)).toContain('"a1" is wired to itself; remove that wire.');
-    expect(a.outWidth['a1']).toBeUndefined();
-    expect(a.trainable).toBe(false);
+    expect(messages(a)).toEqual([
+      'The loss must be a single number, but "w" is a 1 by 4 weight matrix.',
+    ]);
+    expect(a.issues[0]?.at.pin).toEqual({ role: 'loss' });
   });
 
-  test('duplicate Input columns', () => {
-    const gr = spec();
-    gr.nodes[0] = input(['x1', 'x1']);
+  test('a loss that depends on no parameter', () => {
+    const gr = g(
+      [tgt, { id: 'sq', type: 'square' }, { id: 'loss', type: 'mean' }],
+      [
+        ['y', 'sq'],
+        ['sq', 'loss'],
+      ],
+      [],
+      'loss',
+    );
     const a = analyse(gr, reg);
     expect(a.issues).toEqual([
       {
-        at: { node: 'in' },
-        message: 'Input lists "x1" more than once; switch each column on only once.',
+        at: { node: 'loss', pin: { role: 'loss' } },
+        message: 'The loss "loss" does not depend on any parameter, so there is nothing to train.',
+      },
+    ]);
+  });
+
+  test('a loss depending on parameters only through a Weights tap is fine', () => {
+    const gr = g(
+      [
+        input(),
+        lin('l1', 1),
+        { id: 'w', type: 'weights', of: 'l1' },
+        { id: 'n', type: 'norm', kind: 'l2' },
+      ],
+      [
+        ['w', 'n'],
+        ['in', 'l1'],
+      ],
+      [],
+      'n',
+    );
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([]);
+    expect(a.totalParams).toBe(2);
+  });
+
+  test('a loss pin naming no node', () => {
+    const gr = spec();
+    gr.loss = 'ghost';
+    const a = analyse(gr, reg);
+    expect(a.trainable).toBe(false);
+    expect(a.issues[0]?.at).toEqual({ pin: { role: 'loss' } });
+    expect(a.lossNode).toBeNull();
+  });
+
+  test('a loss on a cycle is left out of order', () => {
+    const gr = g(
+      [lin('a', 1), { id: 'b', type: 'mean' }],
+      [
+        ['a', 'b'],
+        ['b', 'a'],
+      ],
+      [],
+      'b',
+    );
+    const a = analyse(gr, reg);
+    expect(a.trainable).toBe(false);
+    expect(a.order).toEqual([]);
+  });
+});
+
+describe('analyse v2: prediction pins', () => {
+  test('a prediction cannot depend on the target', () => {
+    const gr = spec();
+    gr.predictions = ['diff']; // lin2 - y
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([
+      {
+        at: { node: 'diff', pin: { role: 'prediction', index: 0 } },
+        message: 'A prediction cannot depend on the target, but "diff" does.',
       },
     ]);
     expect(a.trainable).toBe(false);
   });
 
-  test('unknown Input column names the column', () => {
+  test('width must match the target: 1 for regression and binary', () => {
     const gr = spec();
-    gr.nodes[0] = input(['x2']);
+    gr.nodes[3] = lin('l2', 3);
+    const a = analyse(gr, reg);
+    expect(a.issues.find((i) => i.at.pin)).toEqual({
+      at: { node: 'l2', pin: { role: 'prediction', index: 0 } },
+      message:
+        'This dataset\'s target has width 1, so the prediction needs width 1, but "l2" has width 3.',
+    });
+  });
+
+  test('softmax prediction needs numClasses and a classification dataset', () => {
+    const sm: Node = { id: 'sm', type: 'link', fn: 'softmax' };
+    const build = (width: number, cols: string[]) =>
+      g(
+        [input(cols), lin('l', width), sm],
+        [
+          ['in', 'l'],
+          ['l', 'sm'],
+        ],
+        ['sm'],
+        null,
+      );
+    const bad = analyse(build(3, ['x1', 'x2']), bin);
+    expect(bad.issues.find((i) => i.at.pin)?.at).toEqual({
+      node: 'sm',
+      pin: { role: 'prediction', index: 0 },
+    });
+    expect(messages(bad)).toContain(
+      'This dataset has 2 classes, so the softmax prediction needs width 2, but "sm" has width 3.',
+    );
+    expect(messages(analyse(build(2, ['x1', 'x2']), bin))).toEqual([
+      'No loss is pinned; pin a single-number output as the loss so there is something to train.',
+    ]);
+    expect(messages(analyse(build(2, ['x1']), reg))).toContain(
+      'A softmax prediction needs a dataset with classes, but this dataset is regression.',
+    );
+  });
+
+  test('a prediction that is a single number', () => {
+    const gr = spec();
+    gr.predictions = ['loss'];
+    expect(messages(analyse(gr, reg))).toEqual([
+      'A prediction cannot depend on the target, but "loss" does.', // this loss reads y
+      'A prediction must be one row per example, but "loss" is a single number.',
+    ]);
+  });
+
+  test('several prediction pins are fine; each width is checked and modelOrder is the union', () => {
+    const gr = spec();
+    gr.predictions = ['l2', 'a1'];
+    const a = analyse(gr, reg);
+    // a1 has width 4, so only that pin complains
+    expect(a.issues.map((i) => i.at.pin)).toEqual([{ role: 'prediction', index: 1 }]);
+    expect(a.predictions).toEqual(['l2', 'a1']);
+    const b = g(
+      [input(), lin('p', 1), lin('q', 1), tgt],
+      [
+        ['in', 'p'],
+        ['in', 'q'],
+      ],
+      ['p', 'q'],
+    );
+    const r = analyse(b, reg);
+    expect(r.modelOrder).toEqual(['in', 'p', 'q']);
+    expect(r.issues.some((i) => i.at.pin)).toBe(false);
+  });
+
+  test('the same node pinned twice is one issue on the duplicate', () => {
+    const gr = spec();
+    gr.predictions = ['l2', 'l2.out'];
     const a = analyse(gr, reg);
     expect(a.issues).toEqual([
-      { at: { node: 'in' }, message: 'Input uses "x2", which this dataset does not have.' },
+      {
+        at: { node: 'l2', pin: { role: 'prediction', index: 1 } },
+        message: '"l2" is pinned as a prediction twice.',
+      },
+    ]);
+  });
+
+  test('a pin naming no node', () => {
+    const gr = spec();
+    gr.predictions = ['ghost'];
+    const a = analyse(gr, reg);
+    expect(a.issues[0]?.at).toEqual({ pin: { role: 'prediction', index: 0 } });
+    expect(a.predictions).toEqual([]);
+  });
+});
+
+describe('analyse v2: shapes and wiring', () => {
+  test('feature expansion widths', () => {
+    const gr = g(
+      [
+        input(['x1', 'x2']),
+        { id: 'f', type: 'feature', degree: 2, sin: true, cos: false, products: true },
+        lin('l', 1),
+      ],
+      [
+        ['in', 'f'],
+        ['f', 'l'],
+      ],
+    );
+    const a = analyse(gr, bin);
+    expect(a.outWidth['f']).toBe(7);
+    expect(a.params['l']).toBe(8);
+  });
+
+  test('columns the dataset lacks, duplicate columns, no columns', () => {
+    const edit = (cols: string[]) => {
+      const gr = spec();
+      gr.nodes[0] = input(cols);
+      return analyse(gr, reg);
+    };
+    expect(messages(edit(['x1', 'x3']))).toEqual([
+      'Input uses "x3", which this dataset does not have.',
+    ]);
+    expect(messages(edit(['x1', 'x1']))[0]).toMatch(/more than once/);
+    const none = edit([]);
+    expect(messages(none)).toEqual(['Input needs at least one data column switched on.']);
+    expect(none.outWidth['l1']).toBeUndefined();
+    expect(none.params['l1']).toBeUndefined();
+  });
+
+  test('add and subtract need equal shapes, with the red wire on b', () => {
+    const gr = spec();
+    gr.nodes[3] = lin('l2', 2);
+    const a = analyse(gr, reg);
+    expect(a.issues.find((i) => i.at.node === 'diff')).toEqual({
+      at: { node: 'diff', edge: 4 },
+      message: 'Subtract needs both inputs to have the same width: 2 and 1.',
+    });
+    expect(a.outWidth['diff']).toBeUndefined();
+    expect(a.outWidth['err']).toBeUndefined();
+    // downstream of the mismatch: no issue of its own
+    expect(a.issues.filter((i) => i.at.node === 'err' || i.at.node === 'loss')).toEqual([]);
+  });
+
+  test('add of a scalar and a matrix: no broadcasting', () => {
+    const gr = g(
+      [
+        input(),
+        lin('l', 1),
+        { id: 'w', type: 'weights', of: 'l' },
+        { id: 'm', type: 'mean' },
+        { id: 'add', type: 'add' },
+      ],
+      [
+        ['in', 'l'],
+        ['l', 'm'],
+        ['m', 'add.a'],
+        ['w', 'add.b'],
+      ],
+    );
+    expect(messages(analyse(gr, reg))[0]).toBe(
+      'Add needs both inputs to have the same shape: a single number and a 1 by 1 weight matrix.',
+    );
+  });
+
+  test('mean of a scalar, norm of examples', () => {
+    const gr = spec();
+    gr.nodes.push({ id: 'm2', type: 'mean' }, { id: 'n', type: 'norm', kind: 'l1' });
+    gr.edges.push(['loss', 'm2'], ['a1', 'n']);
+    expect(messages(analyse(gr, reg))).toEqual([
+      'A norm needs a weight matrix input, but this one is 4 per example.',
+      'Mean needs a per-example input, but this one is a single number.',
+    ]);
+  });
+
+  test('a cycle', () => {
+    const gr = g(
+      [input(), { id: 'p', type: 'add' }, lin('q', 4)],
+      [
+        ['in', 'p.a'],
+        ['p', 'q'],
+        ['q', 'p.b'],
+      ],
+      ['q'],
+      null,
+    );
+    const a = analyse(gr, reg);
+    expect(a.issues.find((i) => i.message.includes('loop'))).toEqual({
+      at: { node: 'p' },
+      message: 'The wires form a loop through "p", "q"; remove one wire to break it.',
+    });
+    expect(a.shape['p']).toBeUndefined();
+    expect(a.edgeShape[1]).toBeNull();
+    expect(a.order).toEqual(['in']);
+  });
+
+  test('a self loop', () => {
+    const gr = g(
+      [input(), act('s')],
+      [
+        ['s', 's'],
+        ['in', 's'],
+      ],
+    );
+    expect(analyse(gr, reg).issues.some((i) => i.message.includes('wired to itself'))).toBe(true);
+  });
+
+  test('dangling inputs', () => {
+    const gr = spec();
+    gr.edges.splice(2, 1); // a1 -> l2
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([{ at: { node: 'l2' }, message: 'Linear needs an input.' }]);
+    expect(a.edgeWidth).toEqual([1, 4, null, 1, null, null]);
+    const b = spec();
+    b.edges.pop(); // err -> loss
+    expect(messages(analyse(b, reg))[0]).toBe('Mean needs an input.');
+  });
+
+  test('a doubly fed port keeps the first wire', () => {
+    const gr = spec();
+    gr.nodes.push(lin('extra', 4));
+    gr.edges.push(['in', 'extra'], ['extra', 'l2']);
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([
+      {
+        at: { edge: 8, node: 'l2' },
+        message: '"l2" has two wires into its in input; each input takes only one.',
+      },
+    ]);
+    expect(a.edgeWidth[8]).toBeNull();
+    expect(a.order).not.toContain('extra');
+  });
+
+  test('a bad edge is an issue on that edge', () => {
+    const gr = spec();
+    gr.edges.push(['ghost', 'l1']);
+    expect(analyse(gr, reg).issues[0]?.at).toEqual({ edge: 7 });
+  });
+
+  test('duplicate ids and an empty graph do not throw', () => {
+    const gr = spec();
+    gr.nodes.push(lin('l1', 2));
+    expect(messages(analyse(gr, reg))).toEqual(['Two nodes are both called "l1".']);
+    const a = analyse(g([], []), reg);
+    expect(a.trainable).toBe(false);
+    expect(a.order).toEqual([]);
+  });
+
+  test('ids that look like Object.prototype keys are safe', () => {
+    const a = analyse(g([{ id: 'constructor', type: 'input', columns: ['x1'] }], []), reg);
+    expect(a.outWidth['constructor']).toBe(1);
+    expect(a.outWidth['toString']).toBeUndefined();
+  });
+});
+
+describe('analyse v2: Weights taps and the penalty', () => {
+  /** spec plus an L2 penalty on l1 and l2. */
+  function penalised(): Graph {
+    const gr = spec();
+    let n = 0;
+    const sub = weightPenaltySubgraph({
+      kind: 'l2',
+      lambda: 0.01,
+      linears: ['l1', 'l2'],
+      name: (s) => `pen_${s}_${n++}`,
+      finalId: 'total',
+    });
+    gr.nodes.push(...sub.nodes);
+    gr.edges.push(...sub.edges, ['loss', 'total.a']);
+    gr.loss = 'total';
+    return gr;
+  }
+
+  test('regions, parameter wires, scalar shapes', () => {
+    const a = analyse(penalised(), reg);
+    expect(a.issues).toEqual([]);
+    expect(a.shape['pen_w_l1_0']).toEqual({ kind: 'param', rows: 1, cols: 4 });
+    expect(a.shape['total']).toEqual({ kind: 'scalar' });
+    expect(a.paramWires).toHaveLength(2);
+    expect(a.paramWires[0]).toEqual({ linear: 'l1', weights: 'pen_w_l1_0' });
+    expect(a.region['pen_w_l1_0']).toBe('objective');
+    expect(a.region['total']).toBe('objective');
+    expect(a.modelOrder).toEqual(['in', 'l1', 'a1', 'l2']);
+    expect(a.totalParams).toBe(13);
+  });
+
+  test('Weights without a data wire: the Linear is live but its inputs are not in order', () => {
+    const gr = g(
+      [
+        input(),
+        lin('l1', 2),
+        { id: 'w', type: 'weights', of: 'l1' },
+        { id: 'n', type: 'norm', kind: 'l1' },
+      ],
+      [
+        ['in', 'l1'],
+        ['w', 'n'],
+      ],
+      [],
+      'n',
+    );
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([]);
+    expect(a.order).toEqual(['w', 'n']);
+    expect(a.paramNodes).toEqual(['l1']);
+    expect(a.paramShapes['l1']).toEqual({ W: [1, 2], b: [2] });
+    expect(a.totalParams).toBe(4);
+    expect(a.paramWires).toEqual([{ linear: 'l1', weights: 'w' }]);
+  });
+
+  test('Weights earlier in node order than its Linear still resolves', () => {
+    const gr = penalised();
+    gr.nodes.reverse();
+    expect(analyse(gr, reg).issues).toEqual([]);
+  });
+
+  test('weights.of naming no node, or a non-Linear', () => {
+    const gr = penalised();
+    const w = gr.nodes.find((n) => n.id === 'pen_w_l1_0');
+    if (w?.type !== 'weights') throw new Error('setup');
+    w.of = 'ghost';
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([
+      {
+        at: { node: 'pen_w_l1_0' },
+        message: 'Weights reads "ghost", which is not a piece in this graph.',
+      },
+    ]);
+    expect(a.paramWires.map((p) => p.weights)).not.toContain('pen_w_l1_0');
+    w.of = 'a1';
+    expect(messages(analyse(gr, reg))).toEqual([
+      'Weights must read a Linear piece, but "a1" is not one.',
+    ]);
+  });
+
+  test('a deleted Linear leaves a Weights tap with an issue, not a crash', () => {
+    const gr = penalised();
+    gr.nodes = gr.nodes.filter((n) => n.id !== 'l2');
+    gr.edges = gr.edges.filter((e) => !e.some((r) => parsePort(r).node === 'l2'));
+    const a = analyse(gr, reg);
+    expect(a.trainable).toBe(false);
+    expect(messages(a).some((m) => m.includes('which is not a piece'))).toBe(true);
+  });
+
+  test('a Weights tap whose Linear has no input has its root cause at the Linear', () => {
+    const gr = penalised();
+    gr.edges = gr.edges.filter((e) => e[1] !== 'l1');
+    const a = analyse(gr, reg);
+    expect(a.issues.map((i) => i.at.node)).toContain('l1');
+    expect(messages(a).filter((m) => m.includes('Weights'))).toEqual([]);
+  });
+
+  test('Linears read only through taps count towards the parameters', () => {
+    const gr = g(
+      [
+        input(),
+        lin('big', 64),
+        lin('big2', 64),
+        act('a'),
+        { id: 'w', type: 'weights', of: 'big2' },
+        { id: 'n', type: 'norm', kind: 'l2' },
+        lin('huge', 64),
+        { id: 'w2', type: 'weights', of: 'huge' },
+        { id: 'n2', type: 'norm', kind: 'l2' },
+        { id: 'sum', type: 'add' },
+      ],
+      [
+        ['in', 'big'],
+        ['big', 'a'],
+        ['a', 'big2'],
+        ['in', 'huge'],
+        ['w', 'n'],
+        ['w2', 'n2'],
+        ['n', 'sum.a'],
+        ['n2', 'sum.b'],
+      ],
+      [],
+      'sum',
+    );
+    const a = analyse(gr, reg);
+    expect(a.issues).toEqual([]);
+    // big is not live: only big2's tap is in order, not its input.
+    expect(a.paramNodes).toEqual(['big2', 'huge']);
+    expect(a.totalParams).toBe(64 * 64 + 64 + 64 + 64);
+  });
+
+  test('the parameter limit is an issue', () => {
+    const gr = g(
+      [input(), lin('a', 64), lin('b', 64), lin('c', 64), lin('d', 64), lin('e', 1)],
+      [
+        ['in', 'a'],
+        ['a', 'b'],
+        ['b', 'c'],
+        ['c', 'd'],
+        ['d', 'e'],
+      ],
+      ['e'],
+      null,
+    );
+    const a = analyse(gr, reg);
+    expect(a.totalParams).toBe(128 + 3 * (64 * 64 + 64) + 65);
+    expect(messages(a)).toContain('This model has 12,673 parameters; the limit is 10,000.');
+  });
+});
+
+describe('analyse v2: Weights loops', () => {
+  const loop = (): Graph => {
+    const gr = spec();
+    gr.nodes = gr.nodes.filter((n) => n.id !== 'l1' && n.id !== 'a1');
+    gr.nodes.push(
+      lin('l1', 4),
+      { id: 'add', type: 'add' },
+      { id: 'w1', type: 'weights', of: 'l1' },
+      { id: 'n1', type: 'norm', kind: 'l2' },
+    );
+    gr.edges = [
+      ['in', 'add.a'],
+      ['w1', 'n1'],
+      ['n1', 'add.b'],
+      ['add', 'l1'],
+      ['l1', 'l2'],
+      ['l2', 'diff.a'],
+      ['y', 'diff.b'],
+      ['diff', 'err'],
+      ['err', 'loss'],
+    ];
+    return gr;
+  };
+
+  test('a tap that depends on itself is an issue, not silence', () => {
+    const a = analyse(loop(), reg);
+    expect(a.trainable).toBe(false);
+    expect(a.issues).toContainEqual({
+      at: { node: 'w1' },
+      message: '"w1" reads the weights of "l1", which depends on "w1" itself.',
+    });
+  });
+
+  test('the safety net: no missing shape with no issue', () => {
+    for (const gr of [loop(), spec()]) {
+      const a = analyse(gr, reg);
+      if (a.trainable) for (const id of a.order) expect(a.shape[id]).toBeDefined();
+    }
+  });
+});
+
+describe('analyse v2: loss pieces take probabilities', () => {
+  function build(
+    link: 'sigmoid' | 'softmax' | null,
+    width = 1,
+    kind: 'log_loss' | 'cross_entropy' = 'log_loss',
+  ): Graph {
+    const nodes: Node[] = [
+      input(['x1', 'x2']),
+      lin('l', width),
+      tgt,
+      { id: 'e', type: kind },
+      { id: 'loss', type: 'mean' },
+    ];
+    const edges: Edge[] = [
+      ['in', 'l'],
+      ['y', 'e.target'],
+      ['e', 'loss'],
+    ];
+    if (link) {
+      nodes.push({ id: 'p', type: 'link', fn: link });
+      edges.push(['l', 'p'], ['p', 'e.pred']);
+    } else edges.push(['l', 'e.pred']);
+    return g(nodes, edges, [link ? 'p' : 'l'], 'loss');
+  }
+
+  test('sigmoid then log loss is fusable', () => {
+    const a = analyse(build('sigmoid'), bin);
+    expect(a.issues).toEqual([]);
+    expect(a.fusable).toEqual([{ link: 'p', loss: 'e' }]);
+  });
+
+  test('softmax then cross-entropy is fusable', () => {
+    const a = analyse(build('softmax', 2, 'cross_entropy'), bin);
+    expect(a.issues).toEqual([]);
+    expect(a.fusable).toEqual([{ link: 'p', loss: 'e' }]);
+  });
+
+  test('a missing or wrong link, wrong width, regression data', () => {
+    expect(messages(analyse(build(null), bin))).toEqual([
+      'Log loss takes probabilities, so wire a Sigmoid link straight into its pred input.',
+    ]);
+    expect(messages(analyse(build('softmax', 1), bin))).toEqual([
+      'This dataset has 2 classes, so the softmax prediction needs width 2, but "p" has width 1.',
+      'Log loss takes probabilities, so wire a Sigmoid link straight into its pred input.',
+    ]);
+    expect(messages(analyse(build('sigmoid', 2), bin))).toContain(
+      'Log loss needs a prediction of width 1, but this one is 2.',
+    );
+    expect(messages(analyse(build('softmax', 3, 'cross_entropy'), bin))).toContain(
+      'Cross-entropy needs one probability per class (2), but its pred input has width 3.',
+    );
+    expect(messages(analyse(build('sigmoid'), { ...reg, columns: ['x1', 'x2'] }))).toEqual([
+      'Log loss needs a dataset with two classes, but this dataset is regression.',
     ]);
   });
 });
 
-describe('analyse: defensive cases', () => {
-  test('duplicate node ids are an issue at the duplicate', () => {
-    const gr = spec();
-    gr.nodes.push(lin('l1', 9));
-    const a = analyse(gr, reg);
-    expect(a.trainable).toBe(false);
-    expect(a.issues).toEqual([{ at: { node: 'l1' }, message: 'Two nodes are both called "l1".' }]);
-    expect(a.order.filter((id) => id === 'l1')).toHaveLength(1);
-    expect(a.outWidth['l1']).toBe(4);
-  });
+// ---------------------------------------------------------------- v1 parity
 
-  test('ids that collide with Object.prototype are safe', () => {
-    for (const name of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
-      const gr = spec();
-      gr.nodes[1] = lin(name, 4);
-      gr.edges = gr.edges.map(([f, t]) => [f === 'l1' ? name : f, t === 'l1' ? name : t]);
-      gr.edges.splice(0, 1); // leave the Linear unconnected
-      const a = analyse(gr, reg);
-      expect(a.issues).toEqual([{ at: { node: name }, message: 'Linear needs an input.' }]);
-      expect(a.edgeWidth.every((w) => w === null || typeof w === 'number')).toBe(true);
-      expect(Number.isFinite(a.totalParams)).toBe(true);
-      expect(a.params[name]).toBeUndefined();
-      expect(a.inWidth[name]).toBeUndefined();
-      expect(a.outWidth[name]).toBeUndefined();
-      // and a connected one still analyses
-      const ok = spec();
-      ok.nodes[1] = lin(name, 4);
-      ok.edges = ok.edges.map(([f, t]) => [f === 'l1' ? name : f, t === 'l1' ? name : t]);
-      const b = analyse(ok, reg);
-      expect(b.trainable).toBe(true);
-      expect(b.params[name]).toBe(8);
-      expect(b.totalParams).toBe(13);
+const fixturesDir = fileURLToPath(new URL('../../engine/test/fixtures/', import.meta.url));
+const presetsDir = fileURLToPath(new URL('../../web/src/presets/', import.meta.url));
+
+function sources(): { name: string; json: unknown }[] {
+  const out: { name: string; json: unknown }[] = [];
+  for (const dir of [fixturesDir, presetsDir]) {
+    for (const f of readdirSync(dir).filter((x) => x.endsWith('.json'))) {
+      const j = JSON.parse(readFileSync(dir + f, 'utf8')) as { graph: { version?: number } };
+      if (j.graph.version === 2) continue; // prim_* fixtures are already version 2
+      out.push({ name: f, json: j.graph });
     }
-  });
+  }
+  return out;
+}
 
-  test('accepts a deep-frozen graph', () => {
-    const deepFreeze = <T>(o: T): T => {
-      if (typeof o === 'object' && o !== null) {
-        Object.values(o).forEach(deepFreeze);
-        Object.freeze(o);
+describe('every fixture and bundled preset, through migration', () => {
+  const all = sources();
+  test('there are graphs to check', () => expect(all.length).toBeGreaterThan(30));
+  for (const { name, json } of all) {
+    test(name, () => {
+      const parsed = parseGraph(json);
+      if (!parsed.ok) throw new Error('parse');
+      const info = sample(parsed.graph.data).info;
+      const a2 = analyse(parsed.graph, info);
+      expect(a2.issues).toEqual([]);
+      expect(a2.trainable).toBe(true);
+      expect(a2.totalParams).toBeGreaterThan(0);
+      for (const id of a2.order) {
+        expect(a2.shape[id], `${id} shape`).toBeDefined();
       }
-      return o;
-    };
-    const a = analyse(deepFreeze(spec()), reg);
-    expect(a.trainable).toBe(true);
-    expect(a.totalParams).toBe(13);
-  });
+      // roles: L is a single number, every ŷ is in the model region
+      expect(a2.lossNode).not.toBeNull();
+      expect(a2.shape[a2.lossNode ?? '']).toEqual({ kind: 'scalar' });
+      for (const p of a2.predictions) expect(a2.region[p]).toBe('model');
+    });
+  }
 });
