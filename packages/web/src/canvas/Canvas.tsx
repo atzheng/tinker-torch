@@ -349,6 +349,19 @@ export function Canvas() {
           Reset view
         </button>
       )}
+      {!isNeuron &&
+        (
+          [
+            ['left', t.tx < -1],
+            ['right', t.tx + layout.size[0] * t.scale > view.w + 1],
+            ['top', t.ty < HEADER_H - 1],
+            ['bottom', t.ty + layout.size[1] * t.scale > view.h + 1],
+          ] as const
+        ).map(([edge, on]) =>
+          on ? (
+            <div key={edge} className="tk-clip" data-edge={edge} data-testid={`clip-${edge}`} />
+          ) : null,
+        )}
       <svg
         className="tk-svg"
         width={view.w}

@@ -577,3 +577,38 @@ path.tk-hit {
   font: var(--fs-lg) var(--font);
   pointer-events: none;
 }
+
+/* Soft fade on the edges where the drawing is clipped (tinker-mg9); never catches pointers. */
+.tk-clip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+}
+.tk-clip[data-edge='left'],
+.tk-clip[data-edge='right'] {
+  top: 0;
+  bottom: 0;
+  width: 28px;
+}
+.tk-clip[data-edge='top'],
+.tk-clip[data-edge='bottom'] {
+  left: 0;
+  right: 0;
+  height: 28px;
+}
+.tk-clip[data-edge='left'] {
+  left: 0;
+  background: linear-gradient(to right, var(--bg), transparent);
+}
+.tk-clip[data-edge='right'] {
+  right: 0;
+  background: linear-gradient(to left, var(--bg), transparent);
+}
+.tk-clip[data-edge='top'] {
+  top: 44px;
+  background: linear-gradient(to bottom, var(--bg), transparent);
+}
+.tk-clip[data-edge='bottom'] {
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg), transparent);
+}
