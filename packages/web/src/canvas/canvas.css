@@ -423,6 +423,9 @@ path.tk-hit {
   font: 14px var(--font);
   cursor: pointer;
 }
+.tk-resetview {
+  left: 104px;
+}
 .tk-grain[aria-pressed='true'] {
   background: var(--accent);
   border-color: var(--accent);
