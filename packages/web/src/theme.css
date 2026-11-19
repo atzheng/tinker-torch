@@ -190,7 +190,11 @@ select {
    (--ctl-fill), fields are inset (--ctl-field-bg), both outlined with --ctl-border. Accent border
    on hover, pressed fill on press, accent fill for a pressed toggle, the focus ring above, 0.5
    opacity when disabled. Components that need a bare button set border: 0 and a transparent fill. */
-:where(button, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'])) {
+:where(
+  button,
+  select,
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'])
+) {
   color: var(--ctl-fg);
   border: 1px solid var(--ctl-border);
   border-radius: var(--radius);
@@ -204,7 +208,12 @@ select {
 :where(input[type='checkbox'], input[type='radio'], input[type='range']) {
   accent-color: var(--accent);
 }
-:where(button:not(:disabled), select:not(:disabled), input[type='checkbox']:not(:disabled), input[type='range']:not(:disabled)) {
+:where(
+  button:not(:disabled),
+  select:not(:disabled),
+  input[type='checkbox']:not(:disabled),
+  input[type='range']:not(:disabled)
+) {
   cursor: pointer;
 }
 :where(input[type='text'], input[type='number']):not(:disabled) {

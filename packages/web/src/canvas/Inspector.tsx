@@ -82,7 +82,11 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
           </TexText>
         </p>
       )}
-      {inW !== undefined && node.type !== 'linear' && <p className="tk-diag" data-testid="inspector-width-in">Width {inW}</p>}
+      {inW !== undefined && node.type !== 'linear' && (
+        <p className="tk-diag" data-testid="inspector-width-in">
+          Width {inW}
+        </p>
+      )}
       <Fields node={node} />
       {(!pinLive(graph, 'pred', node.id) || !pinLive(graph, 'loss', node.id)) && (
         <div className="tk-pin-actions">
@@ -277,9 +281,15 @@ function UnitInspector(p: {
       </h2>
       <p className="tk-muted">{PIECE_LABEL[n.type]}</p>
       {n.type === 'linear' && inW !== undefined && (
-        <p data-testid="inspector-fanin" className="tk-diag">{inW} incoming weights</p>
+        <p data-testid="inspector-fanin" className="tk-diag">
+          {inW} incoming weights
+        </p>
       )}
-      {b !== undefined && <p data-testid="inspector-bias" className="tk-diag">Bias {b.toFixed(4)}</p>}
+      {b !== undefined && (
+        <p data-testid="inspector-bias" className="tk-diag">
+          Bias {b.toFixed(4)}
+        </p>
+      )}
       {b !== undefined && (
         <ValueField
           testid="inspector-bias-input"
