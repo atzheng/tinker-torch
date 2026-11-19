@@ -1,9 +1,11 @@
 import { useStore } from '../../state/store.js';
+import { featureName } from '../../state/names.js';
 import type { NodeOf } from './types.js';
 
 /** Inspector settings of an Input piece: one checkbox per dataset column (at least one stays on). */
 export function InputFields({ node }: { node: NodeOf<'input'> }) {
-  const columns = useStore((s) => s.dataInfo.columns);
+  const info = useStore((s) => s.dataInfo);
+  const columns = info.columns;
   const setInputColumns = useStore((s) => s.setInputColumns);
   const toggle = (c: string, on: boolean) =>
     setInputColumns(node.id, on ? [...node.columns, c] : node.columns.filter((x) => x !== c));
@@ -25,7 +27,7 @@ export function InputFields({ node }: { node: NodeOf<'input'> }) {
               disabled={on && node.columns.length === 1}
               onChange={(e) => toggle(c, e.target.checked)}
             />
-            <span>{c}</span>
+            <span>{featureName(info, c)}</span>
           </label>
         );
       })}

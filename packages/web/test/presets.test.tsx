@@ -2,7 +2,7 @@
 import { beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { analyse, deleteNode, layoutLayers, sample, setSetting } from '@tinker/core';
+import { analyse, deleteNode, layoutLayers, loadRealSet, sample, setSetting } from '@tinker/core';
 import { LAYER_FIT_MIN_SCALE } from '../src/canvas/viewport.js';
 import { initialGraph as defaultGraph } from '../src/state/graphSlice.js';
 import { PRESET_NAMES, bundledPreset } from '../src/presets/index.js';
@@ -26,7 +26,8 @@ function presetText(extra: Record<string, unknown>): string {
   return JSON.stringify({ ...g, ...extra });
 }
 
-test('every bundled preset parses, is titled, has no prompt and analyses as trainable', () => {
+test('every bundled preset parses, is titled, has no prompt and analyses as trainable', async () => {
+  await loadRealSet('iris');
   expect(PRESET_NAMES).toEqual([
     'linear',
     'logistic',
@@ -36,6 +37,7 @@ test('every bundled preset parses, is titled, has no prompt and analyses as trai
     'softmax',
     'scalar',
     'mlp',
+    'iris',
   ]);
   for (const name of PRESET_NAMES) {
     const f = bundledPreset(name);

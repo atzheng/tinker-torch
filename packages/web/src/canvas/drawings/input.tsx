@@ -1,14 +1,13 @@
 import { NodeShell } from './NodeShell.js';
+import { useStore } from '../../state/store.js';
+import { inputLine } from '../../state/names.js';
 import { InputFields } from './InputFields.js';
 import type { WebPiece } from './types.js';
 
-const MAX_SHOWN = 3;
-
 /** Layer drawing: the shared node in the input role, badge x, the selected columns as its secondary line. */
 export const inputPiece: WebPiece<'input'> = {
-  Layer: ({ node, w, h, scale }) => {
-    const shown = node.columns.slice(0, MAX_SHOWN);
-    const more = node.columns.length - shown.length;
+  Layer: function InputLayer({ node, w, h, scale }) {
+    const info = useStore((s) => s.dataInfo);
     return (
       <NodeShell
         piece="input"
@@ -19,7 +18,7 @@ export const inputPiece: WebPiece<'input'> = {
         scale={scale}
         name="Input"
         glyph="x"
-        secondary={[shown.join(' ') + (more > 0 ? ` +${more}` : '')]}
+        secondary={[inputLine(info, node.columns, w - 48)]}
         inPorts={0}
         outPort
       />

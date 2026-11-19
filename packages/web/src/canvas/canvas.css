@@ -715,3 +715,120 @@ path.tk-hit {
     animation: none;
   }
 }
+
+/* Weight inspector (tinker-fn5, CONTRACTS.md section 10). A panel over the upper right of the canvas, clear of the piece inspector below the selected piece in most drawings. */
+.tk-weights {
+  position: absolute;
+  z-index: 3;
+  right: 8px;
+  bottom: 8px;
+  max-width: min(640px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  font-size: 13px;
+}
+.tk-weights p {
+  margin: 4px 0;
+}
+.tk-inspect-weights {
+  margin-top: 8px;
+}
+.tk-wscroll {
+  overflow: auto;
+  min-height: 0;
+  max-height: 52vh;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 2px;
+}
+.tk-wrow {
+  display: grid;
+  grid-template-columns: 76px repeat(var(--wcols), 40px);
+  gap: 2px;
+}
+.tk-wbias {
+  margin-top: 4px;
+}
+.tk-whead,
+.tk-wrowname {
+  position: sticky;
+  background: var(--surface);
+  z-index: 1;
+}
+.tk-whead {
+  top: 0;
+}
+.tk-wrowname {
+  left: 0;
+}
+.tk-wlabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--diag-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 28px;
+}
+.tk-wcolname {
+  text-align: center;
+}
+.tk-wcell {
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--cell-bg);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: default;
+  touch-action: pan-x pan-y;
+}
+/* A control: the outline and ns-resize cursor say it can be dragged or typed over. */
+.tk-wcell[data-editable='true'] {
+  border-color: var(--ctl-border);
+  cursor: ns-resize;
+}
+.tk-wcell[data-editable='true']:hover {
+  border-color: var(--accent);
+}
+.tk-wcell[data-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  touch-action: none;
+}
+.tk-wpagers {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.tk-wpager {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tk-wreadout {
+  min-height: 1.4em;
+}
+@media (pointer: coarse) {
+  .tk-wcell {
+    height: 36px;
+  }
+  .tk-wlabel {
+    line-height: 36px;
+  }
+  .tk-wrow {
+    grid-template-columns: 76px repeat(var(--wcols), 44px);
+  }
+}

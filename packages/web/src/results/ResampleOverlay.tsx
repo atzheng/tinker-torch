@@ -1,3 +1,4 @@
+import { isRealSet } from '@tinker/core';
 import type { PlotColors } from '../plot/color.js';
 import type { Scale } from '../plot/axes.js';
 import { useStore } from '../state/store.js';
@@ -74,9 +75,12 @@ const fmt = (v: number) => (Number.isFinite(v) ? v.toPrecision(3) : 'n/a');
 
 /** The button for the results header. Disabled while a run is going or the graph cannot train. */
 export function ResampleButton() {
+  // Resampling redraws a generator's data: a real dataset has fixed rows and no truth.
+  const real = useStore((s) => isRealSet(s.graph.data.set));
   const status = useOverlay((s) => s.status);
   const canTrain = useStore((s) => s.canTrain);
   const busy = status === 'busy';
+  if (real) return null;
   return (
     <>
       {status === 'done' && (

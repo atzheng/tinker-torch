@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import type { DatasetName } from '@tinker/core';
+import { BUNDLED, REAL_META, isRealSet, type DatasetName } from '@tinker/core';
 import { useStore } from '../state/store.js';
+import { CsvDialog } from './CsvDialog.js';
 import { Popover } from './Popover.js';
+import { SourcesDialog } from './SourcesDialog.js';
 import styles from './DataControls.module.css';
 
 const GROUPS: { label: string; sets: { name: DatasetName; label: string }[] }[] = [
@@ -38,6 +40,10 @@ const GROUPS: { label: string; sets: { name: DatasetName; label: string }[] }[] 
       { name: 'blobs3', label: 'Three blobs' },
       { name: 'spiral3', label: 'Three spirals' },
     ],
+  },
+  {
+    label: 'Classic datasets',
+    sets: BUNDLED.map((name) => ({ name, label: REAL_META[name].title })),
   },
 ];
 
@@ -96,6 +102,11 @@ export function DataControls() {
   const data = useStore((s) => s.graph.data);
   const setData = useStore((s) => s.setData);
   const resample = useStore((s) => s.resample);
+  const chooseSet = useStore((s) => s.chooseSet);
+  const csvName = useStore((s) => s.csvName);
+  const size = useStore((s) => s.dataset.nTrain + s.dataset.nVal);
+  const [dialog, setDialog] = useState<'csv' | 'sources' | null>(null);
+  const real = isRealSet(data.set);
   return (
     <div className={styles.row} data-testid="data-controls">
       <label className={styles.field}>
@@ -103,7 +114,7 @@ export function DataControls() {
         <select
           data-testid="data-set"
           value={data.set}
-          onChange={(e) => setData({ set: e.target.value as DatasetName })}
+          onChange={(e) => void chooseSet(e.target.value as DatasetName)}
         >
           {GROUPS.map((g) => (
             <optgroup key={g.label} label={g.label}>
@@ -114,66 +125,107 @@ export function DataControls() {
               ))}
             </optgroup>
           ))}
+          {csvName !== null && (
+            <optgroup label="Your file">
+              <option value="csv">{csvName}</option>
+            </optgroup>
+          )}
         </select>
       </label>
-      <NumField
-        label="n"
-        testid="data-n"
-        value={data.n}
-        min={10}
-        max={500}
-        step={10}
-        integer
-        onCommit={(n) => setData({ n })}
-      />
+      {real ? (
+        // A real dataset has a fixed number of rows: n shows it and cannot be changed.
+        <label className={styles.field}>
+          <span>n</span>
+          <input type="number" data-testid="data-n" value={size} disabled readOnly />
+        </label>
+      ) : (
+        <NumField
+          label="n"
+          testid="data-n"
+          value={data.n}
+          min={10}
+          max={500}
+          step={10}
+          integer
+          onCommit={(n) => setData({ n })}
+        />
+      )}
       <Popover
         label="Data"
         ariaLabel="More data settings"
         buttonTestId="data-more"
         panelTestId="data-more-panel"
       >
-        <NumField
-          label="Noise"
-          testid="data-noise"
-          value={data.noise}
-          min={0}
-          max={1}
-          step={0.05}
-          onCommit={(noise) => setData({ noise })}
-        />
-        <NumField
-          label="Val %"
-          testid="data-val"
-          value={data.val}
-          min={0}
-          max={0.5}
-          step={5}
-          scale={100}
-          onCommit={(val) => setData({ val })}
-        />
-        <NumField
-          label="Seed"
-          testid="data-seed"
-          value={data.seed}
-          min={-2147483648}
-          max={4294967295}
-          step={1}
-          integer
-          onCommit={(seed) => setData({ seed })}
-        />
-        <label className={styles.check}>
-          <input
-            type="checkbox"
-            data-testid="data-standardize"
-            checked={data.standardize}
-            onChange={(e) => setData({ standardize: e.target.checked })}
-          />
-          <span>Standardise</span>
-        </label>
+        {(close) => (
+          <>
+            {!real && (
+              <NumField
+                label="Noise"
+                testid="data-noise"
+                value={data.noise}
+                min={0}
+                max={1}
+                step={0.05}
+                onCommit={(noise) => setData({ noise })}
+              />
+            )}
+            <NumField
+              label="Val %"
+              testid="data-val"
+              value={data.val}
+              min={0}
+              max={0.5}
+              step={5}
+              scale={100}
+              onCommit={(val) => setData({ val })}
+            />
+            <NumField
+              label="Seed"
+              testid="data-seed"
+              value={data.seed}
+              min={-2147483648}
+              max={4294967295}
+              step={1}
+              integer
+              onCommit={(seed) => setData({ seed })}
+            />
+            <label className={styles.check}>
+              <input
+                type="checkbox"
+                data-testid="data-standardize"
+                checked={data.standardize}
+                onChange={(e) => setData({ standardize: e.target.checked })}
+              />
+              <span>Standardise</span>
+            </label>
+            <button
+              type="button"
+              data-testid="data-open-csv"
+              onClick={() => {
+                close();
+                setDialog('csv');
+              }}
+            >
+              Open CSV…
+            </button>
+            <button
+              type="button"
+              data-testid="data-sources"
+              onClick={() => {
+                close();
+                setDialog('sources');
+              }}
+            >
+              Sources
+            </button>
+          </>
+        )}
       </Popover>
       <button type="button" data-testid="data-resample" onClick={resample}>
         Resample
       </button>
+      {dialog === 'csv' && <CsvDialog onClose={() => setDialog(null)} />}
+      {dialog === 'sources' && <SourcesDialog onClose={() => setDialog(null)} />}
     </div>
   );
 }

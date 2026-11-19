@@ -26,6 +26,7 @@ import {
 } from './dnd.js';
 import { lockedIds } from '../state/locks.js';
 import { Inspector } from './Inspector.js';
+import { WeightInspector } from './WeightInspector.js';
 import { PinDisc } from './PinMark.js';
 import { LayerView } from './LayerView.js';
 import { NeuronView, UNIT_BTN_ROOM } from './NeuronView.js';
@@ -748,6 +749,7 @@ export function Canvas() {
           />
         );
       })}
+      <WeightInspector />
       {selection && anchor && (
         <div className="tk-inspector-pos" style={{ ...anchor, width: INSPECTOR_W }}>
           <Inspector

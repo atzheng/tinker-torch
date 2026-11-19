@@ -43,6 +43,12 @@ export type ViewSlice = {
   /** The node whose ŷ pin the results plots draw; null (or a node that is no longer a ŷ): the first pin. See `plotIndex`. */
   plotPrediction: NodeId | null;
   setPlotPrediction: (id: NodeId | null) => void;
+  /**
+   * The piece whose weight inspector is open (tinker-fn5), or null. A Linear, Weight or Bias; it
+   * may name a piece that no longer exists (the panel then shows nothing). View state only.
+   */
+  weightsOf: NodeId | null;
+  openWeights: (id: NodeId | null) => void;
   /** Switch grain. A selected edge or unit exists only in neuron view, so it is cleared. */
   setGrain: (grain: Grain) => void;
   /**
@@ -76,6 +82,8 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
   grain: 'layer',
   plotPrediction: null,
   setPlotPrediction: (plotPrediction) => set({ plotPrediction }),
+  weightsOf: null,
+  openWeights: (weightsOf) => set({ weightsOf }),
   setGrain: (grain) =>
     set((s) => ({
       grain,

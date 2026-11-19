@@ -67,6 +67,7 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
   const graph = useStore((s) => s.graph);
   const apply = useStore((s) => s.apply);
   const select = useStore((s) => s.select);
+  const openWeights = useStore((s) => s.openWeights);
   const pin = (role: 'pred' | 'loss') => {
     const opts = { locked: lockedIds() };
     const r = role === 'pred' ? addPrediction(graph, node.id, opts) : setLoss(graph, node.id, opts);
@@ -92,6 +93,16 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
         </p>
       )}
       <Fields node={node} />
+      {(node.type === 'linear' || node.type === 'scalew' || node.type === 'bias') && (
+        <button
+          type="button"
+          className="tk-inspect-weights"
+          data-testid="inspector-open-weights"
+          onClick={() => openWeights(node.id)}
+        >
+          Inspect weights
+        </button>
+      )}
       {(!pinLive(graph, 'pred', node.id) || !pinLive(graph, 'loss', node.id)) && (
         <div className="tk-pin-actions">
           {!pinLive(graph, 'pred', node.id) && (
