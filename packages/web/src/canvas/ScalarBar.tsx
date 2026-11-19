@@ -1,11 +1,11 @@
 import type { Analysis, Graph } from '@tinker/core';
-import { findLinearGroups } from '@tinker/core';
-import { useMemo } from 'react';
+
 import {
   expandSelected,
   expandTarget,
   groupSelected,
   hasScalarForm,
+  linearGroups,
 } from '../state/scalarActions.js';
 import type { Selection } from '../state/viewSlice.js';
 import { Tex } from '../tex/Tex.js';
@@ -25,7 +25,7 @@ export function ScalarBar(p: {
   onPreview: (on: boolean) => void;
 }) {
   const { graph, analysis, selection } = p;
-  const groups = useMemo(() => findLinearGroups(graph, analysis), [graph, analysis]);
+  const groups = linearGroups(graph, analysis);
   const canExpand = expandTarget(graph, selection) !== null;
   if (!hasScalarForm(graph, analysis)) return null;
   return (

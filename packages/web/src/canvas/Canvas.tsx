@@ -6,7 +6,6 @@ import {
   inputPortsOf as inputPortsOfType,
   layoutLayers,
   layoutNeurons,
-  findLinearGroups,
   parsePort,
   type LayerLayout,
 } from '@tinker/core';
@@ -32,7 +31,7 @@ import { LayerView } from './LayerView.js';
 import { NeuronView, UNIT_BTN_ROOM } from './NeuronView.js';
 import { Toast } from './Toast.js';
 import { ScalarBar } from './ScalarBar.js';
-import { pickGroup } from '../state/scalarActions.js';
+import { linearGroups, pickGroup } from '../state/scalarActions.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
 import { useViewGestures } from './useViewGestures.js';
@@ -285,7 +284,7 @@ export function Canvas() {
       // No drag: outline the pieces Group into Linear would replace, while its button is hovered
       // or focused, or while one of them is selected (tinker-9io.7).
       if (drag || isNeuron) return null;
-      const ids = pickGroup(findLinearGroups(graph, analysis), selection);
+      const ids = pickGroup(linearGroups(graph, analysis), selection);
       const inside = selection?.kind === 'node' && ids?.includes(selection.id) === true;
       if (!ids || !(previewGroup || inside)) return null;
       const set = new Set(ids);

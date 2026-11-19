@@ -133,3 +133,41 @@ test('pickGroup prefers the group holding the selection', () => {
   expect(pickGroup(groups, null)).toEqual(['a', 'b']);
   expect(pickGroup([], null)).toBeNull();
 });
+
+test('undo and redo after more training return step, losses and history with the weights', () => {
+  for (let i = 0; i < 3; i++) s().stepOnce();
+  const edit = { step: s().step, hist: s().history.length };
+  groupSelected();
+  for (let i = 0; i < 4; i++) s().stepOnce();
+  expect(s().step).toBe(edit.step + 4);
+  const trained = s().trainLoss;
+  s().undo();
+  expect(s().step).toBe(edit.step);
+  expect(s().history.length).toBe(edit.hist);
+  expect(s().history.at(-1)?.step).toBe(edit.step);
+  expect(s().trainLoss).not.toBe(trained);
+  const lossBack = s().trainLoss;
+  expect(Number.isFinite(lossBack)).toBe(true);
+  s().redo();
+  expect(s().step).toBe(edit.step);
+  expect(s().trainLoss).toBe(lossBack); // same weights, same loss
+});
+
+test('the carried weights are the exact current ones (no lost steps)', () => {
+  for (let i = 0; i < 3; i++) s().stepOnce();
+  const exact = s().currentHost();
+  expect(exact).not.toBeNull();
+  groupSelected();
+  const lin = s().graph.nodes.find((n) => n.type === 'linear')?.id ?? '';
+  expect(Array.from(s().host?.[lin]?.['b'] ?? [])).toEqual(Array.from(exact?.['b']?.['b'] ?? []));
+});
+
+test('group is refused after a divergence', () => {
+  s().setLearningRate(1e30);
+  for (let i = 0; i < 200 && !s().diverged; i++) s().stepOnce();
+  expect(s().diverged).toBe(true);
+  const g = s().graph;
+  expect(groupSelected()).toBe(false);
+  expect(s().graph).toBe(g);
+  expect(s().error).toMatch(/Reset first/);
+});

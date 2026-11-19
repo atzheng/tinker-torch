@@ -83,8 +83,19 @@ export function attachWeightHistory(store: StoreApi<Store>): void {
  * `scalarHostFor` on every graph change; it answers when the change crosses a record (the edit itself,
  * its undo, its redo), so graph and parameters move in one step. Like hand edits, weights trained
  * between the edit and its undo are not part of undo.
+ *
+ * Records are keyed by graph OBJECT identity: whoever holds the graph that `recordScalarEdit` was
+ * given (the history, the store) must not clone it, or the record is no longer found.
  */
-type ScalarRecord = { prev: Graph; before: HostParams; after: HostParams; generation: number };
+type ScalarRecord = {
+  prev: Graph;
+  before: HostParams;
+  after: HostParams;
+  /** The step count at the edit: undo and redo return the run to it (the weights are those of that step). */
+  step: number;
+  generation: number;
+};
+export type ScalarCarry = { host: HostParams; step: number };
 const scalarRecords = new WeakMap<Graph, ScalarRecord>();
 
 export function recordScalarEdit(
@@ -92,15 +103,20 @@ export function recordScalarEdit(
   next: Graph,
   before: HostParams,
   after: HostParams,
+  step: number,
 ): void {
-  scalarRecords.set(next, { prev, before, after, generation });
+  scalarRecords.set(next, { prev, before, after, step, generation });
 }
 
 /** The parameters for a move of the graph from `from` to `to` when it crosses a scalar-edit record. */
-export function scalarHostFor(from: Graph, to: Graph): HostParams | null {
+export function scalarHostFor(from: Graph, to: Graph): ScalarCarry | null {
   const undone = scalarRecords.get(from);
-  if (undone && undone.prev === to && undone.generation === generation) return undone.before;
+  if (undone && undone.prev === to && undone.generation === generation) {
+    return { host: undone.before, step: undone.step };
+  }
   const redone = scalarRecords.get(to);
-  if (redone && redone.prev === from && redone.generation === generation) return redone.after;
+  if (redone && redone.prev === from && redone.generation === generation) {
+    return { host: redone.after, step: redone.step };
+  }
   return null;
 }
