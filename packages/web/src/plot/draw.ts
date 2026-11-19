@@ -63,7 +63,13 @@ export function drawAxes(
   ctx.restore();
 }
 
-export type LegendItem = { label: string; color: string; kind: 'line' | 'dot' | 'ring' | 'dash' };
+export type LegendItem = {
+  label: string;
+  color: string;
+  kind: 'line' | 'dot' | 'ring' | 'dash';
+  /** Swatch opacity, for a faint series. Default 1. */
+  alpha?: number;
+};
 
 /** Legend row inside the top-left of the plot area. */
 export function drawLegend(
@@ -82,6 +88,7 @@ export function drawLegend(
     ctx.strokeStyle = it.color;
     ctx.fillStyle = it.color;
     ctx.lineWidth = 2;
+    ctx.globalAlpha = it.alpha ?? 1;
     ctx.setLineDash(it.kind === 'dash' ? [4, 3] : []);
     if (it.kind === 'line' || it.kind === 'dash') {
       ctx.beginPath();
@@ -98,6 +105,7 @@ export function drawLegend(
       }
     }
     ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
     ctx.fillStyle = c.text;
     ctx.fillText(it.label, x + 19, y);
     x += 19 + ctx.measureText(it.label).width + 12;
