@@ -150,6 +150,10 @@ The negative control is reported as a leak, so the check can fail. The same resu
 
 **This becomes `Engine.liveArrays()`.** Proposed implementation: `createEngine()` installs the `Map.prototype.set` hook, then loads jax-js with a dynamic `import()` (so no jax import precedes it), and `liveArrays()` returns the captured map's size. It is only for tests: the engine leak test warms up once, then asserts the count after N steps equals the count after the warm-up. The hook is fragile because it depends on a private data structure of jax-js 0.1.27, so the pinned version matters and the test fails loudly (count stays 0) if the structure changes. An upstream request for a public live-buffer count would remove the hack.
 
+## 4b. Local patch of jax-js 0.1.27 (tinker-d7c)
+
+`patches/@jax-js__jax@0.1.27.patch` (applied by `pnpm patchedDependencies` in `pnpm-workspace.yaml`) fixes three memory leaks in `dist/index.js` and `dist/index.cjs`: `partialEvalFlat` never popped its trace frame, `Jaxpr.getHash` hashed nested Jaxprs with their Var ids (so `jitCompileCache` got a new entry per retrace), and the vmap/jvp/transpose Jaxpr caches were strong `Map`s. Without it 1000 compile + step + trainMany cycles retain about 1 GB; with it about 1 MB. The draft upstream report is `docs/jax-js-upstream-issue.md`. The patch is dropped on upgrade: when bumping `@jax-js/jax`, re-run the memory test in `packages/engine/test/dispose.test.ts` without the patch to see whether upstream fixed it, and only then port or remove the patch.
+
 ## 5. Proposed changes to CONTRACTS.md section 7
 
 Section 7 is not impossible as written, so it is not edited here. Proposed text for the engine bead to adopt:
