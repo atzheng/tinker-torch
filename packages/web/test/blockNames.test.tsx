@@ -7,6 +7,7 @@ import { Canvas } from '../src/canvas/Canvas.js';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { editSetting } from '../src/canvas/drawings/fields.js';
 import { useStore } from '../src/state/store.js';
+import { ACTIVATION_LABEL } from '../src/canvas/drawings/activation.js';
 import { fitName, MIN_TEXT_PX } from '../src/canvas/pure.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -97,11 +98,13 @@ function crosses(p: readonly [number, number], q: readonly [number, number], r: 
 test('neuron view: the name strip above each unit column crosses no weight edge, wire, unit or box', () => {
   const g = initialGraph();
   const layout = layoutNeurons(g, analyse(g, sample(g.data).info));
-  const half = 18; // the name is centred on the column and at most one column (36 units) wide
   let strips = 0;
   for (const [id, b] of Object.entries(layout.boxes)) {
     if (!layout.units.some((u) => u.node === id)) continue;
     strips++;
+    const node = g.nodes.find((n) => n.id === id);
+    const label = node?.type === 'activation' ? ACTIVATION_LABEL[node.fn] : node?.type;
+    const half = Math.min(LAYOUT.unitNameW, (label?.length ?? 6) * 13 * 0.52) / 2; // estimated text width
     const r: Rect = { x: b.x + b.w / 2 - half, y: b.y, w: 2 * half, h: LAYOUT.unitLabelH };
     for (const e of layout.edges) expect(crosses(e.from, e.to, r), `edge near ${id}`).toBe(false);
     for (const w of layout.wires) {

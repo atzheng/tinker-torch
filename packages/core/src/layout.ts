@@ -42,6 +42,8 @@ export const LAYOUT = {
   unitPitch: 44,
   /** Height reserved above a unit column for the piece's name (neuron view). */
   unitLabelH: 20,
+  /** Widest a unit-column name may be: it reaches into the gaps either side, clear of the wires at mid-gap. */
+  unitNameW: 132,
   /** Space between rows. */
   rowGap: 24,
   /** Distance between skip-wire lanes, and outer margin. */
