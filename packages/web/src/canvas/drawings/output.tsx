@@ -1,5 +1,6 @@
 import type { OutputLink } from '@tinker/core';
 import { SelectField, editSetting } from './fields.js';
+import { legibleAt } from '../pure.js';
 import type { WebPiece } from './types.js';
 
 const LINKS: readonly (readonly [OutputLink, string])[] = [
@@ -10,7 +11,7 @@ const LINKS: readonly (readonly [OutputLink, string])[] = [
 
 /** Layer drawing: a dot labelled y-hat (with the link name when it is not the raw value). */
 export const outputPiece: WebPiece<'output'> = {
-  Layer: ({ node, w, h }) => (
+  Layer: ({ node, w, h, scale }) => (
     <g data-piece="output">
       <circle className="tk-dot" cx={w * 0.3} cy={h / 2} r={8} />
       <text
@@ -21,7 +22,7 @@ export const outputPiece: WebPiece<'output'> = {
       >
         {'ŷ'}
       </text>
-      {node.link !== 'identity' && (
+      {node.link !== 'identity' && legibleAt(scale, 12.5) && (
         <text
           className="tk-text tk-small tk-muted"
           x={w * 0.3 + 16}

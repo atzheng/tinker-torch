@@ -120,3 +120,21 @@ export function truth(set: DatasetName, xRaw: Float32Array): Float32Array {
   }
   return out;
 }
+
+/**
+ * Smooth field for drawing the true class boundary: the zero level set is the boundary and the
+ * sign is positive on class 1. Regression sets return f*(x) (no boundary).
+ */
+export function truthMargin(set: DatasetName, xRaw: Float32Array): Float32Array {
+  const spec = SETS[set];
+  const g = spec.margin ?? ((x: readonly number[]) => spec.f(x) - 0.5);
+  const d = spec.d;
+  const n = Math.floor(xRaw.length / d);
+  const out = new Float32Array(n);
+  const row: number[] = new Array<number>(d).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < d; c++) row[c] = xRaw[i * d + c] ?? 0;
+    out[i] = g(row);
+  }
+  return out;
+}
