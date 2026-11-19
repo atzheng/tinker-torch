@@ -39,6 +39,7 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   'dropout_p0.5': {},
   mlp_tanh_momentum_5steps: {},
   mlp_tanh_adam_5steps: {},
+  mlp_tanh_adam_300steps: {},
 };
 
 /** Skipped until the named bead lands. */

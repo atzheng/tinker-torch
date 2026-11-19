@@ -65,6 +65,7 @@ test('fixtures exist for every listed case', () => {
     'mlp_tanh_sgd_5steps',
     'mlp_tanh_momentum_5steps',
     'mlp_tanh_adam_5steps',
+    'mlp_tanh_adam_300steps',
     'two_param',
   ]) {
     expect(names).toContain(must);

@@ -232,6 +232,36 @@ def init_params(rng, nodes, edges):
     return p
 
 
+class AdamMaxNu(torch.optim.Optimizer):
+    """Adam (b1 .9, b2 .999, eps 1e-8) whose denominator is sqrt(max_t nu_hat_t) + eps, with nu_hat
+    the bias-corrected second moment. The engine's default Adam (CONTRACTS.md section 7). Not
+    torch's amsgrad=True, which maxes the raw nu before bias correction."""
+
+    def __init__(self, params, lr, b1=0.9, b2=0.999, eps=1e-8):
+        super().__init__(params, dict(lr=lr, b1=b1, b2=b2, eps=eps))
+
+    @torch.no_grad()
+    def step(self):
+        for g in self.param_groups:
+            for p in g["params"]:
+                if p.grad is None:
+                    continue
+                st = self.state[p]
+                if not st:
+                    st["t"] = 0
+                    st["mu"] = torch.zeros_like(p)
+                    st["nu"] = torch.zeros_like(p)
+                    st["mx"] = torch.zeros_like(p)
+                st["t"] += 1
+                t = st["t"]
+                st["mu"].mul_(g["b1"]).add_(p.grad, alpha=1 - g["b1"])
+                st["nu"].mul_(g["b2"]).addcmul_(p.grad, p.grad, value=1 - g["b2"])
+                nu_hat = st["nu"] / (1 - g["b2"] ** t)
+                st["mx"] = torch.maximum(st["mx"], nu_hat)
+                mu_hat = st["mu"] / (1 - g["b1"] ** t)
+                p.sub_(g["lr"] * mu_hat / (st["mx"].sqrt() + g["eps"]))
+
+
 def make_case(name, seed, nodes, edges, *, n=6, d=1, ytype="reg",
               optimizer=None, steps=5, lr=0.1, mask_for=None, xscale=1.5,
               zero_weights=(), zero_x_rows=()):
@@ -272,7 +302,9 @@ def make_case(name, seed, nodes, edges, *, n=6, d=1, ytype="reg",
         m2 = Model(nodes, edges, params, maskt)
         opt = {"sgd": lambda ps: torch.optim.SGD(ps, lr=lr),
                "momentum": lambda ps: torch.optim.SGD(ps, lr=lr, momentum=0.9),
-               "adam": lambda ps: torch.optim.Adam(ps, lr=lr)}[optimizer](m2.parameters())
+               # the default Adam keeps the running max of the bias-corrected second moment
+               # (CONTRACTS.md section 7, tinker-df1); torch's amsgrad=True is a different rule
+               "adam": lambda ps: AdamMaxNu(ps, lr=lr)}[optimizer](m2.parameters())
         losses = []
         for _ in range(steps):
             opt.zero_grad()
@@ -372,6 +404,10 @@ def main():
 
     # two-parameter model (1 weight, 1 bias) for the loss-surface view
     add("two_param", mlp(1, [], "tanh"), n=6, d=1)
+
+    # long Adam run: gradients shrink, so the running maximum of the second moment is active
+    # (the 5-step case is identical for plain Adam and the default)
+    add("mlp_tanh_adam_300steps", mlp(2, [3], "tanh"), d=2, optimizer="adam", lr=0.1, n=8, steps=300)
 
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)
