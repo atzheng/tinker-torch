@@ -11,11 +11,12 @@ import {
   dnd,
   dropCandidates,
   editForDrop,
+  outputPortAt,
   resolveDrop,
   type DragPayload,
 } from '../src/canvas/dnd.js';
 import { mlpGraph as initialGraph } from './mlpGraph.js';
-import { PORT_INSET, hitAt, layerHitShapes } from '../src/canvas/pure.js';
+import { hitAt, layerHitShapes } from '../src/canvas/pure.js';
 
 const SCALE = 0.475;
 const info = () => ({ columns: ['x1'], numClasses: 1, n: 10 }) as never;
@@ -165,15 +166,29 @@ test('dragging a wire from an output over a piece targets its nearest input port
   expect(self).toBeNull();
 });
 
-test('output port handles are 32 px squares that win presses at the right edge of their piece', () => {
+test('output port handles are 32 px squares centred on the drawn output dot', () => {
   const { g, a, layout } = setup();
   const outputs = new Set(g.nodes.map((n) => n.id));
   const shapes = layerHitShapes(layout, SCALE, a.edgeWidth, outputs);
+  const r = 16 / SCALE - 0.01; // just inside half of 32 px
   for (const id of outputs) {
-    const b = layout.nodes[id];
-    if (!b) throw new Error(id);
-    const top = hitAt(shapes, b.x + b.w - PORT_INSET, b.y + b.h / 2);
-    expect(top?.kind === 'port' ? top.node : top, id).toBe(id);
+    const at = outputPortAt(layout, id);
+    const port = shapes.find((s) => s.kind === 'port' && s.node === id);
+    if (!at || !port) throw new Error(id);
+    const [cx, cy] = at;
+    expect(port.x + port.w / 2).toBeCloseTo(cx);
+    expect(port.y + port.h / 2).toBeCloseTo(cy);
+    expect(port.w * SCALE).toBeCloseTo(32);
+    // the dot and the target's left half win a press; a wire label to the right is painted above it
+    for (const [x, y] of [
+      [cx, cy],
+      [cx - r, cy],
+      [cx, cy - r],
+      [cx, cy + r],
+    ] as const) {
+      const top = hitAt(shapes, x, y);
+      expect(top?.kind === 'port' ? top.node : top, `${id} at ${x},${y}`).toBe(id);
+    }
   }
 });
 
