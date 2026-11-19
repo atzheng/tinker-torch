@@ -1,108 +1,94 @@
 import { expect, test } from 'vitest';
+import { grid2d } from '@tinker/core';
 import {
-  MIN_HALF,
-  appendPath,
-  axisLabels,
-  contourLevels,
+  column,
   contourSegments,
-  heat,
-  linspace,
-  lossScale,
-  nextRange,
-  twoParams,
-  type Pt,
+  fillGridImage,
+  finiteRange,
+  indexToDomain,
+  makeRamp,
+  parseColor,
+  rampCss,
+  unit,
 } from '../src/plot/surface.js';
 
-test('twoParams: exactly two parameters across nodes, else null', () => {
-  const one = { l: { W: Float32Array.of(2), b: Float32Array.of(-1) } };
-  const r = twoParams(one, ['l']);
-  expect(r?.values).toEqual([2, -1]);
-  expect(r?.axes.map((a) => [a.tensor, a.index])).toEqual([
-    ['W', 0],
-    ['b', 0],
-  ]);
-  expect(twoParams({ l: { W: Float32Array.of(1, 2, 3) } }, ['l'])).toBeNull();
-  expect(twoParams({ l: { W: Float32Array.of(1) } }, ['l'])).toBeNull();
-  const two = { a: { W: Float32Array.of(1) }, b: { W: Float32Array.of(4) } };
-  const t = twoParams(two, ['a', 'b']);
-  expect(t?.values).toEqual([1, 4]);
-  if (t) expect(axisLabels(t.axes)).toEqual(['a weight', 'b weight']);
+test('parseColor reads hex and rgb()', () => {
+  expect(parseColor('#1f5fd1')).toEqual([0x1f, 0x5f, 0xd1]);
+  expect(parseColor('#fff')).toEqual([255, 255, 255]);
+  expect(parseColor('rgb(10, 20, 30)')).toEqual([10, 20, 30]);
+  expect(parseColor('nonsense')).toEqual([128, 128, 128]);
 });
 
-test('nextRange keeps the range while the path stays inside, then re-centres on the current point', () => {
-  const r0 = nextRange(null, [[1, 2]]);
-  expect(r0).toEqual({ a: [1 - MIN_HALF, 1 + MIN_HALF], b: [2 - MIN_HALF, 2 + MIN_HALF] });
-  expect(
-    nextRange(r0, [
-      [1, 2],
-      [2, 3],
-    ]),
-  ).toBe(r0);
-  const r1 = nextRange(r0, [
-    [1, 2],
-    [10, 2],
-  ]);
-  expect(r1?.a).toEqual([10 - 11.25, 10 + 11.25]);
-  expect(r1?.b).toEqual([2 - MIN_HALF, 2 + MIN_HALF]);
-  expect(nextRange(null, [])).toBeNull();
+test('ramp hits its stops and clamps t', () => {
+  const lut = makeRamp(['#000000', '#ff0000', '#ffffff']);
+  expect(rampCss(lut, 0)).toBe('rgb(0,0,0)');
+  expect(rampCss(lut, 1)).toBe('rgb(255,255,255)');
+  expect(rampCss(lut, -5)).toBe('rgb(0,0,0)');
+  expect(rampCss(lut, 9)).toBe('rgb(255,255,255)');
+  expect(rampCss(lut, 0.5)).toMatch(/^rgb\(255,[01],[01]\)$/); // 8-bit quantisation
+  expect(unit(5, 0, 10)).toBe(0.5);
+  expect(Number.isNaN(unit(Number.NaN, 0, 1))).toBe(true);
 });
 
-test('appendPath halves past the cap and keeps the first and last points', () => {
-  let p: Pt[] = [];
-  for (let i = 0; i < 11; i++) p = appendPath(p, [i, i], 10);
-  expect(p.length).toBeLessThanOrEqual(10);
-  expect(p[p.length - 1]).toEqual([10, 10]);
-  expect(p[0]).toEqual([0, 0]);
-});
-
-test('lossScale, contourLevels and heat', () => {
-  expect(lossScale(Float32Array.of(Number.NaN))).toBeNull();
-  const g = Float32Array.from({ length: 100 }, (_, i) => i);
-  const s = lossScale(g);
-  expect(s).toEqual({ min: 0, hi: 90 });
-  const lv = contourLevels(s ?? { min: 0, hi: 1 }, 4);
-  expect(lv).toHaveLength(4);
-  expect(lv.every((v, i) => v > 0 && v < 90 && (i === 0 || v > (lv[i - 1] ?? 0)))).toBe(true);
-  expect(heat(0, { min: 0, hi: 4 })).toBe(0);
-  expect(heat(100, { min: 0, hi: 4 })).toBe(1);
-  expect(heat(1, { min: 0, hi: 4 })).toBeCloseTo(0.5);
-  expect(Number.isNaN(heat(Number.NaN, { min: 0, hi: 4 }))).toBe(true);
-  expect(linspace(-1, 1, 3)).toEqual(Float32Array.of(-1, 0, 1));
-});
-
-test('contourSegments: a bowl gives a ring at the right radius; flat and NaN cells give nothing', () => {
-  const n = 21;
-  const g = new Float32Array(n * n);
-  for (let i = 0; i < n; i++)
-    for (let j = 0; j < n; j++) g[i * n + j] = (i - 10) ** 2 + (j - 10) ** 2;
-  const seg = contourSegments(g, n, n, 25);
-  expect(seg.length).toBeGreaterThan(0);
-  for (let k = 0; k < seg.length; k += 2) {
-    const r = Math.hypot((seg[k] ?? 0) - 10, (seg[k + 1] ?? 0) - 10);
-    expect(Math.abs(r - 5)).toBeLessThan(0.35);
+test('grid image: x1 increases left to right, x2 bottom to top (grid2d order iy*m+ix)', () => {
+  const m = 4;
+  const g = grid2d(
+    [
+      [0, 3],
+      [0, 3],
+    ],
+    m,
+  );
+  // value = x1 on the grid: red channel should rise to the right, constant down a column
+  const v1 = new Float32Array(m * m);
+  const v2 = new Float32Array(m * m);
+  for (let i = 0; i < m * m; i++) {
+    v1[i] = g.xRaw[i * 2] ?? 0;
+    v2[i] = g.xRaw[i * 2 + 1] ?? 0;
   }
-  expect(contourSegments(new Float32Array(n * n), n, n, 1)).toEqual([]);
-  expect(contourSegments(new Float32Array(n * n).fill(Number.NaN), n, n, 1)).toEqual([]);
-  expect(contourSegments(Float32Array.of(2, 0, 0, 2), 2, 2, 1)).toHaveLength(8);
+  const lut = makeRamp(['#000000', '#ffffff']);
+  const img = new Uint8ClampedArray(m * m * 4);
+  const px = (x: number, y: number) => img[(y * m + x) * 4] ?? -1;
+  fillGridImage(img, v1, m, lut, 0, 3);
+  expect(px(0, 0)).toBe(0);
+  expect(px(3, 0)).toBe(255);
+  expect(px(0, 3)).toBe(0);
+  expect(px(1, 2)).toBeLessThan(px(2, 2));
+  fillGridImage(img, v2, m, lut, 0, 3);
+  expect(px(0, 3)).toBe(0); // bottom row is the smallest x2
+  expect(px(0, 0)).toBe(255); // top row is the largest x2
+  expect(px(2, 0)).toBe(px(0, 0));
 });
 
-test('nextRange keeps the last good range when the path runs off (divergence)', () => {
-  const r0 = nextRange(null, [[1, 2]]);
-  const r1 = nextRange(r0, [
-    [1, 2],
-    [1e6, 2],
-  ]);
-  expect(r1).toBe(r0);
-  expect(
-    nextRange(r0, [
-      [1, 2],
-      [Number.NaN, 2],
-    ]),
-  ).toBe(r0);
+test('non-finite grid values stay transparent', () => {
+  const img = new Uint8ClampedArray(4 * 4).fill(7);
+  fillGridImage(img, [Number.NaN, 1, 1, 1], 2, makeRamp(['#000', '#fff']), 0, 1);
+  expect(img[(1 * 2 + 0) * 4 + 3]).toBe(0); // grid (0,0) is the bottom-left pixel
 });
 
-test('axisLabels numbers two weights of one node', () => {
-  const a = { node: 'l', tensor: 'W' as const, index: 0 };
-  expect(axisLabels([a, { ...a, index: 1 }])).toEqual(['weight 1', 'weight 2']);
-  expect(axisLabels([a, { node: 'l', tensor: 'b', index: 0 }])).toEqual(['weight', 'bias']);
+test('contour of a linear ramp is a straight vertical line at the level', () => {
+  const m = 5;
+  const v = new Float32Array(m * m);
+  for (let iy = 0; iy < m; iy++) for (let ix = 0; ix < m; ix++) v[iy * m + ix] = ix / (m - 1);
+  const s = contourSegments(v, m, 0.5);
+  expect(s.length).toBe((m - 1) * 4);
+  for (let i = 0; i < s.length; i += 2) expect(s[i]).toBeCloseTo(2, 6);
+});
+
+test('contour of a step has no segments away from the step and handles saddles', () => {
+  expect(contourSegments([0, 0, 0, 0], 2, 0.5)).toEqual([]);
+  expect(contourSegments([1, 1, 1, 1], 2, 0.5)).toEqual([]);
+  // saddle: bl and tr high -> two segments
+  expect(contourSegments([1, 0, 0, 1], 2, 0.5).length).toBe(8);
+  expect(contourSegments([Number.NaN, 0, 0, 1], 2, 0.5)).toEqual([]);
+});
+
+test('indexToDomain spans the ends; column and finiteRange', () => {
+  expect(indexToDomain(0, 64, -2, 2)).toBe(-2);
+  expect(indexToDomain(63, 64, -2, 2)).toBe(2);
+  const out = new Float32Array(3);
+  expect(Array.from(column(out, new Float32Array([1, 2, 3, 4, 5, 6]), 3, 1))).toEqual([2, 4, 6]);
+  expect(Array.from(column(out, new Float32Array([1, 2, 3]), 3, 1))).toEqual([1, 2, 3]);
+  expect(finiteRange([1, Number.NaN, 3], [-2])).toEqual([-2, 3]);
+  expect(finiteRange([Number.NaN])).toBeNull();
 });

@@ -16,7 +16,7 @@ import {
   type Pt,
   type SurfaceAxis,
   type SurfaceRange,
-} from '../plot/surface.js';
+} from '../plot/lossSurface.js';
 import { useStore } from '../state/store.js';
 import styles from './Results.module.css';
 
