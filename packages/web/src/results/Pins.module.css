@@ -11,24 +11,21 @@
   flex: none;
   min-height: 32px;
   padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
   white-space: nowrap;
-}
-
-.pinBtn:disabled {
-  opacity: 0.5;
 }
 
 .chip {
   position: relative;
   flex: 1 1 0;
   min-width: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ctl-border);
   border-top: 3px solid var(--border); /* colour set inline from the pin's slot */
   border-radius: var(--radius);
-  background: var(--surface-2);
+  background: var(--ctl-fill);
+}
+.chip:has(.load:hover),
+.chip:has(.remove:hover) {
+  outline: 1px solid var(--accent);
 }
 
 .load {
@@ -74,4 +71,7 @@
   color: var(--text-muted);
   font-size: 18px;
   line-height: 1;
+}
+.remove:hover {
+  color: var(--text);
 }

@@ -184,7 +184,7 @@ function FitPlot1D() {
       </div>
       <ResampleReadout />
       {noPrediction && (
-        <p className={styles.readout} data-testid="no-prediction">
+        <p className={`${styles.readout} tk-diag-label`} data-testid="no-prediction">
           No prediction selected.
         </p>
       )}

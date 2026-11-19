@@ -20,17 +20,11 @@
 .bar select {
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
 }
 
-.bar button:disabled,
-.bar select:disabled {
-  opacity: 0.5;
-}
-
-.bar button.primary {
+/* The one filled action (also .tk-primary in theme.css). */
+.bar button.primary,
+.bar button.primary:not(:disabled):hover {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
@@ -51,18 +45,11 @@
 
 .value {
   min-width: 36px;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
 }
 
+/* A diagnostic read-out: the look comes from .tk-diag (theme.css). */
 .stat {
-  color: var(--text-muted);
   font-size: 12px;
-}
-
-.stat b {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
 }
 
 .bar select {
@@ -82,13 +69,7 @@
 }
 
 .diverged {
-  background: var(--error-bg);
-  color: var(--error);
   font-weight: 600;
-}
-
-.issue {
-  color: var(--text-muted);
 }
 
 .diverged {
