@@ -364,6 +364,30 @@ export function labelSize(text: string, scale: number): { fs: number; lw: number
   return { fs, lw: text.length * 0.62 * fs + 0.8 * fs, lh: 1.4 * fs };
 }
 
+/** TeX (no dollars) of a Weight's name: w1 is `w_{1}`, any other id is set upright. */
+export function weightTex(id: NodeId): string {
+  const m = /^w(\d+)$/.exec(id);
+  if (m) return `w_{${m[1]}}`;
+  return id === 'w' ? 'w' : `\\mathrm{${id.replace(/_/g, '\\_')}}`;
+}
+
+/** A weight value as shown in its pill: two decimals, fewer as it grows (the limit is 100). */
+export function fmtWeight(v: number): string {
+  const a = Math.abs(v);
+  return a < 10 ? v.toFixed(2) : a < 100 ? v.toFixed(1) : v.toFixed(0);
+}
+
+/** The text of a weight pill without maths markers, for sizing and labels: `w1 = 0.42`. */
+export function weightPillPlain(id: NodeId, value: number | undefined): string {
+  return value === undefined ? id : `${id} = ${fmtWeight(value)}`;
+}
+
+/** Size in abstract units of a weight pill (a control, so a little roomier than a width label). */
+export function pillSize(text: string, scale: number): { fs: number; lw: number; lh: number } {
+  const fs = 12 / scale;
+  return { fs, lw: (text.length * 0.6 + 1.4) * fs, lh: 2 * fs };
+}
+
 export type HitRect = { x: number; y: number; w: number; h: number };
 export type HitShape =
   | ({ kind: 'node'; id: NodeId } & HitRect)
@@ -375,7 +399,8 @@ export type HitShape =
  * wire label on top, so a label is always tappable. A label's rectangle is at least 32 screen px
  * each way. A piece's is its box, grown to 32 px tall when short, and horizontally only when the box
  * is narrower than 32 px, by at most 6 units, so it never reaches into the gap where labels sit.
- * `widths[i]` is the label text of wire edge i (null: no label, so no label shape). `outputs` lists
+ * `widths[i]` is the label text of wire edge i (null: no label, so no label shape); a wire in
+ * `pills` (edge to the plain text of its weight pill) has a pill instead, sized by `pillSize`. `outputs` lists
  * the pieces that have an output port: each gets a 32 px square at the middle of its right edge,
  * painted above the pieces and below the labels (the handle a wire is dragged from).
  */
@@ -384,6 +409,7 @@ export function layerHitShapes(
   scale: number,
   widths: readonly (number | null | undefined)[],
   outputs: ReadonlySet<NodeId> = new Set(),
+  pills: ReadonlyMap<number, string> = new Map(),
 ): HitShape[] {
   const shapes: HitShape[] = [];
   for (const [id, b] of Object.entries(layout.nodes)) {
@@ -405,9 +431,10 @@ export function layerHitShapes(
   }
   const labels: { shape: HitShape & { kind: 'wire' }; cy: number; half: number }[] = [];
   for (const w of layout.wires) {
+    const pill = pills.get(w.edge);
     const width = widths[w.edge];
-    if (width === null || width === undefined) continue;
-    const { lw, lh } = labelSize(String(width), scale);
+    if (pill === undefined && (width === null || width === undefined)) continue;
+    const { lw, lh } = pill === undefined ? labelSize(String(width), scale) : pillSize(pill, scale);
     const hw = Math.max(lw, HIT_MIN_PX / scale);
     const hh = Math.max(lh, HIT_MIN_PX / scale);
     labels.push({
@@ -447,6 +474,18 @@ export function layerHitShapes(
   }
   for (const l of labels) shapes.push(l.shape);
   return shapes;
+}
+
+/**
+ * The sizing text of every weight pill, by edge: a fixed width per weight (room for `-0.00`), so a
+ * pill does not change size while its value moves.
+ */
+export function pillTexts(layout: LayerLayout): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const w of layout.wires) {
+    if (w.weightNode !== undefined) out.set(w.edge, `${w.weightNode} = -0.00`);
+  }
+  return out;
 }
 
 /** Topmost shape containing the point (abstract units), if any. Mirrors how the browser resolves a press. */

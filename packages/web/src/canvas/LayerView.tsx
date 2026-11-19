@@ -2,12 +2,13 @@ import { useRef, useState, type ComponentType } from 'react';
 import type { Analysis, Graph, HostParams, LayerLayout, Node } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
-import { dnd, inputPortAt, outputPortAt, wireSource, type DndState } from './dnd.js';
+import { dnd, inputEndAt, outputPortAt, wireSource, type DndState } from './dnd.js';
 import {
   edgeIndexOf,
   layerHitShapes,
   pinHitRect,
   pinKey,
+  pillTexts,
   pinsOf,
   placePins,
   pointsToPath,
@@ -15,9 +16,17 @@ import {
 } from './pure.js';
 import { PinMark } from './PinMark.js';
 import { lockedIds } from '../state/locks.js';
-import { addPrediction, inputPortsOf, resolveEdge, setLoss } from '@tinker/core';
+import {
+  addPrediction,
+  inputPortsOf,
+  isVariadicPort,
+  parsePort,
+  resolveEdge,
+  setLoss,
+} from '@tinker/core';
 import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
+import { WeightPill } from './WeightPill.js';
 import type { Selection } from '../state/viewSlice.js';
 import { useStore } from '../state/store.js';
 import { roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
@@ -154,7 +163,8 @@ export function LayerView(p: LayerViewProps) {
   const { graph, analysis, layout, scale } = p;
   const hitPx = p.coarse ? 32 : 20;
   const outputs = new Set(graph.nodes.map((n) => n.id));
-  const shapes = layerHitShapes(layout, scale, analysis.edgeWidth, outputs);
+  const pills = pillTexts(layout);
+  const shapes = layerHitShapes(layout, scale, analysis.edgeWidth, outputs, pills);
   const target = p.drag?.target ?? null;
   const dropEdge = target?.kind === 'wire' ? target.edge : -1;
   const dropNode = target?.kind === 'node' ? target.id : target?.kind === 'port' ? target.node : '';
@@ -170,8 +180,14 @@ export function LayerView(p: LayerViewProps) {
     else hoverTimer.current = setTimeout(() => setHover(-1), 200);
   };
   // The wire a drop would replace: the one already feeding the target port.
+  const targetNode =
+    target?.kind === 'port' ? graph.nodes.find((n) => n.id === target.node) : undefined;
+  const targetPort = target?.kind === 'port' ? parsePort(target.port).port : null;
+  const appends =
+    targetNode !== undefined &&
+    isVariadicPort(targetNode.type, targetPort ?? inputPortsOf(targetNode.type)[0] ?? '');
   const replaced =
-    target?.kind === 'port' && p.drag && p.drag.payload.kind !== 'palette'
+    target?.kind === 'port' && !appends && p.drag && p.drag.payload.kind !== 'palette'
       ? graph.edges.findIndex(
           (e, i) =>
             e[1] === target.port &&
@@ -196,6 +212,20 @@ export function LayerView(p: LayerViewProps) {
   }
   const spots = placePins(layout.nodes, pinMarks, graph.positions !== undefined);
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
+  // A weight wire is its Weight piece: selecting the wire selects the piece (a Weight has no box).
+  const wireSelected = (w: LayerLayout['wires'][number]): boolean =>
+    w.weightNode !== undefined
+      ? sel?.kind === 'node' && sel.id === w.weightNode
+      : selectedEdge === w.edge;
+  const selectWire = (w: LayerLayout['wires'][number]) => {
+    const edge = graph.edges[w.edge];
+    if (w.weightNode !== undefined) p.select({ kind: 'node', id: w.weightNode });
+    else if (edge) p.select({ kind: 'wire', from: edge[0], to: edge[1] });
+  };
+  const weightValue = (id: string): number | undefined => {
+    const v = p.weights?.[id]?.['W'];
+    return v?.length === 1 ? v[0] : undefined;
+  };
   return (
     <g data-testid="layer-view">
       <defs>
@@ -244,7 +274,7 @@ export function LayerView(p: LayerViewProps) {
             labelAt={w.labelAt}
             width={analysis.edgeWidth[w.edge] ?? null}
             error={p.errorEdges.has(w.edge)}
-            selected={selectedEdge === w.edge}
+            selected={wireSelected(w)}
             drop={dropEdge === w.edge}
             valid={cand?.edges.has(w.edge)}
             lifted={lifted === w.edge}
@@ -252,7 +282,7 @@ export function LayerView(p: LayerViewProps) {
             onHover={hoverWire}
             scale={scale}
             hitPx={hitPx}
-            onSelect={() => p.select({ kind: 'wire', from: edge[0], to: edge[1] })}
+            onSelect={() => selectWire(w)}
           />
         );
       })}
@@ -396,8 +426,8 @@ export function LayerView(p: LayerViewProps) {
         graph.nodes.map((node) => {
           const ports = inputPortsOf(node.type);
           if (node.id === src) return null;
-          return ports.map((port, k) => {
-            const at = inputPortAt(layout, node.id, k, ports.length);
+          return ports.map((port) => {
+            const at = inputEndAt(graph, layout, node.id, port, src);
             if (!at) return null;
             const on =
               target?.kind === 'port' &&
@@ -420,6 +450,27 @@ export function LayerView(p: LayerViewProps) {
         const edge = graph.edges[w.edge];
         const hit = shapes.find((s) => s.kind === 'wire' && s.edge === w.edge);
         if (!edge || !hit) return null;
+        if (w.weightNode !== undefined) {
+          return (
+            <WeightPill
+              key={w.edge}
+              node={w.weightNode}
+              edge={w.edge}
+              at={w.labelAt}
+              value={weightValue(w.weightNode)}
+              selected={wireSelected(w)}
+              error={p.errorEdges.has(w.edge)}
+              drop={dropEdge === w.edge}
+              valid={cand?.edges.has(w.edge)}
+              replace={replaced === w.edge}
+              scale={scale}
+              hit={hit}
+              sizing={pills.get(w.edge) ?? w.weightNode}
+              onSelect={() => selectWire(w)}
+              onHover={hoverWire}
+            />
+          );
+        }
         return (
           <WireLabel
             key={w.edge}
@@ -437,7 +488,7 @@ export function LayerView(p: LayerViewProps) {
             scale={scale}
             hitPx={hitPx}
             hit={hit}
-            onSelect={() => p.select({ kind: 'wire', from: edge[0], to: edge[1] })}
+            onSelect={() => selectWire(w)}
           />
         );
       })}
@@ -446,7 +497,7 @@ export function LayerView(p: LayerViewProps) {
         // or selected (touch: tap the wire, then drag its end). It sits just outside the
         // destination piece, so the piece body always wins a press (CONTRACTS section 10).
         // The handle being dragged stays mounted (it holds the pointer capture).
-        if (lifted !== w.edge && (p.drag || (hover !== w.edge && selectedEdge !== w.edge))) {
+        if (lifted !== w.edge && (p.drag || (hover !== w.edge && !wireSelected(w)))) {
           return null;
         }
         const edge = graph.edges[w.edge];
@@ -454,17 +505,17 @@ export function LayerView(p: LayerViewProps) {
         const r = edge ? resolveEdge(graph.nodes, edge) : undefined;
         if (!edge || !end || !r?.ok) return null;
         // A selected (touch) handle is always at least 32 px; a hover (mouse) one is hitPx.
-        const hw = (selectedEdge === w.edge ? Math.max(hitPx, 32) : hitPx) / scale;
+        const hw = (wireSelected(w) ? Math.max(hitPx, 32) : hitPx) / scale;
         return (
           <g
             key={`end-${w.edge}`}
             data-testid={`wire-end-${w.edge}`}
-            data-selected={selectedEdge === w.edge}
+            data-selected={wireSelected(w)}
             className="tk-wire-end"
             onPointerEnter={(e) => e.pointerType === 'mouse' && hoverWire(w.edge)}
             onPointerLeave={(e) => e.pointerType === 'mouse' && hoverWire(-1)}
             onPointerDown={pointerDownWith({
-              onTap: () => p.select({ kind: 'wire', from: edge[0], to: edge[1] }),
+              onTap: () => selectWire(w),
               onStart: (pt) =>
                 dnd.begin(
                   { kind: 'rewire', edge: w.edge, from: r.from.node, to: edge[1] },

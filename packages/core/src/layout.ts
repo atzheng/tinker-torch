@@ -45,6 +45,8 @@ export const LAYOUT = {
   boxH: 56,
   /** Space between columns in layer view (wire labels sit here). */
   layerGap: 72,
+  /** Extra space after a column whose pieces start a weight wire (layer view): its pill sits at mid-gap. */
+  weightGap: 64,
   /** Space between columns in neuron view (weight edges cross it). */
   neuronGap: 150,
   /** Width of a column of unit circles, and the vertical pitch of the circles. */
@@ -356,13 +358,18 @@ function layoutCore(
   skips.forEach((e, k) => laneOf.set(e.index, k));
   const top = LAYOUT.pad + (skips.length > 0 ? skips.length * LAYOUT.lane + LAYOUT.lane : 0);
 
+  // The gap after each column: wider where a weight wire starts, so its pill sits in clear space.
+  const gapAfter: number[] = Array.from({ length: maxCol + 1 }, () => gap);
+  for (const e of edges) {
+    if (e.weight !== undefined) gapAfter[col[e.from] ?? 0] = gap + LAYOUT.weightGap;
+  }
   const colX: number[] = [];
   let x = LAYOUT.pad;
   for (let c = 0; c <= maxCol; c++) {
     colX[c] = x;
-    x += (colW[c] ?? 0) + gap;
+    x += (colW[c] ?? 0) + (gapAfter[c] ?? gap);
   }
-  const width = x - gap + LAYOUT.pad;
+  const width = x - (gapAfter[maxCol] ?? gap) + LAYOUT.pad;
   const rowY: number[] = [];
   let y = top;
   for (let r = 0; r <= maxRow; r++) {
@@ -453,7 +460,7 @@ function layoutCore(
     const y1 = variadicSlotY(b, k, ports.length, slot?.[0] ?? 0, slot?.[1] ?? 1);
     const ca = col[e.from] ?? 0;
     const cb = col[e.to] ?? 0;
-    const gapR = (colX[ca] ?? 0) + (colW[ca] ?? 0) + gap / 2;
+    const gapR = (colX[ca] ?? 0) + (colW[ca] ?? 0) + (gapAfter[ca] ?? gap) / 2;
     let points: [number, number][] = [];
     if (manual.has(e.from) || manual.has(e.to)) {
       const obstacles = nodes.flatMap((n) =>
@@ -463,14 +470,18 @@ function layoutCore(
     } else if (cb - ca === 1) {
       points.push([x0, y0], [gapR, y0], [gapR, y1], [x1, y1]);
     } else {
-      const gapL = (colX[cb] ?? 0) - gap / 2;
+      const gapL = (colX[cb] ?? 0) - (gapAfter[cb - 1] ?? gap) / 2;
       const laneY = top - LAYOUT.lane * (1 + (laneOf.get(e.index) ?? 0));
       points.push([x0, y0], [gapR, y0], [gapR, laneY], [gapL, laneY], [gapL, y1], [x1, y1]);
     }
     wires.push({
       edge: e.index,
       points,
-      labelAt: labelAnchor(points),
+      // A weight's pill sits where its wire turns, mid-gap, clear of both pieces.
+      labelAt:
+        e.weight !== undefined && cb - ca === 1 && !manual.has(e.from) && !manual.has(e.to)
+          ? [gapR, y0]
+          : labelAnchor(points),
       ...(e.weight !== undefined && e.via !== undefined
         ? { weightNode: e.weight, viaEdge: e.via }
         : {}),

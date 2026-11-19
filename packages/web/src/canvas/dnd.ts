@@ -10,23 +10,30 @@
  */
 import {
   CORE_PIECES,
+  LAYOUT,
+  addPiece,
   connect,
   inputPortsOf,
   insertMacro,
+  isVariadicPort,
   insertOnWire,
+  moveNodes,
   movePrediction,
   parsePort,
+  resolveEdge,
   rewireEdge,
   setLoss,
+  variadicSlotY,
   swapPiece,
   type EditResult,
   type Graph,
   type LayerLayout,
+  type NodeBody,
   type NodeId,
   type PaletteEntry,
   type PortRef,
 } from '@tinker/core';
-import { hitAt, layerHitShapes, HIT_MIN_PX, type HitShape } from './pure.js';
+import { hitAt, layerHitShapes, pillTexts, HIT_MIN_PX, type HitShape } from './pure.js';
 
 export type DragPayload =
   | { kind: 'palette'; entry: PaletteEntry }
@@ -45,8 +52,11 @@ export type DropTarget =
   | { kind: 'wire'; edge: number }
   | { kind: 'node'; id: NodeId }
   | { kind: 'port'; node: NodeId; port: PortRef }
-  /** Empty canvas: a ready-made group goes in free-standing. */
-  | { kind: 'free' };
+  /**
+   * Empty canvas: a ready-made group goes in free-standing, and a source piece (Column, Input,
+   * Target) is placed with its box's top-left at `at` (layout units, on the 8-unit grid).
+   */
+  | { kind: 'free'; at?: [number, number] };
 
 /** Position of an output port (right edge, middle) in abstract units. */
 export function outputPortAt(layout: LayerLayout, id: NodeId): [number, number] | undefined {
@@ -54,15 +64,67 @@ export function outputPortAt(layout: LayerLayout, id: NodeId): [number, number] 
   return b ? [b.x + b.w, b.y + b.h / 2] : undefined;
 }
 
-/** Position of input port `k` of `n` (left edge, spread evenly: the layout's rule). */
+/**
+ * Position of input port `k` of `n` (left edge, spread evenly: the layout's rule). For a variadic
+ * port that wires append to, `slot` of `count` is where the wire at that place enters
+ * (`variadicSlotY`); left out, the port's centre.
+ */
 export function inputPortAt(
   layout: LayerLayout,
   id: NodeId,
   k: number,
   n: number,
+  slot = 0,
+  count = 1,
 ): [number, number] | undefined {
   const b = layout.nodes[id];
-  return b ? [b.x, b.y + (b.h * (k + 1)) / (n + 1)] : undefined;
+  return b ? [b.x, variadicSlotY(b, k, n, slot, count)] : undefined;
+}
+
+/**
+ * Where a new wire from `src` would enter port `port` of node `id`. On a variadic port the wire
+ * is appended, so the existing wires and this one share the band, ordered by the sources' heights
+ * (the layout's rule); on any other port it replaces the wire there and enters at the centre.
+ */
+export function inputEndAt(
+  graph: Graph,
+  layout: LayerLayout,
+  id: NodeId,
+  port: string,
+  src: NodeId,
+): [number, number] | undefined {
+  const node = graph.nodes.find((n) => n.id === id);
+  if (!node) return undefined;
+  const ports = inputPortsOf(node.type);
+  const k = Math.max(0, ports.indexOf(port));
+  if (!isVariadicPort(node.type, port)) return inputPortAt(layout, id, k, ports.length);
+  const cy = (n: NodeId) => (layout.nodes[n]?.y ?? 0) + (layout.nodes[n]?.h ?? 0) / 2;
+  const ends = graph.edges.flatMap((e) => {
+    const r = resolveEdge(graph.nodes, e);
+    return r.ok && r.to.node === id && r.to.port === port ? [r.from.node] : [];
+  });
+  const above = ends.filter((n) => cy(n) <= cy(src)).length;
+  return inputPortAt(layout, id, k, ports.length, above, ends.length + 1);
+}
+
+/** Pieces that can be dropped on empty canvas besides the source pieces: the ones a model of scalars is wired from. */
+const SCALAR_PIECES: readonly string[] = ['sum', 'scalew', 'bias'];
+
+/**
+ * Whether a palette entry stands on its own when dropped on empty canvas: a source piece (no input
+ * port: Column, Input, Target) to start a graph from, or a Sum, Weight or Bias to wire up by hand.
+ * Any other piece needs a wire or a piece to land on.
+ */
+export function placeable(entry: PaletteEntry): boolean {
+  if (entry.kind !== 'piece') return false;
+  const type = entry.make().type;
+  return (inputPortsOf(type).length === 0 && type !== 'weights') || SCALAR_PIECES.includes(type);
+}
+
+/** Top-left of a source piece dropped with its centre at `at`, on the 8-unit grid. */
+function placeAt(at: { x: number; y: number }): [number, number] {
+  const snap = (v: number) => Math.round(v / 8) * 8;
+  return [snap(at.x - LAYOUT.boxW / 2), snap(at.y - LAYOUT.boxH / 2)];
 }
 
 /** The reference to write in an edge for input port `port` of `id`: bare for a single-port piece. */
@@ -101,7 +163,7 @@ export function resolveDrop(
   hitPx: number = HIT_MIN_PX,
 ): DropTarget | null {
   const outputs = new Set(graph.nodes.map((n) => n.id));
-  const shapes = layerHitShapes(layout, scale, widths, outputs);
+  const shapes = layerHitShapes(layout, scale, widths, outputs, pillTexts(layout));
   const nodeOf = (s: HitShape | undefined): NodeId | undefined =>
     s?.kind === 'node' ? s.id : s?.kind === 'port' ? s.node : undefined;
 
@@ -156,10 +218,10 @@ export function resolveDrop(
     if (!node || entry.kind === 'macro') return null;
     return CORE_PIECES[node.type].family === entry.family ? { kind: 'node', id } : null;
   }
-  if (!insertable(entry)) return null;
   let best: DropTarget | null = null;
   let bestD = hitPx / 2 / scale;
-  for (const w of layout.wires) {
+  // A piece with no input (a source piece) cannot go on a wire: near one it is still free-standing.
+  for (const w of insertable(entry) ? layout.wires : []) {
     for (let i = 0; i + 1 < w.points.length; i++) {
       const a = w.points[i];
       const b = w.points[i + 1];
@@ -171,8 +233,11 @@ export function resolveDrop(
       }
     }
   }
-  // A ready-made group needs no wire: anywhere else on the canvas puts it in free-standing.
-  return best ?? (entry.kind === 'macro' ? { kind: 'free' } : null);
+  if (best) return best;
+  // A ready-made group needs no wire: anywhere else on the canvas puts it in free-standing, and so
+  // does a source piece or a scalar piece, where it was dropped.
+  if (entry.kind === 'macro') return { kind: 'free' };
+  return placeable(entry) ? { kind: 'free', at: placeAt(at) } : null;
 }
 
 /** Whether the dragged pin may be dropped on node `id`: not on its own node, not on another ŷ for a ŷ. */
@@ -186,12 +251,35 @@ export function pinCanLandOn(
   return pin.role === 'loss' || !graph.predictions.some((p) => parsePort(p).node === id);
 }
 
+/**
+ * Adds a piece on its own with its top-left at `at`. The layout cannot go left of or above its
+ * margin, so a spot beyond it (the drawing is centred in a larger view) moves every piece by the
+ * difference instead, in the same edit: `boxes` are where the pieces are drawn now.
+ */
+function placeFree(
+  graph: Graph,
+  piece: NodeBody,
+  at: readonly [number, number] | undefined,
+  boxes: Readonly<Record<NodeId, { x: number; y: number }>> | undefined,
+): EditResult {
+  const dx = at ? Math.max(0, LAYOUT.pad - at[0]) : 0;
+  const dy = at ? Math.max(0, LAYOUT.pad - at[1]) : 0;
+  if (!at || !boxes || (dx === 0 && dy === 0)) return addPiece(graph, piece, at);
+  const added = addPiece(graph, piece);
+  if (!added.ok || added.select === undefined) return added;
+  const moves: Record<NodeId, [number, number]> = {};
+  for (const [id, b] of Object.entries(boxes)) moves[id] = [b.x + dx, b.y + dy];
+  moves[added.select] = [at[0] + dx, at[1] + dy];
+  const moved = moveNodes(added.graph, moves);
+  return moved.ok ? { ...moved, select: added.select } : moved;
+}
+
 /** The pure edit a drop stands for, or null when the pair makes no edit. */
 export function editForDrop(
   graph: Graph,
   payload: DragPayload,
   target: DropTarget,
-  opts?: { locked?: readonly NodeId[] },
+  opts?: { locked?: readonly NodeId[]; boxes?: Readonly<Record<NodeId, { x: number; y: number }>> },
 ): EditResult | null {
   if (payload.kind === 'wire') {
     return target.kind === 'port' ? connect(graph, payload.from, target.port, opts) : null;
@@ -213,6 +301,8 @@ export function editForDrop(
   const made = entry.make();
   if (target.kind === 'wire') return insertOnWire(graph, target.edge, made, opts);
   if (target.kind === 'node') return swapPiece(graph, target.id, made, opts);
+  if (target.kind === 'free' && placeable(entry))
+    return placeFree(graph, made, target.at, opts?.boxes);
   return null;
 }
 
