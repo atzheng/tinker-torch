@@ -17,6 +17,26 @@ export function legibleAt(scale: number | undefined, fontUnits: number): boolean
   return scale === undefined || fontUnits * scale >= MIN_TEXT_PX;
 }
 
+/**
+ * Font size (abstract units) for a piece name: `base`, shrunk (to at least 10) so `text` fits in
+ * `maxW` units, then raised again, within that fit and `cap` units, so it stays at least
+ * MIN_TEXT_PX on screen. A name is shrunk, never hidden.
+ */
+export function nameFontUnits(
+  scale: number | undefined,
+  text: string,
+  maxW: number,
+  base: number,
+  cap = base * 1.4,
+): number {
+  const fit = Math.max(10, maxW / Math.max(1, text.length * 0.52));
+  let f = Math.min(base, fit);
+  if (scale !== undefined && f * scale < MIN_TEXT_PX) {
+    f = Math.max(f, Math.min(MIN_TEXT_PX / scale, cap, fit));
+  }
+  return f;
+}
+
 export type Transform = { scale: number; tx: number; ty: number };
 
 /** Scale and centre a drawing of `size` abstract units into a `view` of pixels, with a margin. */

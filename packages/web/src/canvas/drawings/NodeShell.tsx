@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { PieceType } from '@tinker/core';
-import { legibleAt } from '../pure.js';
+import { legibleAt, nameFontUnits } from '../pure.js';
 
 /**
  * The one node component (CONTRACTS.md section 10, "Visual language"). Every piece in layer view,
@@ -76,7 +76,12 @@ export function NodeShell(p: NodeShellProps) {
   return (
     <g data-piece={p.piece} data-role={p.role}>
       <rect className="tk-body" x={0} y={0} width={w} height={h} rx={NODE_RADIUS} />
-      <text className="tk-name" x={PAD} y={NAME_PX + 4} fontSize={NAME_PX}>
+      <text
+        className="tk-name"
+        x={PAD}
+        y={NAME_PX + 4}
+        style={{ fontSize: nameFontUnits(p.scale, p.name, w - PAD - 6, NAME_PX) }}
+      >
         {p.name}
       </text>
       {p.tag && small && (
@@ -98,7 +103,7 @@ export function NodeShell(p: NodeShellProps) {
       ))}
       {p.slot ??
         (p.badge ? (
-          <g className="tk-badge" transform={`translate(${w - PAD - 10} ${NAME_PX + 4 - 5})`}>
+          <g className="tk-badge" transform={`translate(${w - PAD - 10} ${h / 2 + 4})`}>
             <circle r={10} />
             <text textAnchor="middle" dominantBaseline="central" y={1.5}>
               {p.glyph}

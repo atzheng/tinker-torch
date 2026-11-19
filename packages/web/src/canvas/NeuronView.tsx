@@ -9,8 +9,9 @@ import {
   type NeuronLayout,
   type Node,
 } from '@tinker/core';
-import { ACTIVATION_SYMBOL } from './drawings/activation.js';
+import { ACTIVATION_LABEL, ACTIVATION_SYMBOL } from './drawings/activation.js';
 import { WEB_PIECES } from './drawings/index.js';
+import { nameFontUnits } from './pure.js';
 import { NODE_RADIUS, NodeShell, roleOfNode } from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 import type { LayerProps } from './drawings/types.js';
@@ -342,7 +343,11 @@ export function NeuronView(p: NeuronViewProps) {
               height={box.h + 8}
               rx={NODE_RADIUS + 4}
             />
-            {units ? null : <BoxDrawing node={node} box={box} p={p} />}
+            {units ? (
+              <UnitColumnName node={node} w={box.w} scale={scale} />
+            ) : (
+              <BoxDrawing node={node} box={box} p={p} />
+            )}
             {lockedSet.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
         );
@@ -408,6 +413,31 @@ export function NeuronView(p: NeuronViewProps) {
         <EdgeTip layout={layout} hover={hover} dims={dims} fallback={p.fallback} scale={scale} />
       )}
     </g>
+  );
+}
+
+const UNIT_COLUMN_NAME: Partial<Record<Node['type'], string>> = {
+  input: 'Input',
+  linear: 'Linear',
+  output: 'Output',
+  target: 'Target',
+};
+
+/** The name of a piece drawn as a column of units, centred in the strip the layout reserves above it. */
+function UnitColumnName({ node, w, scale }: { node: Node; w: number; scale: number }) {
+  const text = node.type === 'activation' ? ACTIVATION_LABEL[node.fn] : UNIT_COLUMN_NAME[node.type];
+  if (!text) return null;
+  return (
+    <text
+      className="tk-name"
+      data-testid={`unit-name-${node.id}`}
+      x={w / 2}
+      y={LAYOUT.unitLabelH - 6}
+      textAnchor="middle"
+      style={{ fontSize: nameFontUnits(scale, text, 2 * UNIT_R + 40, 13, 16) }}
+    >
+      {text}
+    </text>
   );
 }
 
