@@ -480,6 +480,10 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
     if ytype == "reg":
         y = 0.7 * x[:, :1] + 0.3 * np.sin(2 * x[:, :1]) + 0.4 * rng.standard_normal((n, 1))
         y = y * 2.0
+    elif ytype == "cls3":
+        # three classes: labels 0, 1, 2 (the first three rows fix one of each)
+        y = rng.integers(0, 3, size=(n, 1)).astype(float)
+        y[0, 0], y[1, 0], y[2, 0] = 0.0, 1.0, 2.0
     else:
         y = (rng.uniform(size=(n, 1)) > 0.5).astype(float)
         y[0, 0], y[1, 0] = 0.0, 1.0
@@ -537,7 +541,7 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
     graph = {
         "version": 2, "nodes": nodes, "edges": edges,
         "predictions": predictions, "loss": loss_id,
-        "data": {"set": "blobs" if ytype == "cls" else {1: "sine", 2: "plane", 3: "plane"}[d],
+        "data": {"set": {"cls": "blobs", "cls3": "blobs3"}.get(ytype) or {1: "sine", 2: "plane", 3: "plane"}[d],
                  "n": 40, "noise": 0.1, "val": 0.25, "seed": 1, "standardize": False},
         "train": {"optimizer": optimizer or "sgd", "lr": lr, "batch": "full", "seed": 1},
     }
@@ -814,6 +818,14 @@ def main():
         assert abs(lin_.bias.grad.item() - fx["expect"]["grads"]["b"]["b"][0]) < 1e-12
 
     scalar_cases(add2, check_linear)
+
+    # k = 3 classes: softmax -> cross-entropy on a small MLP, trained with Adam (tinker-75o; last, so the seeds of the cases above do not move)
+    nodes = [inp(2), lin("lin1", 4), act("act1", "tanh"), lin("lin2", 3),
+             n_("p", "link", fn="softmax"), TARGET, n_("err", "cross_entropy"), n_("loss", "mean")]
+    edges = [["x", "lin1"], ["lin1", "act1"], ["act1", "lin2"], ["lin2", "p"], ["p", "err.pred"],
+             ["y", "err.target"], ["err", "loss"]]
+    add2("prim_cross_entropy_softmax_k3", nodes, edges, ["p"], "loss", d=2, ytype="cls3",
+         optimizer="adam", lr=0.05, n=9)
 
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)

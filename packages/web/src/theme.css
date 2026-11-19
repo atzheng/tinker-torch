@@ -38,6 +38,15 @@
   --seq-1: #21918c;
   --seq-2: #fde725;
   --point-halo: #ffffff;
+  /* Multi-class fit plots: categorical palette, Okabe-Ito based (colour-blind safe, no red/green
+     pair): blue, orange, bluish green, reddish purple, sky blue, vermillion. Class c uses
+     --class-(c mod 6). */
+  --class-0: #0072b2;
+  --class-1: #e69f00;
+  --class-2: #009e73;
+  --class-3: #cc79a7;
+  --class-4: #56b4e9;
+  --class-5: #d55e00;
 
   /* Graph nodes (CONTRACTS.md section 10, "Visual language"): one style for every ordinary piece. */
   --node-fill: var(--surface);
@@ -128,6 +137,12 @@
     --seq-1: #21918c;
     --seq-2: #fde725;
     --point-halo: #0f1218;
+    --class-0: #4aa3e0;
+    --class-1: #f0b429;
+    --class-2: #2fc79a;
+    --class-3: #e58fc6;
+    --class-4: #8fd0f5;
+    --class-5: #ff8a4a;
 
     --ctl-fill: #2b313c;
     --ctl-fill-hover: #343b49;

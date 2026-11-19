@@ -21,8 +21,20 @@ export type PlotColors = {
   /** Point colours for class 0 and class 1. */
   class0: string;
   class1: string;
+  /** Categorical class colours (multi-class sets): class c uses `classes[c % classes.length]`. */
+  classes: string[];
   font: string;
 };
+
+export const CLASS_COUNT = 6;
+
+/** Colour of class `c`, cycling when a set has more classes than the palette. */
+export function classColor(colors: PlotColors, c: number): string {
+  return (
+    colors.classes[((c % colors.classes.length) + colors.classes.length) % colors.classes.length] ??
+    colors.text
+  );
+}
 
 const FALLBACK: PlotColors = {
   bg: '#ffffff',
@@ -41,6 +53,7 @@ const FALLBACK: PlotColors = {
   halo: '#ffffff',
   class0: '#d35400',
   class1: '#1f5fd1',
+  classes: ['#0072b2', '#e69f00', '#009e73', '#cc79a7', '#56b4e9', '#d55e00'],
   font: 'system-ui, sans-serif',
 };
 
@@ -73,6 +86,9 @@ export function readColors(el: Element): PlotColors {
     halo: v('--point-halo', FALLBACK.halo),
     class0: v('--weight-neg', FALLBACK.class0),
     class1: v('--weight-pos', FALLBACK.class1),
+    classes: Array.from({ length: CLASS_COUNT }, (_, i) =>
+      v(`--class-${i}`, FALLBACK.classes[i] ?? FALLBACK.text),
+    ),
     font: v('--font', FALLBACK.font),
   };
 }

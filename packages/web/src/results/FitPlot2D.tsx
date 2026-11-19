@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { grid2d, truth, truthMargin, unstandardizeRows } from '@tinker/core';
+import { CLASS_COUNT, classColor, type PlotColors } from '../plot/color.js';
 import { formatTick, linearScale, niceTicks, paddedRange } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { AxisLabels } from '../plot/AxisLabels.js';
@@ -11,6 +12,7 @@ import {
   finiteRange,
   indexToDomain,
   makeRamp,
+  parseColor,
   rampCss,
   unit,
 } from '../plot/surface.js';
@@ -21,6 +23,46 @@ import styles from './Results.module.css';
 
 /** Grid points per side of the surface. Fixed: every new n makes the engine retrace. */
 export const GRID_2D = 64;
+
+/**
+ * Paints the decision regions of a multi-class model: each pixel takes the colour of its most
+ * probable class, more opaque where the model is more confident. `probs` is row-major [m*m, k].
+ * Same pixel layout as `fillGridImage`.
+ */
+export function fillClassImage(
+  rgba: Uint8ClampedArray,
+  probs: ArrayLike<number>,
+  m: number,
+  k: number,
+  c: PlotColors,
+): void {
+  const rgb = Array.from({ length: k }, (_, i) => parseColor(classColor(c, i)));
+  for (let iy = 0; iy < m; iy++) {
+    for (let ix = 0; ix < m; ix++) {
+      const g = iy * m + ix;
+      const o = ((m - 1 - iy) * m + ix) * 4;
+      let best = 0;
+      let bp = -Infinity;
+      for (let j = 0; j < k; j++) {
+        const p = probs[g * k + j] ?? Number.NaN;
+        if (p > bp) {
+          bp = p;
+          best = j;
+        }
+      }
+      if (!Number.isFinite(bp)) {
+        rgba[o + 3] = 0;
+        continue;
+      }
+      const conf = Math.min(1, Math.max(0, (bp - 1 / k) / (1 - 1 / k)));
+      const col = rgb[best] ?? [128, 128, 128];
+      rgba[o] = col[0];
+      rgba[o + 1] = col[1];
+      rgba[o + 2] = col[2];
+      rgba[o + 3] = Math.round(255 * (0.18 + 0.5 * conf));
+    }
+  }
+}
 
 /** Fit plot for 2-D data: decision surface (classification) or prediction heat map (regression). */
 export function FitPlot2D() {
@@ -33,6 +75,10 @@ export function FitPlot2D() {
   const predictions = useStore((s) => s.graph.predictions);
   const [showTruth, setShowTruth] = useState(false);
   const classification = dataset.info.kind !== 'regression';
+  const multiclass = dataset.info.kind === 'multiclass';
+  const numClasses = dataset.info.numClasses;
+  const classNames =
+    dataset.info.classNames ?? Array.from({ length: numClasses }, (_, i) => `class ${i}`);
 
   // Per dataset: raw-unit points, the grid, the true function on it, the colour range, buffers.
   const fixed = useMemo(() => {
@@ -72,13 +118,40 @@ export function FitPlot2D() {
     if (!host) return null;
     const out = predictGrid(fixed.grid.xStd, fixed.grid.n);
     if (!out) return null;
+    // multi-class models: keep all k class probabilities, row-major [n, k]
+    if (multiclass) return out.length === fixed.grid.n * numClasses ? out : null;
     // binary models with two outputs: take P(class 1)
     return column(fixed.values, out, fixed.grid.n, 1);
-  }, [host, predictGrid, fixed, pick, predictions]);
+  }, [host, predictGrid, fixed, pick, predictions, multiclass, numClasses]);
 
   // With the overlay on, the surface drawn is the average of the copies.
   const overlay = useOverlay2D();
   const shown = overlay?.mean ?? surface;
+
+  // Multi-class: per-class margin p_c - max of the others (zero on the region boundaries).
+  const margins = useMemo(() => {
+    if (!multiclass || !shown) return null;
+    const n = fixed.grid.n;
+    return Array.from({ length: numClasses }, (_, c) => {
+      const m = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        let other = -Infinity;
+        for (let j = 0; j < numClasses; j++)
+          if (j !== c) other = Math.max(other, shown[i * numClasses + j] ?? Number.NaN);
+        m[i] = (shown[i * numClasses + c] ?? Number.NaN) - other;
+      }
+      return m;
+    });
+  }, [multiclass, shown, fixed, numClasses]);
+
+  // The true class regions as one 0/1 field per class (boundary at 0.5).
+  const truthRegions = useMemo(
+    () =>
+      multiclass
+        ? Array.from({ length: numClasses }, (_, c) => fixed.f.map((v) => (v === c ? 1 : 0)))
+        : null,
+    [multiclass, fixed, numClasses],
+  );
 
   const mapped = useMemo(
     () => (classification ? null : finiteRange(fixed.f)),
@@ -104,7 +177,8 @@ export function FitPlot2D() {
     if (shown && fixed.off) {
       const octx = fixed.off.getContext('2d');
       if (octx) {
-        fillGridImage(fixed.img.data, shown, GRID_2D, lut, rlo, rhi);
+        if (multiclass) fillClassImage(fixed.img.data, shown, GRID_2D, numClasses, c);
+        else fillGridImage(fixed.img.data, shown, GRID_2D, lut, rlo, rhi);
         octx.putImageData(fixed.img, 0, 0);
         const cw = (xs.px(x1hi) - xs.px(x1lo)) / (GRID_2D - 1);
         const ch = (ys.px(x2lo) - ys.px(x2hi)) / (GRID_2D - 1);
@@ -137,7 +211,15 @@ export function FitPlot2D() {
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     // the model's 0.5 boundary: halo then line, readable on both ends of the ramp
-    if (classification && shown) {
+    if (multiclass && margins) {
+      ctx.setLineDash([]);
+      ctx.strokeStyle = c.bg;
+      ctx.lineWidth = 4;
+      for (const m of margins) lines(m, 0);
+      ctx.strokeStyle = c.text;
+      ctx.lineWidth = 2;
+      for (const m of margins) lines(m, 0);
+    } else if (classification && shown) {
       ctx.setLineDash([]);
       ctx.strokeStyle = c.bg;
       ctx.lineWidth = 4;
@@ -148,7 +230,16 @@ export function FitPlot2D() {
     }
     if (showTruth) {
       ctx.setLineDash([6, 4]);
-      if (classification) {
+      if (multiclass && truthRegions) {
+        ctx.strokeStyle = c.bg;
+        ctx.lineWidth = 3.5;
+        ctx.setLineDash([]);
+        for (const f of truthRegions) lines(f, 0.5);
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = c.truth;
+        ctx.lineWidth = 2;
+        for (const f of truthRegions) lines(f, 0.5);
+      } else if (classification) {
         ctx.strokeStyle = c.bg;
         ctx.lineWidth = 3.5;
         ctx.setLineDash([]);
@@ -175,7 +266,13 @@ export function FitPlot2D() {
 
     // points: filled = training, hollow = validation; same colours as the surface
     const colourOf = (y: number) =>
-      classification ? (y >= 0.5 ? c.class1 : c.class0) : rampCss(lut, unit(y, rlo, rhi));
+      multiclass
+        ? classColor(c, Math.round(y))
+        : classification
+          ? y >= 0.5
+            ? c.class1
+            : c.class0
+          : rampCss(lut, unit(y, rlo, rhi));
     const dots = (x: Float32Array, y: Float32Array, n: number, hollow: boolean) => {
       for (let i = 0; i < n; i++) {
         const px = xs.px(x[i * 2] ?? 0);
@@ -216,12 +313,36 @@ export function FitPlot2D() {
   };
 
   // `surface` is a reused buffer, so `host` (a new object each frame) says that it changed.
-  const ref = usePlotCanvas(draw, [dataset, fixed, shown, host, showTruth, mapped]);
+  const ref = usePlotCanvas(draw, [
+    dataset,
+    fixed,
+    shown,
+    host,
+    showTruth,
+    mapped,
+    margins,
+    truthRegions,
+  ]);
   return (
     <div className={styles.panel} data-testid="fit-plot">
       <div className={`${styles.head} ${styles.headWrap}`} data-panel-head="">
         <span className={styles.title}>Fit</span>
-        {classification ? (
+        {multiclass ? (
+          <span className={`${styles.key} tk-diag-label`} data-testid="fit-key">
+            {classNames.map((name, i) => (
+              <span key={name + i} className={styles.key} data-testid="fit-key-class">
+                <i
+                  className={styles.swatch}
+                  style={{ background: `var(--class-${i % CLASS_COUNT})` }}
+                />
+                {name}
+              </span>
+            ))}{' '}
+            <span aria-hidden>
+              {'\u25CF'} train {'\u25CB'} val
+            </span>
+          </span>
+        ) : classification ? (
           <span className={`${styles.key} tk-diag-label`} data-testid="fit-key">
             <i className={styles.swatch} style={{ background: 'var(--weight-neg)' }} />
             class 0

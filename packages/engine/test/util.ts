@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { type Graph, parseGraph } from '@tinker/core';
+import { type Graph, SETS, classCount, parseGraph } from '@tinker/core';
 import type { DataInfo, HostParams } from '@tinker/core';
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -41,11 +41,11 @@ export function loadFixture(name: string): { fx: Fixture; graph: Graph; data: Da
   // the dataset columns are the batch's: x1..xd (a scalar graph has Column nodes, no Input)
   const d = fx.batch.x.length / fx.batch.n;
   const columns = Array.from({ length: d }, (_, i) => `x${i + 1}`);
-  const classification = ['blobs', 'circle', 'xor', 'moons'].includes(parsed.graph.data.set);
+  const spec = SETS[parsed.graph.data.set];
   const data: DataInfo = {
     columns,
-    kind: classification ? 'binary' : 'regression',
-    numClasses: classification ? 2 : 1,
+    kind: spec.kind,
+    numClasses: classCount(parsed.graph.data.set),
   };
   return { fx, graph: parsed.graph, data };
 }

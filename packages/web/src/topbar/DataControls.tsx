@@ -32,6 +32,13 @@ const GROUPS: { label: string; sets: { name: DatasetName; label: string }[] }[] 
       { name: 'moons', label: 'Two moons' },
     ],
   },
+  {
+    label: '2-D multi-class',
+    sets: [
+      { name: 'blobs3', label: 'Three blobs' },
+      { name: 'spiral3', label: 'Three spirals' },
+    ],
+  },
 ];
 
 /**

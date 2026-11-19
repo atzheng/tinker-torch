@@ -77,13 +77,19 @@ export function runResample(engine: Engine, req: ResampleRequest): ResampleRespo
       if (!out) throw new Error('No prediction selected.');
       const width = Math.max(1, Math.round(out.length / grid.n));
       // a binary model with two outputs: P(class 1) is the last column, as in the fit plots
+      // a multi-class model keeps every class probability: the curve is row-major [n, k]
+      const multi = first.info.kind === 'multiclass';
       const col = d === 1 ? 0 : Math.min(1, width - 1);
-      const y = new Float32Array(grid.n);
+      const y = multi ? Float32Array.from(out) : new Float32Array(grid.n);
       let finite = true;
-      for (let j = 0; j < grid.n; j++) {
-        const v = out[j * width + col] ?? Number.NaN;
-        if (!Number.isFinite(v)) finite = false;
-        y[j] = v;
+      if (multi) {
+        for (const v of y) if (!Number.isFinite(v)) finite = false;
+      } else {
+        for (let j = 0; j < grid.n; j++) {
+          const v = out[j * width + col] ?? Number.NaN;
+          if (!Number.isFinite(v)) finite = false;
+          y[j] = v;
+        }
       }
       if (finite) curves.push(y);
       else diverged++;
