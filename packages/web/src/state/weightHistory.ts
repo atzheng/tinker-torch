@@ -1,4 +1,4 @@
-import type { Graph, NodeId } from '@tinker/core';
+import type { Graph, HostParams, NodeId } from '@tinker/core';
 import type { StoreApi } from 'zustand';
 import type { Store } from './store.js';
 
@@ -75,4 +75,32 @@ export function attachWeightHistory(store: StoreApi<Store>): void {
       s.writeParams(redone.node, redone.after);
     }
   });
+}
+
+/**
+ * Group into Linear / Expand to scalars (tinker-9io.7): the graph changes shape but the function and
+ * its values stay, so the edit records the parameters on both sides. The train slice asks
+ * `scalarHostFor` on every graph change; it answers when the change crosses a record (the edit itself,
+ * its undo, its redo), so graph and parameters move in one step. Like hand edits, weights trained
+ * between the edit and its undo are not part of undo.
+ */
+type ScalarRecord = { prev: Graph; before: HostParams; after: HostParams; generation: number };
+const scalarRecords = new WeakMap<Graph, ScalarRecord>();
+
+export function recordScalarEdit(
+  prev: Graph,
+  next: Graph,
+  before: HostParams,
+  after: HostParams,
+): void {
+  scalarRecords.set(next, { prev, before, after, generation });
+}
+
+/** The parameters for a move of the graph from `from` to `to` when it crosses a scalar-edit record. */
+export function scalarHostFor(from: Graph, to: Graph): HostParams | null {
+  const undone = scalarRecords.get(from);
+  if (undone && undone.prev === to && undone.generation === generation) return undone.before;
+  const redone = scalarRecords.get(to);
+  if (redone && redone.prev === from && redone.generation === generation) return redone.after;
+  return null;
 }
