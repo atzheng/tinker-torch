@@ -382,11 +382,12 @@ describe('unit-column name strips', () => {
   test('full-width name strips of neighbouring unit columns never overlap and stay clear of mid-gap wires', () => {
     const gr = mlp(4);
     const N = layoutNeurons(gr, analyse(gr, info));
-    const cols = gr.nodes
+    const xs = gr.nodes
       .filter((n) => N.units.some((u) => u.node === n.id))
       .map((n) => N.boxes[n.id])
-      .filter((b) => b !== undefined)
-      .sort((a, b) => a.x - b.x);
+      .filter((b) => b !== undefined);
+    // Stacked columns (input above target) share an x; compare distinct column positions.
+    const cols = [...new Map(xs.map((b) => [b.x, b])).values()].sort((a, b) => a.x - b.x);
     expect(cols.length).toBeGreaterThanOrEqual(4);
     for (let i = 1; i < cols.length; i++) {
       const a = cols[i - 1];
