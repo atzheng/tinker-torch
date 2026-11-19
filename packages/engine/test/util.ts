@@ -5,7 +5,7 @@ import type { DataInfo, HostParams } from '@tinker/core';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export type JsonParams = Record<string, { W: number[]; b?: number[] }>;
+export type JsonParams = Record<string, { W?: number[]; b?: number[] }>;
 export type Fixture = {
   name: string;
   graph: unknown;
@@ -38,8 +38,9 @@ export function loadFixture(name: string): { fx: Fixture; graph: Graph; data: Da
   // v1 fixture graphs are migrated by parseGraph; v2 ones are read as written
   const parsed = parseGraph(fx.graph);
   if (!parsed.ok) throw new Error(parsed.error);
-  const input = parsed.graph.nodes.find((n) => n.type === 'input');
-  const columns = input?.type === 'input' ? input.columns : [];
+  // the dataset columns are the batch's: x1..xd (a scalar graph has Column nodes, no Input)
+  const d = fx.batch.x.length / fx.batch.n;
+  const columns = Array.from({ length: d }, (_, i) => `x${i + 1}`);
   const classification = ['blobs', 'circle', 'xor', 'moons'].includes(parsed.graph.data.set);
   const data: DataInfo = {
     columns,
@@ -52,9 +53,11 @@ export function loadFixture(name: string): { fx: Fixture; graph: Graph; data: Da
 export function toHostParams(p: JsonParams): HostParams {
   const h = Object.create(null) as HostParams;
   for (const [id, v] of Object.entries(p)) {
-    h[id] = v.b
-      ? { W: Float32Array.from(v.W), b: Float32Array.from(v.b) }
-      : { W: Float32Array.from(v.W) };
+    // a Linear has W (and b); a scalar Weight only W, a Bias only b
+    h[id] = {
+      ...(v.W ? { W: Float32Array.from(v.W) } : {}),
+      ...(v.b ? { b: Float32Array.from(v.b) } : {}),
+    };
   }
   return h;
 }
