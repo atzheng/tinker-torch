@@ -85,7 +85,7 @@ function noNode(id: NodeId): EditResult {
 const ID_STEMS: Record<string, string> = { column: 'x', scalew: 'w' };
 
 /** Smallest free id of the form `${type}${k}`, k from 1. */
-function freshId(g: Graph, type: string): NodeId {
+export function freshId(g: Graph, type: string): NodeId {
   const used = new Set(g.nodes.map((n) => n.id));
   const stem = ID_STEMS[type] ?? type;
   for (let k = 1; ; k++) if (!used.has(`${stem}${k}`)) return `${stem}${k}`;
