@@ -17,8 +17,9 @@ import {
   dropCandidates,
   editForDrop,
   pinCanLandOn,
-  inputPortAt,
+  inputEndAt,
   outputPortAt,
+  placeable,
   resolveDrop,
   wireSource,
   type DragPayload,
@@ -347,7 +348,15 @@ export function Canvas() {
   const placed = useMemo(
     () =>
       placeIssues(
-        analysis.issues,
+        // An issue on the wire into a collapsed Weight, or on the Weight itself, goes on its weight wire.
+        analysis.issues.map((i) => {
+          const via = layout.wires.find(
+            (w) =>
+              w.weightNode !== undefined &&
+              (w.viaEdge === i.at.edge || (i.at.edge === undefined && w.weightNode === i.at.node)),
+          );
+          return via ? { ...i, at: { ...i.at, edge: via.edge } } : i;
+        }),
         new Set(layout.wires.map((w) => w.edge)),
         new Set(graph.nodes.map((n) => n.id)),
         undefined,
@@ -395,13 +404,16 @@ export function Canvas() {
         return inside ? target : null;
       },
       commit: (payload, target) => {
-        const edit = editForDrop(graph, payload, target, { locked: lockedIds() });
+        const edit = editForDrop(graph, payload, target, {
+          locked: lockedIds(),
+          boxes: layerLayout.nodes,
+        });
         if (!edit) return;
         const result = apply(edit);
         if (result.ok && result.select !== undefined) selectNode(result.select);
       },
     });
-  }, [graph, layout, analysis, t, coarse, apply, selectNode, toAbstract]);
+  }, [graph, layout, layerLayout, analysis, t, coarse, apply, selectNode, toAbstract]);
 
   const px = (x: number) => x * t.scale + t.tx;
   const py = (y: number) => y * t.scale + t.ty;
@@ -411,7 +423,15 @@ export function Canvas() {
   let anchor: InspectorPlacement | null = null;
   if (selection?.kind === 'node') {
     const box = layout.nodes[selection.id];
-    if (box) {
+    const pill = box ? undefined : layout.wires.find((x) => x.weightNode === selection.id);
+    if (pill) {
+      const y = py(pill.labelAt[1]);
+      anchor = placeInspector(
+        { cx: px(pill.labelAt[0]), top: y - 16, bottom: y + 16 },
+        view,
+        INSPECTOR_W,
+      );
+    } else if (box) {
       anchor = placeInspector(
         // clear of the pins (and the add pins) above and below the piece
         { cx: px(box.x + box.w / 2), top: py(box.y - 30), bottom: py(box.y + box.h + 30) },
@@ -608,16 +628,13 @@ export function Canvas() {
             let end: [number, number] = [drag.x - box.left, drag.y - box.top];
             if (tg?.kind === 'port') {
               const node = graph.nodes.find((n) => n.id === tg.node);
-              const k = node
-                ? Math.max(
-                    0,
-                    inputPortsOfType(node.type).findIndex(
-                      (p) => tg.port === node.id || tg.port === `${node.id}.${p}`,
-                    ),
-                  )
-                : 0;
+              const port = node
+                ? (inputPortsOfType(node.type).find(
+                    (p) => tg.port === node.id || tg.port === `${node.id}.${p}`,
+                  ) ?? '')
+                : '';
               const at =
-                node && inputPortAt(layout, node.id, k, inputPortsOfType(node.type).length);
+                node && inputEndAt(graph, layout, node.id, port, wireSource(drag.payload) ?? '');
               if (at) end = [px(at[0]), py(at[1])];
             }
             return (
@@ -633,7 +650,9 @@ export function Canvas() {
         <div className="tk-armed" data-testid="armed-hint" role="status">
           {armed.kind === 'macro'
             ? `Tap a wire or empty canvas to add ${armed.label}.`
-            : `Tap a highlighted wire or piece to place ${armed.label}.`}
+            : placeable(armed)
+              ? `Tap empty canvas to place ${armed.label}.`
+              : `Tap a highlighted wire or piece to place ${armed.label}.`}
         </div>
       )}
       {graph.nodes.length === 0 ? (
