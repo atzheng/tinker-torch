@@ -6,8 +6,12 @@ The interfaces that beads share. SPEC.md says what the tool does; this file fixe
 
 ```
 packages/core/src/            pure TypeScript, no DOM, no jax-js
-  graph.ts        Graph, Node, Edge types and zod schema; parseGraph / serializeGraph (section 2)
-  registry.ts     PieceType, CORE_PIECES: Record<PieceType, CorePiece> (section 3)
+  graph.ts        Graph v2, Node, Edge types and zod schema; parseGraph (migrates v1) / serializeGraph (section 2)
+  registry.ts     PieceType, CORE_PIECES, PALETTE (section 3)
+  macros.ts       ready-made loss and penalty groups as primitive subgraphs (section 2)
+  migrate.ts      version 1 -> 2 migration (section 2)
+  legacy/         version 1 graph, registry and file, used by analyse, edit, layout, params, engine, web until tinker-8xw.2-.5
+  common.ts       data/train schemas, ports and ids shared by both versions
   analyse.ts      analyse(graph, dataInfo) -> Analysis: widths, issues, param counts (section 4)
   rng.ts          seeded PRNG (section 5)
   params.ts       HostParams, initParams, countParams (section 5)
@@ -62,85 +66,133 @@ Skeleton beads create placeholder files at these paths (each drawing, each engin
 
 Libraries, fixed: pnpm, TypeScript strict, vitest, zod, `@jax-js/jax` 0.1.27 and `@jax-js/optax` 0.1.3 (exact versions, no caret), React, zustand, plain CSS modules with CSS variables (no Tailwind), Vite, vite-plugin-pwa, wrangler (deploy only), playwright-core (end-to-end only). Plots and heat maps are drawn with canvas 2D; the model canvas is SVG. No charting or graph-layout library. Do not add other runtime dependencies without a reason written in the PR body.
 
-## 2. Graph format (`core/graph.ts`)
+## 2. Graph format (`core/graph.ts`), version 2
 
-The JSON document in SPEC.md "Graph format" is the source of truth. Types:
+The graph is an arbitrary DAG of operations. The user pins one or more outputs as predictions (ŷ) and exactly one as the loss (L). Training minimises L; `predict()` returns the ŷ ports. Roles are pins on output ports, never nodes. Model and objective regions are derived from the pins (ancestors of ŷ are the model; what L needs beyond that is the objective), never a fixed layout zone.
+
+**Migration status.** `core/graph.ts`, `core/registry.ts`, `core/macros.ts`, `core/migrate.ts` and `core/file.ts` are version 2 and are exported as the namespace `v2` from `@tinker/core`. Analyse, edit, layout, params, the engine and the web app still consume version 1 (`core/legacy/*`, exported under the old names) until beads tinker-8xw.2 to .5 move them; then `legacy/` is deleted and the `v2` namespace is flattened into the root exports. Sections 4, 7 and 8 describe version 1 until their bead rewrites them. Version 1 documents are still readable: `v2.parseGraph` migrates them.
 
 ```ts
 type NodeId = string; // [a-z][a-z0-9_]*, unique
 type ActivationFn = 'sigmoid' | 'tanh' | 'relu' | 'gelu';
-type OutputLink = 'identity' | 'sigmoid' | 'softmax';
-type LossFn = 'squared_error' | 'absolute_error' | 'huber' | 'log_loss' | 'cross_entropy';
-type Penalty = { kind: 'l2' | 'l1'; lambda: number }; // lambda >= 0
+type LinkFn = 'sigmoid' | 'softmax';
+type NormKind = 'l2' | 'l1';
 
 type Node =
   | { id: NodeId; type: 'input'; columns: string[] }          // subset of the dataset's columns, in order
+  | { id: NodeId; type: 'target' }                             // the dataset's y
   | { id: NodeId; type: 'feature'; degree: number; sin: boolean; cos: boolean; products: boolean } // degree 1..5
   | { id: NodeId; type: 'linear'; out: number; bias: boolean }  // out 1..64
   | { id: NodeId; type: 'activation'; fn: ActivationFn }
   | { id: NodeId; type: 'dropout'; p: number }                  // 0 <= p < 1
-  | { id: NodeId; type: 'add' }
-  | { id: NodeId; type: 'output'; link: OutputLink }
-  | { id: NodeId; type: 'target' }
-  | { id: NodeId; type: 'loss'; fn: LossFn; delta?: number; penalty?: Penalty }; // delta only for huber, default 1.0
+  | { id: NodeId; type: 'add' }                                 // a + b, same shape
+  | { id: NodeId; type: 'link'; fn: LinkFn }                    // sigmoid or softmax, drawn as a link piece
+  | { id: NodeId; type: 'subtract' }                            // a - b, same shape
+  | { id: NodeId; type: 'square' } | { id: NodeId; type: 'abs' }
+  | { id: NodeId; type: 'huber'; delta: number }                // elementwise Huber of a difference, delta > 0, default 1
+  | { id: NodeId; type: 'log_loss' }                            // per example: -(y log p + (1-y) log(1-p)); pred is a probability
+  | { id: NodeId; type: 'cross_entropy' }                       // per example: -log p[class]; pred is probabilities, target a class index
+  | { id: NodeId; type: 'mean' }                                // reduction over the batch (and elements): per-example -> single number
+  | { id: NodeId; type: 'scale'; c: number }                    // c * x, any finite c
+  | { id: NodeId; type: 'weights'; of: NodeId }                 // tap: reads W of the Linear `of` (not a bias)
+  | { id: NodeId; type: 'norm'; kind: NormKind };               // sum w^2 (l2) or sum |w| (l1) of a weight matrix -> single number
 
-type PortRef = string;          // "node" (its default port) or "node.port"
+type PortRef = string;          // "node" (its output) or "node.port"
 type Edge = [from: PortRef, to: PortRef];
 
-type DataConfig = {
-  set: DatasetName; n: number; noise: number; val: number; seed: number;
-  standardize: boolean;         // default false (SPEC decision)
+type Graph = {
+  version: 2;
+  nodes: Node[]; edges: Edge[];
+  predictions: PortRef[];       // the ŷ pins, in order; may be empty
+  loss: PortRef | null;         // the L pin
+  data: DataConfig; train: TrainConfig;   // unchanged from version 1
 };
-type TrainConfig = {
-  optimizer: 'sgd' | 'momentum' | 'adam'; lr: number; batch: 'full' | number; seed: number;
-};
-type Graph = { version: 1; nodes: Node[]; edges: Edge[]; data: DataConfig; train: TrainConfig };
 ```
 
-- Also exported from `graph.ts`: `DatasetName` and the `*_NAMES`/`*_FNS` const lists, `NodeBody`, `parsePort(ref) -> {node, port | null}`, `resolveEdge(nodes, edge)` (fills default ports, one sentence on a bad edge) and `inputPortsOf(type)`. Types are inferred from the zod schema.
-- `parseGraph(json: unknown): { ok: true; graph: Graph } | { ok: false; error: string }`. Fills defaults (`standardize: false`, huber `delta: 1`). Unknown fields are rejected. The error is one plain sentence.
-- `serializeGraph(graph)`: stable key order, two-space JSON.
-- The weight penalty is the `penalty` field on the loss node. In the palette it is a piece ("Weight penalty"); dropping it on the loss sets this field. It has no node of its own.
-- Ports. Every node has at most one output port, `out`. Input ports: `add` has `a` and `b`; `loss` has `pred` and `target`; `input` and `target` have none; every other piece has one input port `in`. A bare node id in an edge means `out` as a source and the single input port as a destination.
-- Every input port takes exactly one edge. An output port may feed several input ports (this is how a skip connection is made: `lin1 -> act1` and `lin1 -> add.b`).
+- Also exported (under `v2`): `DatasetName` and the `*_NAMES`/`*_FNS`/`LINK_FNS`/`NORM_KINDS`/`NODE_TYPES` const lists, `NodeBody`, `NodeOf`, `parsePort`, `resolveEdge(nodes, edge)`, `resolvePin(nodes, ref)` (a pin must name a node and, if it has a port, `out`), `inputPortsOf(type)`, `outputPortsOf(type)`. Types come from the zod schema.
+- `parseGraph(json)`: version 2 as written, or version 1 migrated (below). Fills defaults (`standardize: false`, `huber.delta: 1`, `predictions: []`, `loss: null`). Rejects unknown fields and types, duplicate ids, a `weights.of` that is not a Linear, a pin that is not a node's `out`, and the same node pinned twice as ŷ. One plain sentence on failure. It does not check the pins' widths, that L is a single number or that L depends on a parameter: that is analyse (tinker-8xw.2).
+- `serializeGraph(graph)`: always version 2, stable key order (`version, nodes, edges, predictions, loss, data, train`), two-space JSON. `loss: null` is written, not omitted.
+- Ports. Every node has the one output port `out` (a port ref still allows more later). Input ports: `add` and `subtract` have `a` and `b`; `log_loss` and `cross_entropy` have `pred` and `target`; `input`, `target` and `weights` have none; every other piece has one input port `in`. A bare node id means `out` as a source and the single input port as a destination.
+- Every input port takes exactly one edge; an output port may feed several.
+- `weights.of` is a node field, not an edge: the tap reads a parameter, so it creates no data dependency and no cycle. The canvas draws it as a dashed wire from the Linear to the Weights node. Extension point for the scalar-level bead (tinker-9io): scalar weights on wires, a variadic Sum, a Bias and per-column inputs are new node types or a richer `of`; nothing here forbids them.
+- ŷ and L are pins, so the same node can be both a ŷ and part of the loss path (the usual case: ŷ feeds the loss). A graph with no ŷ still trains when L is valid. Rules that analyse enforces: every ŷ width equals the dataset target (1 for regression and binary; numClasses for softmax classification); L is a single number that depends on at least one parameter.
 
-## 3. Piece registry (split by layer)
+### Version 1 migration
 
-`PieceType = 'input' | 'feature' | 'linear' | 'activation' | 'dropout' | 'add' | 'output' | 'target' | 'loss'`. The 14 palette pieces map onto these types: the four activations are one type with `fn`, the five losses are one type with `fn`, and Weight penalty edits the loss node.
+`parseGraph` migrates a version 1 document to a version 2 graph with identical math, widths and parameter counts (`core/migrate.ts`; tests run every engine fixture graph and bundled preset):
+
+| Version 1 | Version 2 |
+| --- | --- |
+| Output(sigmoid or softmax) | `link` node, same id and fn; it is the ŷ pin |
+| Output(identity) | removed; its source is wired to its consumers and the ŷ pin sits on that source |
+| Loss(squared_error / absolute_error / huber(delta)) | `subtract(pred, target)` `{id}_diff` -> `square` / `abs` / `huber` `{id}_err` -> `mean` |
+| Loss(log_loss / cross_entropy) | `log_loss` / `cross_entropy` `{id}_err` -> `mean` |
+| the Loss's own id | the group's final node (the `mean`, or the penalty's `add`) and the L pin |
+| penalty (kind, lambda) | for each Linear feeding the loss, in node order: `weights` `{id}_w_{lin}` -> `norm` `{id}_n_{lin}`; summed by `add` `{id}_sum{k}`; `scale(lambda)` `{id}_pen`; `add(a = mean, b = pen)`. The mean is then `{id}_mean`. A penalty with no Linear feeding the loss is dropped (it was 0) |
+| everything else | unchanged, same id (so saved parameters keep their keys) |
+
+The ŷ pin is the Output feeding the first loss's `pred`; with no loss, or a `pred` not fed by an Output, every Output is pinned. Only the first Loss gets the L pin. Generated ids are made unique against all existing ids (`_2`, `_3`, ...). Edges keep their order, with rewritten ends; the group's internal edges follow. Fusion (sigmoid then log loss, softmax then cross-entropy) is the engine's job; the diagram stays semantic, so `log_loss` takes the probability.
+
+### Ready-made groups: macros, not group nodes
+
+The five classic losses and the weight penalty are palette macros (`PaletteEntry.kind === 'macro'`): inserting one adds ordinary primitive nodes and edges (`lossSubgraph`, `weightPenaltySubgraph` in `core/macros.ts`, which migration also uses). There is no group node type, so analyse and the engine see only primitives. A macro returns `{ nodes, edges, inputs, out }`: `inputs` names the destination ports to wire into (`pred`, `target`; `total` for the penalty) and `out` is the node whose `out` is the result. The caller (web gestures, tinker-8xw.4) supplies a `Namer` that makes unused ids, wires the inputs, and sets the L pin.
+
+## 3. Piece registry (`core/registry.ts`)
+
+`PieceType` is the `type` of the nodes above (18 types). The palette (`PALETTE`) has one `piece` entry per type, with Sigmoid and Softmax as two entries of `link` and L2 and L1 as two entries of `norm`, plus six `macro` entries: `loss_squared_error`, `loss_absolute_error`, `loss_huber`, `loss_log_loss`, `loss_cross_entropy` and `weight_penalty`. The four activations are one type with `fn`.
 
 ```ts
 // core/registry.ts
-type Family = 'inputs' | 'features' | 'linear' | 'activations' | 'structure' | 'outputs' | 'losses';
-type CorePiece<N extends Node> = {
-  family: Family;                         // drop-to-swap is allowed only within a family
-  inputPorts: string[];                   // section 2
-  defaults: () => Omit<N, 'id'>;
-  outWidth(node: N, inWidths: Record<string, number>, ctx: WidthCtx): number | WidthError;
-  paramShapes(node: N, inWidth: number): { W?: [rows: number, cols: number]; b?: [number] }; // W is [in, out]
-  torch(node: N, inWidth?: number): string; // e.g. "nn.Linear(4, 8, bias=True)" (needs inWidth); used by the later code view
+type Family = 'inputs' | 'features' | 'linear' | 'activations' | 'structure' | 'links'
+  | 'errors' | 'losses' | 'reductions' | 'math' | 'parameters';   // drop-to-swap only within a family
+// inputs: input, target. structure: dropout, add. links: link. errors: square, abs, huber.
+// losses: log_loss, cross_entropy. reductions: mean. math: subtract, scale. parameters: weights, norm.
+
+// What flows along a wire.
+type Shape =
+  | { kind: 'example'; width: number }          // one row of `width` numbers per training example
+  | { kind: 'scalar' }                          // a single number
+  | { kind: 'param'; rows: number; cols: number }; // a weight matrix, from a Weights tap
+type ShapeError = { error: string };            // one plain sentence
+type ShapeCtx = {
+  dataColumns: number; numClasses: number;
+  weightShape(linearId: NodeId): [rows: number, cols: number] | undefined; // [in, out] of that Linear's W
 };
-type WidthCtx = { dataColumns: number; numClasses: number };
-type WidthError = { error: string };      // one plain sentence, e.g. "Add needs both inputs to have the same width: 4 and 8."
+type CorePiece<N extends Node> = {
+  family: Family;
+  inputPorts: string[];                         // section 2
+  defaults: () => Omit<N, 'id'>;
+  outShape(node: N, inShapes: Record<string, Shape>, ctx: ShapeCtx): Shape | ShapeError; // missing key = port not connected
+  paramShapes(node: N, inWidth: number): { W?: [rows: number, cols: number]; b?: [number] }; // W is [in, out]; Linear only
+  torch(node: N, inWidth?: number): string;
+};
 const CORE_PIECES: { [T in PieceType]: CorePiece<Extract<Node, { type: T }>> };
 
-// a palette entry (one per row of the SPEC pieces table, 14 entries)
-type PaletteEntry = { key: string; label: string; family: Family | 'penalties'; make: () => NodeBody | Penalty };
-// NodeBody = Omit<Node, 'id'> distributed over the union. Target is in family 'outputs'.
-// The weight penalty's make() gives { kind: 'l2', lambda: 0.01 }.
+type PaletteEntry =
+  | { kind: 'piece'; key: string; label: string; family: Family; make: () => NodeBody }
+  | { kind: 'macro'; key: string; label: string; family: 'losses' | 'parameters';
+      make: (name: Namer, opts?: { linears?: readonly NodeId[] }) => Subgraph };
 const PALETTE: PaletteEntry[];
 
 // engine/src/pieces/index.ts
-const ENGINE_PIECES: { [T in PieceType]: EnginePiece<Extract<Node, { type: T }>> };
-
+const ENGINE_PIECES: { [T in PieceType]: EnginePiece<Extract<Node, { type: T }>> };   // tinker-8xw.3
 // web/src/canvas/drawings/index.ts
-const WEB_PIECES: { [T in PieceType]: WebPiece<Extract<Node, { type: T }>> }; // layer drawing, neuron drawing, inspector fields
+const WEB_PIECES: { [T in PieceType]: WebPiece<Extract<Node, { type: T }>> };          // tinker-8xw.4
 ```
 
-Width rules: input = number of selected columns; feature = d·degree + (sin ? d : 0) + (cos ? d : 0) + (products ? d(d−1)/2 : 0), where power 1 is x itself; linear = `out`; activation, dropout, output = input width; add = shared input width (error if unequal); target = 1 for regression and binary sets, and the loss checks against classes; loss has no output.
+Shape rules (`outShape`):
+
+- input: `example(columns)`, error with no column. target: `example(1)`.
+- feature, linear, activation, dropout, link: need an `example` input (a scalar or weight matrix is an error sentence). feature `example(d·degree + (sin ? d : 0) + (cos ? d : 0) + (products ? d(d−1)/2 : 0))`; linear `example(out)`; the rest keep the width.
+- add, subtract: both inputs must have the same shape (width for examples); the result has it. This is how the penalty total is formed from two single numbers.
+- square, abs, huber, scale: elementwise, any shape passes through.
+- log_loss: `pred` and `target` are `example`; pred width 1; result `example(1)`. cross_entropy: same, pred width any; result `example(1)`. Whether pred width matches numClasses and the target is analyse's job.
+- mean: `example(w)` -> `scalar` (mean over the batch and the elements).
+- weights: `param(rows, cols)` from `ctx.weightShape(of)`; error when that Linear's input width is unknown. norm: `param` -> `scalar`.
 
 Feature output layout (the order of columns; the engine and the torch fixtures use it): `x^p` for p = 1..degree (power-major, then column, so power 1 is x itself), then `sin(x)` if `sin`, then `cos(x)` if `cos`, then `x_i * x_j` for i < j in row-major pair order if `products`. sin and cos apply to the raw column values (no frequency scaling).
 
-Parameter count of a Linear: in·out + (bias ? out : 0). Every other piece has 0.
+Parameter count of a Linear: in·out + (bias ? out : 0). Every other piece has 0; the penalty's norms read Linear weights but own nothing. The penalty covers Linear weight matrices only, never biases.
 
 ## 4. Analysis (`core/analyse.ts`)
 
@@ -421,13 +473,15 @@ Engine exceptions (decided in `tinker-e1h.2`, because the engine uses jax-js bui
 ## 12. Files and presets (`core/file.ts`)
 
 ```ts
-type SaveFile = { kind: 'tinker'; version: 1; graph: Graph; params?: Record<NodeId, { W: number[]; b?: number[] }> };
+type SaveFile = { kind: 'tinker'; version: 2; graph: Graph; params?: Record<NodeId, { W: number[]; b?: number[] }> };
 type Preset = SaveFile & { title: string; prompt?: string; locked?: NodeId[] };
 function parseFile(json: unknown): { ok: true; file: SaveFile | Preset } | { ok: false; error: string };
 function parseFileText(text: string): ReturnType<typeof parseFile>;   // adds "This file is not valid JSON."
 function serializeFile(graph: Graph, params?: Record<NodeId, { W: number[]; b?: number[] }>): string; // stable, 2-space, trailing newline
 // TrainSlice: setRunSeed(seed): void; loadHost(host: HostParams): boolean  (false: engine ready but the model did not build)
 ```
+
+`v2.parseFile` opens file versions 1 and 2 (a version 1 file's graph is migrated; `params` keys are unchanged because Linear ids are kept) and `v2.serializeFile` writes version 2. The root-level `parseFile` is still the version 1 reader until the web app moves (tinker-8xw.4).
 
 A file with `title`, `prompt` or `locked` is a Preset. Save writes `tinker-model.tinker.json`; "Weights" saves the live parameters (`host`), not the best snapshot. Load sets the run seed to the file's `train.seed`, then replaces the graph as one undo step (`graphSlice.apply`); undo returns the previous graph with its weights reconciled as for any edit. The preset (title, prompt, locked; null for a plain file) travels with the graph in the undo history (`pastPresets`/`futurePresets` parallel to `past`/`future`; `apply(edit, preset?)` sets it with the graph): undo and redo restore the preset together with the graph, and `loadGraph` (a new graph) clears it. A locked list names ids of that graph only; ids it lacks are dropped on load. Loaded weights are installed with `loadHost` (new run: history and best cleared).
 

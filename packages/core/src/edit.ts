@@ -19,8 +19,8 @@ import {
   type NodeId,
   type Penalty,
   type PortRef,
-} from './graph.js';
-import { CORE_PIECES } from './registry.js';
+} from './legacy/graph.js';
+import { CORE_PIECES } from './legacy/registry.js';
 
 export type EditResult = { ok: true; graph: Graph; select?: NodeId } | { ok: false; error: string };
 
