@@ -1,6 +1,20 @@
 import { expect, test } from 'vitest';
 import { analyse, layoutNeurons, LAYOUT, parseGraph, type Graph } from '@tinker/core';
 import { useStore } from '../src/state/store.js';
+import { LAYER_MIN_SCALE, layerBaseView } from '../src/canvas/viewport.js';
+
+test('layerBaseView: fit when names are legible, else the floor, overflow left-aligned', () => {
+  const view = { w: 800, h: 500 };
+  const small = { ...fitTransform([400, 200], { w: 800, h: 456 }), ty: 100 };
+  expect(layerBaseView(small, [400, 200], view, 44).scale).toBe(small.scale);
+  const wide = fitTransform([2400, 200], { w: 800, h: 456 });
+  expect(wide.scale).toBeLessThan(LAYER_MIN_SCALE);
+  const t = layerBaseView(wide, [2400, 200], view, 44);
+  expect(t.scale).toBe(LAYER_MIN_SCALE);
+  expect(t.tx).toBe(24);
+  expect(t.ty).toBeGreaterThan(44);
+  expect(LAYER_MIN_SCALE * 15).toBeCloseTo(11, 6);
+});
 import { fitTransform } from '../src/canvas/pure.js';
 import { neuronHitShapes, pickNeuron } from '../src/canvas/neuronPure.js';
 import {

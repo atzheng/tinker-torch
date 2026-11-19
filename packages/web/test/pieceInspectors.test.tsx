@@ -107,9 +107,11 @@ test('feature inspector: degree, sin, cos, products; width shown; one undo step 
   act(() => s().undo());
   expect(node('feat')).toMatchObject({ products: false });
   // The main label (typeset by KaTeX; its TeX is the aria-label) stays at any scale.
-  expect(must('node-feat').querySelector('.tk-tex')?.getAttribute('aria-label')).toBe(
-    'x, \\dots, x^{3}',
+  // The tag (`\cos`) is drawn too when the scale allows (layer view starts at 0.73), so look at all.
+  const labels = [...must('node-feat').querySelectorAll('.tk-tex')].map((e) =>
+    e.getAttribute('aria-label'),
   );
+  expect(labels).toContain('x, \\dots, x^{3}');
 });
 
 test('dropout inspector: p commits once; out of range is refused', () => {

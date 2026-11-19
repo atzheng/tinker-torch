@@ -271,7 +271,8 @@ export function LayerView(p: LayerViewProps) {
         const end = w.points[w.points.length - 1];
         const r = edge ? resolveEdge(graph.nodes, edge) : undefined;
         if (!edge || !end || !r?.ok) return null;
-        const hw = hitPx / scale;
+        // A selected (touch) handle is always at least 32 px; a hover (mouse) one is hitPx.
+        const hw = (selectedEdge === w.edge ? Math.max(hitPx, 32) : hitPx) / scale;
         return (
           <g
             key={`end-${w.edge}`}
