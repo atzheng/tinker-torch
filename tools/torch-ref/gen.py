@@ -373,6 +373,9 @@ def main():
     # two-parameter model (1 weight, 1 bias) for the loss-surface view
     add("two_param", mlp(1, [], "tanh"), n=6, d=1)
 
+    # long plain-Adam run (300 steps): the gradients shrink, so the second moment decays (tinker-df1)
+    add("mlp_tanh_adam_300steps", mlp(2, [3], "tanh"), d=2, optimizer="adam", lr=0.1, n=8, steps=300)
+
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)
     for c in cases:
