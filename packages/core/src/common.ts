@@ -16,6 +16,11 @@ export const DATASET_NAMES = [
   'moons',
   'blobs3',
   'spiral3',
+  'iris',
+  'penguins',
+  'wine',
+  'diabetes',
+  'csv',
 ] as const;
 export const ACTIVATION_FNS = ['sigmoid', 'tanh', 'relu', 'gelu'] as const;
 export const OPTIMIZERS = ['sgd', 'momentum', 'adam'] as const;
@@ -71,8 +76,10 @@ export type DataConfig = z.infer<typeof dataSchema>;
 export type TrainConfig = z.infer<typeof trainSchema>;
 /** What the dataset says about itself (CONTRACTS.md section 4). */
 export type DataInfo = {
-  /** Feature (input column) names. */
+  /** Column identifiers: `x1`, `x2`, ... always (what Input and Column pieces refer to). */
   columns: string[];
+  /** Display names of the columns, same order and length as `columns`; absent: show the identifiers. */
+  featureNames?: string[];
   kind: 'regression' | 'binary' | 'multiclass';
   /** Regression 1, binary 2, multiclass k >= 3. */
   numClasses: number;

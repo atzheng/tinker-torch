@@ -5,6 +5,7 @@ import sine from './sine.json';
 import xor from './xor.json';
 import skip from './skip.json';
 import softmax from './softmax.json';
+import iris from './iris.json';
 
 /** Bundled presets by the name used in `?preset=<name>`, in menu order. Imported, never fetched. */
 export const PRESET_SOURCES: Record<string, unknown> = {
@@ -14,6 +15,7 @@ export const PRESET_SOURCES: Record<string, unknown> = {
   xor,
   skip,
   softmax,
+  iris,
 };
 
 export const PRESET_NAMES: string[] = Object.keys(PRESET_SOURCES);

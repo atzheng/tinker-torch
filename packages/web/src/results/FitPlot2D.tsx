@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { grid2d, truth, truthMargin, unstandardizeRows } from '@tinker/core';
+import { grid2dSlice, hasTruth, truth, truthMargin, unstandardizeRows } from '@tinker/core';
 import { CLASS_COUNT, classColor, type PlotColors } from '../plot/color.js';
 import { formatTick, linearScale, niceTicks, paddedRange } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
@@ -17,6 +17,7 @@ import {
   unit,
 } from '../plot/surface.js';
 import { useStore } from '../state/store.js';
+import { axisLabel, featureName } from '../state/names.js';
 import { ResampleButton, ResampleReadout, useOverlay2D } from './ResampleOverlay.js';
 import { PredictionPicker } from './PredictionPicker.js';
 import styles from './Results.module.css';
@@ -79,16 +80,31 @@ export function FitPlot2D() {
   const numClasses = dataset.info.numClasses;
   const classNames =
     dataset.info.classNames ?? Array.from({ length: numClasses }, (_, i) => `class ${i}`);
+  // More than two inputs: the plot shows a slice. Two chosen features span the axes, every other
+  // feature is held at its training mean (the points are all drawn, projected on the two axes).
+  const d = dataset.info.columns.length;
+  const [pick2, setPick2] = useState<[number, number]>([0, 1]);
+  const ia = Math.min(pick2[0], d - 1);
+  const ib = pick2[1] === ia || pick2[1] >= d ? (ia === 0 ? 1 : 0) : pick2[1];
+  const canTruth = hasTruth(set);
+  const nameA = featureName(dataset.info, dataset.info.columns[ia] ?? 'x1');
+  const nameB = featureName(dataset.info, dataset.info.columns[ib] ?? 'x2');
 
   // Per dataset: raw-unit points, the grid, the true function on it, the colour range, buffers.
   const fixed = useMemo(() => {
     const st = dataset.standardization;
-    const xt = st ? unstandardizeRows(dataset.xTrain, 2, st) : dataset.xTrain;
-    const xv = st ? unstandardizeRows(dataset.xVal, 2, st) : dataset.xVal;
-    const grid = grid2d(dataset.domain, GRID_2D, st);
-    const f = truth(set, grid.xRaw);
+    const xt = st ? unstandardizeRows(dataset.xTrain, d, st) : dataset.xTrain;
+    const xv = st ? unstandardizeRows(dataset.xVal, d, st) : dataset.xVal;
+    const means = Array.from({ length: d }, (_, c) => {
+      let sum = 0;
+      for (let i = 0; i < dataset.nTrain; i++) sum += xt[i * d + c] ?? 0;
+      return dataset.nTrain > 0 ? sum / dataset.nTrain : 0;
+    });
+    const grid = grid2dSlice(dataset.domain, means, ia, ib, GRID_2D, st);
+    // a real dataset has no truth (the toggle is hidden)
+    const f = canTruth ? truth(set, grid.xRaw) : new Float32Array(grid.n);
     // smooth signed field for the classification boundary (zero level), not the 0/1 truth
-    const margin = truthMargin(set, grid.xRaw);
+    const margin = canTruth ? truthMargin(set, grid.xRaw) : new Float32Array(grid.n);
     const range = classification
       ? ([0, 1] as [number, number])
       : (() => {
@@ -111,7 +127,7 @@ export function FitPlot2D() {
       img: new ImageData(GRID_2D, GRID_2D),
       values: new Float32Array(GRID_2D * GRID_2D),
     };
-  }, [dataset, set, classification]);
+  }, [dataset, set, classification, d, ia, ib, canTruth]);
 
   // The model on the grid, recomputed when the parameters (host) or the dataset change.
   const surface = useMemo(() => {
@@ -160,8 +176,8 @@ export function FitPlot2D() {
 
   const draw: DrawFn = (ctx, w, h, c) => {
     const m = MARGINS;
-    const [x1lo, x1hi] = dataset.domain[0] ?? [0, 1];
-    const [x2lo, x2hi] = dataset.domain[1] ?? [0, 1];
+    const [x1lo, x1hi] = dataset.domain[ia] ?? [0, 1];
+    const [x2lo, x2hi] = dataset.domain[ib] ?? [0, 1];
     const xs = linearScale(x1lo, x1hi, m.l, w - m.r);
     const ys = linearScale(x2lo, x2hi, h - m.b, m.t);
     drawAxes(ctx, c, w, h, m, xs, ys, niceTicks(x1lo, x1hi, 6), niceTicks(x2lo, x2hi, 4));
@@ -275,8 +291,8 @@ export function FitPlot2D() {
           : rampCss(lut, unit(y, rlo, rhi));
     const dots = (x: Float32Array, y: Float32Array, n: number, hollow: boolean) => {
       for (let i = 0; i < n; i++) {
-        const px = xs.px(x[i * 2] ?? 0);
-        const py = ys.px(x[i * 2 + 1] ?? 0);
+        const px = xs.px(x[i * d + ia] ?? 0);
+        const py = ys.px(x[i * d + ib] ?? 0);
         const col = colourOf(y[i] ?? 0);
         ctx.beginPath();
         ctx.arc(px, py, hollow ? 4 : 3.5, 0, Math.PI * 2);
@@ -345,9 +361,9 @@ export function FitPlot2D() {
         ) : classification ? (
           <span className={`${styles.key} tk-diag-label`} data-testid="fit-key">
             <i className={styles.swatch} style={{ background: 'var(--weight-neg)' }} />
-            class 0
+            {classNames[0] ?? 'class 0'}
             <i className={styles.swatch} style={{ background: 'var(--weight-pos)' }} />
-            class 1{' '}
+            {classNames[1] ?? 'class 1'}{' '}
             <span aria-hidden>
               {'\u25CF'} train {'\u25CB'} val
             </span>
@@ -367,15 +383,60 @@ export function FitPlot2D() {
             </span>
           </span>
         )}
-        <label className={styles.toggle}>
-          <input
-            type="checkbox"
-            checked={showTruth}
-            onChange={(e) => setShowTruth(e.target.checked)}
-            data-testid="truth-toggle"
-          />
-          {classification ? 'True boundary' : 'True contours'}
-        </label>
+        {canTruth && (
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={showTruth}
+              onChange={(e) => setShowTruth(e.target.checked)}
+              data-testid="truth-toggle"
+            />
+            {classification ? 'True boundary' : 'True contours'}
+          </label>
+        )}
+        {d > 2 && (
+          <span className={styles.key} style={{ flexWrap: 'wrap' }} data-testid="slice-pickers">
+            <label className={styles.toggle}>
+              x
+              <select
+                aria-label="Feature on the horizontal axis"
+                data-testid="slice-x"
+                value={ia}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setPick2([v, v === ib ? ia : ib]);
+                }}
+              >
+                {dataset.info.columns.map((c, i) => (
+                  <option key={c} value={i}>
+                    {featureName(dataset.info, c)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.toggle}>
+              y
+              <select
+                aria-label="Feature on the vertical axis"
+                data-testid="slice-y"
+                value={ib}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setPick2([v === ia ? ib : ia, v]);
+                }}
+              >
+                {dataset.info.columns.map((c, i) => (
+                  <option key={c} value={i}>
+                    {featureName(dataset.info, c)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="tk-muted" title="The other features are held at their mean">
+              rest at mean
+            </span>
+          </span>
+        )}
         <PredictionPicker />
         <ResampleButton />
       </div>
@@ -387,7 +448,7 @@ export function FitPlot2D() {
       )}
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Fit plot" />
-        <AxisLabels x="$x_1$" y="$x_2$" />
+        <AxisLabels x={axisLabel(nameA)} y={axisLabel(nameB)} />
       </div>
     </div>
   );

@@ -25,7 +25,7 @@ function presetText(extra: Record<string, unknown>): string {
 }
 
 test('every bundled preset parses, is titled, has no prompt and analyses as trainable', () => {
-  expect(PRESET_NAMES).toEqual(['linear', 'logistic', 'sine', 'xor', 'skip', 'softmax']);
+  expect(PRESET_NAMES).toEqual(['linear', 'logistic', 'sine', 'xor', 'skip', 'softmax', 'iris']);
   for (const name of PRESET_NAMES) {
     const f = bundledPreset(name);
     expect(f, name).not.toBeNull();

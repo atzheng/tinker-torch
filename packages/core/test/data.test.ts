@@ -28,9 +28,10 @@ const cfg = (set: DatasetName, over: Partial<DataConfig> = {}): DataConfig => ({
   ...over,
 });
 
-const REG = DATASET_NAMES.filter((s) => SETS[s].kind === 'regression');
-const CLS = DATASET_NAMES.filter((s) => SETS[s].kind === 'binary');
-const MULTI = DATASET_NAMES.filter((s) => SETS[s].kind === 'multiclass');
+const SYNTH = DATASET_NAMES.filter((s) => !SETS[s].real);
+const REG = SYNTH.filter((s) => SETS[s].kind === 'regression');
+const CLS = SYNTH.filter((s) => SETS[s].kind === 'binary');
+const MULTI = SYNTH.filter((s) => SETS[s].kind === 'multiclass');
 
 const mean = (a: ArrayLike<number>) => Array.from(a).reduce((s, v) => s + v, 0) / a.length;
 const std = (a: ArrayLike<number>) => {
@@ -39,7 +40,7 @@ const std = (a: ArrayLike<number>) => {
 };
 
 describe('sample', () => {
-  test.each(DATASET_NAMES)('%s is deterministic per seed and differs across seeds', (set) => {
+  test.each(SYNTH)('%s is deterministic per seed and differs across seeds', (set) => {
     const a = sample(cfg(set));
     const b = sample(cfg(set));
     const c = sample(cfg(set, { seed: 8 }));
@@ -48,7 +49,7 @@ describe('sample', () => {
     expect(Array.from(a.xTrain)).not.toEqual(Array.from(c.xTrain));
   });
 
-  test.each(DATASET_NAMES)('%s has the right sizes and shapes', (set) => {
+  test.each(SYNTH)('%s has the right sizes and shapes', (set) => {
     const d = SETS[set].d;
     for (const n of [10, 40, 500]) {
       for (const val of [0, 0.3, 0.5]) {
@@ -160,7 +161,7 @@ describe('sample', () => {
     expect(clean.nTrain).toBe(200);
   });
 
-  test.each(DATASET_NAMES)('%s: standardised training columns have mean 0 and std 1', (set) => {
+  test.each(SYNTH)('%s: standardised training columns have mean 0 and std 1', (set) => {
     const ds = sample(cfg(set, { standardize: true, n: 200 }));
     const d = SETS[set].d;
     expect(ds.standardization).not.toBeNull();

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { grid1d, truth, unstandardizeRows } from '@tinker/core';
+import { grid1d, hasTruth, truth, unstandardizeRows } from '@tinker/core';
 import { fitYRange, linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { AxisLabels } from '../plot/AxisLabels.js';
 import { MARGINS, drawAxes, drawLegend, type LegendItem } from '../plot/draw.js';
 import { useStore } from '../state/store.js';
+import { axisLabel, featureName } from '../state/names.js';
 import { FitPlot2D } from './FitPlot2D.js';
 import {
   ResampleButton,
@@ -43,7 +44,7 @@ function FitPlot1D() {
     const xt = st ? unstandardizeRows(dataset.xTrain, 1, st) : dataset.xTrain;
     const xv = st ? unstandardizeRows(dataset.xVal, 1, st) : dataset.xVal;
     const grid = grid1d(dataset.domain, GRID_N, st);
-    return { xt, xv, grid, f: truth(set, grid.xRaw) };
+    return { xt, xv, grid, f: hasTruth(set) ? truth(set, grid.xRaw) : new Float32Array(grid.n) };
   }, [dataset, set]);
 
   // The model on the grid; recomputed when the parameters (host) or the dataset change.
@@ -170,15 +171,17 @@ function FitPlot1D() {
     <div className={styles.panel} data-testid="fit-plot">
       <div className={styles.head} data-panel-head="">
         <span className={styles.title}>Fit</span>
-        <label className={styles.toggle}>
-          <input
-            type="checkbox"
-            checked={showTruth}
-            onChange={(e) => setShowTruth(e.target.checked)}
-            data-testid="truth-toggle"
-          />
-          True function
-        </label>
+        {hasTruth(set) && (
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={showTruth}
+              onChange={(e) => setShowTruth(e.target.checked)}
+              data-testid="truth-toggle"
+            />
+            True function
+          </label>
+        )}
         <PredictionPicker />
         <ResampleButton />
       </div>
@@ -190,7 +193,14 @@ function FitPlot1D() {
       )}
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Fit plot" />
-        <AxisLabels x="$x$" y="$y$" />
+        <AxisLabels
+          x={dataset.info.featureNames ? axisLabel(featureName(dataset.info, 'x1')) : '$x$'}
+          y={
+            dataset.info.targetName && dataset.info.targetName !== 'y'
+              ? axisLabel(dataset.info.targetName)
+              : '$y$'
+          }
+        />
       </div>
     </div>
   );

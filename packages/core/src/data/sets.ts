@@ -1,6 +1,7 @@
 /** The synthetic generators and their true functions (CONTRACTS.md section 6). */
 import type { DatasetName } from '../common.js';
 import type { Rng } from '../rng.js';
+import { bundledSpec } from './real.js';
 
 export type SetKind = 'regression' | 'binary' | 'multiclass';
 
@@ -12,8 +13,10 @@ export type SetSpec = {
   domain: [lo: number, hi: number][];
   /** Multiclass only: the number of classes k >= 3 (binary has 2, regression 1). */
   numClasses?: number;
-  /** Feature names; default x1, x2, ... A real dataset fills these. */
+  /** Display names of the features (`DataInfo.featureNames`); default none (x1, x2, ... are shown). */
   featureNames?: string[];
+  /** A real dataset: fixed rows, `n` and `noise` do not apply (`f` is unused). */
+  real?: boolean;
   /** Target name; default 'y'. */
   targetName?: string;
   /** Classification: one name per class in label order; default 'class 0', 'class 1', ... */
@@ -221,6 +224,12 @@ export const SETS: Record<DatasetName, SetSpec> = {
     domain: D2,
     f: (x) => nearestArm(at(x, 0), at(x, 1)),
   },
+  iris: bundledSpec('iris'),
+  penguins: bundledSpec('penguins'),
+  wine: bundledSpec('wine'),
+  diabetes: bundledSpec('diabetes'),
+  // Replaced by `registerCsv` when the user opens a file; until then a one-column placeholder.
+  csv: { name: 'csv', kind: 'regression', d: 1, domain: [[0, 1]], real: true, f: () => NaN },
 };
 
 // ---------------------------------------------------------------- spread constant s

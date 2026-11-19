@@ -58,3 +58,31 @@ export function grid2d(
   }
   return finish(x, 2, standardization);
 }
+
+/**
+ * `grid2d` for data with d >= 2 columns: an m x m grid over columns `ia` (fastest) and `ib`, every
+ * other column held at `fixedRaw[c]` (raw units; its length is d). Rows have d columns; row index
+ * as in `grid2d`. With d = 2, ia = 0 and ib = 1 it is `grid2d`.
+ */
+export function grid2dSlice(
+  domain: readonly [lo: number, hi: number][],
+  fixedRaw: readonly number[],
+  ia: number,
+  ib: number,
+  m = 64,
+  standardization: Standardization | null = null,
+): Grid {
+  const d = fixedRaw.length;
+  const [lo1, hi1] = domain[ia] ?? [0, 1];
+  const [lo2, hi2] = domain[ib] ?? [0, 1];
+  const a = linspace(lo1, hi1, m);
+  const b = linspace(lo2, hi2, m);
+  const x = new Float32Array(m * m * d);
+  let k = 0;
+  for (const y2 of b) {
+    for (const y1 of a) {
+      for (let c = 0; c < d; c++) x[k++] = c === ia ? y1 : c === ib ? y2 : (fixedRaw[c] ?? 0);
+    }
+  }
+  return finish(x, d, standardization);
+}

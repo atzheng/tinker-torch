@@ -1,10 +1,16 @@
 import type { StateCreator } from 'zustand';
 import {
+  hasTable,
+  isRealSet,
+  loadRealSet,
   makeRng,
+  registerCsv,
   sample,
   setColumns,
   type DataConfig,
+  type CsvBuild,
   type DataInfo,
+  type DatasetName,
   type Dataset,
   type Graph,
 } from '@tinker/core';
@@ -30,6 +36,15 @@ export type DataSlice = {
    * become all columns of the new set; otherwise they are kept.
    */
   setData: (patch: Partial<DataConfig>) => void;
+  /**
+   * Switch to a dataset by name. A bundled real set is loaded first (its rows are a bundled file,
+   * fetched from the app's own origin on demand); a failure sets the toast `error`.
+   */
+  chooseSet: (name: DatasetName) => Promise<void>;
+  /** File name or URL of the opened CSV (null before one is opened); the Data menu labels the csv set with it. */
+  csvName: string | null;
+  /** Makes a built CSV the `csv` dataset and switches to it (one undo step). */
+  openCsv: (build: CsvBuild, name: string) => void;
   /** New seed derived from the current one through core/rng (no Math.random), then re-sample. */
   resample: () => void;
   /** Set which columns an Input piece uses (kept in dataset order, at least one). */
@@ -55,7 +70,38 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
   return {
     dataset: initial,
     dataInfo: initial.info,
+    csvName: null,
+    chooseSet: async (name) => {
+      // No await for a generator or a loaded set, so the change is applied synchronously.
+      if (isRealSet(name) && !hasTable(name)) {
+        try {
+          await loadRealSet(name);
+        } catch {
+          set({ error: 'The dataset could not be loaded. Reload the page and try again.' });
+          return;
+        }
+      }
+      get().setData({ set: name });
+    },
+    openCsv: (build, name) => {
+      const { graph } = get();
+      registerCsv(build);
+      set({ csvName: name });
+      // Already on csv: a new file must re-sample even though the settings are the same, so the
+      // seed (which drives the split) changes too.
+      get().setData({
+        set: 'csv',
+        ...(graph.data.set === 'csv'
+          ? {
+              seed: makeRng(graph.data.seed)
+                .fork('csv')
+                .int(2 ** 31),
+            }
+          : {}),
+      });
+    },
     setData: (patch) => {
+      if (patch.set !== undefined && isRealSet(patch.set) && !hasTable(patch.set)) return;
       const { graph, dataInfo } = get();
       const data = sanitizeData({ ...graph.data, ...patch });
       let next: Graph = { ...graph, data };

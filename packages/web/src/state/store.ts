@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { analyse, sample } from '@tinker/core';
+import { analyse, hasTable, isRealSet, loadRealSet, sample, type DataConfig } from '@tinker/core';
 import { neuronSelectionLive } from '../canvas/pure.js';
 import { noteHost } from './hostShape.js';
 import { createDataSlice, type DataSlice } from './dataSlice.js';
@@ -20,11 +20,35 @@ export const useStore = create<Store>()((...a) => ({
 }));
 
 // The dataset follows graph.data whatever changed it (data action, undo, redo, load).
-useStore.subscribe((s, prev) => {
-  if (s.graph.data !== prev.graph.data) {
-    const dataset = sample(s.graph.data);
-    useStore.setState({ dataset, dataInfo: dataset.info });
+function refreshDataset(data: DataConfig): void {
+  if (isRealSet(data.set) && !hasTable(data.set)) {
+    // A graph (file load, undo) names a real set whose rows are not here. The old dataset stays
+    // until they are: a bundled set loads from the app's own files; a CSV has to be opened again.
+    if (data.set === 'csv') {
+      useStore.getState().setData({ set: 'line' });
+      useStore.setState({
+        error: 'This file used a CSV that is not open. Open it again from the Data menu.',
+      });
+      return;
+    }
+    loadRealSet(data.set).then(
+      () => {
+        if (useStore.getState().graph.data.set === data.set)
+          refreshDataset(useStore.getState().graph.data);
+      },
+      () =>
+        useStore.setState({
+          error: 'The dataset could not be loaded. Reload the page and try again.',
+        }),
+    );
+    return;
   }
+  const dataset = sample(data);
+  useStore.setState({ dataset, dataInfo: dataset.info });
+}
+
+useStore.subscribe((s, prev) => {
+  if (s.graph.data !== prev.graph.data) refreshDataset(s.graph.data);
 });
 
 // After the data subscription: the train loop re-compiles on graph or dataset changes.
