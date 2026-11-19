@@ -769,9 +769,9 @@ function sources(): { name: string; json: unknown }[] {
   return out;
 }
 
-describe('every fixture and bundled preset, through migration', () => {
+describe('every v1 fixture, through migration', () => {
   const all = sources();
-  test('there are graphs to check', () => expect(all.length).toBeGreaterThan(30));
+  test('there are graphs to check', () => expect(all.length).toBeGreaterThan(24));
   for (const { name, json } of all) {
     test(name, () => {
       const parsed = parseGraph(json);

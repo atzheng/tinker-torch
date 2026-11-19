@@ -1,9 +1,9 @@
 {
   "kind": "tinker",
-  "version": 1,
+  "version": 2,
   "title": "1-8-1 tanh on a sine",
   "graph": {
-    "version": 1,
+    "version": 2,
     "nodes": [
       {
         "id": "x",
@@ -28,34 +28,40 @@
         "bias": true
       },
       {
-        "id": "yhat",
-        "type": "output",
-        "link": "identity"
-      },
-      {
         "id": "y",
         "type": "target"
       },
       {
+        "id": "diff",
+        "type": "subtract"
+      },
+      {
+        "id": "err",
+        "type": "square"
+      },
+      {
         "id": "loss",
-        "type": "loss",
-        "fn": "squared_error"
+        "type": "mean"
       }
     ],
     "edges": [
       ["x", "lin1"],
       ["lin1", "act1"],
       ["act1", "lin2"],
-      ["lin2", "yhat"],
-      ["yhat", "loss.pred"],
-      ["y", "loss.target"]
+      ["lin2", "diff.a"],
+      ["y", "diff.b"],
+      ["diff", "err"],
+      ["err", "loss"]
     ],
+    "predictions": ["lin2"],
+    "loss": "loss",
     "data": {
       "set": "sine",
       "n": 40,
       "noise": 0.2,
       "val": 0.3,
-      "seed": 7
+      "seed": 7,
+      "standardize": false
     },
     "train": {
       "optimizer": "adam",
