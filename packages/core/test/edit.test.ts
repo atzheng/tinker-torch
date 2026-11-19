@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'vitest';
 import {
   analyse,
+  addPrediction,
   connect,
   deleteEdge,
   deleteNode,
   insertOnWire,
+  movePrediction,
   parseGraph,
+  removePrediction,
+  setLoss,
   rewireEdge,
   serializeGraph,
   setColumns,
@@ -706,5 +710,61 @@ describe('purity', () => {
         if (r.ok) ok(r);
       }
     }
+  });
+});
+
+describe('pin edits', () => {
+  const pins = (g: Graph) => ({ p: g.predictions, l: g.loss });
+
+  test('setLoss moves the L pin and leaves the rest alone', () => {
+    const g = base();
+    const out = ok(setLoss(g, 'err'));
+    expect(pins(out)).toEqual({ p: ['lin2'], l: 'err' });
+    expect(out.nodes).toEqual(g.nodes);
+    expect(out.edges).toEqual(g.edges);
+    expect(pins(ok(setLoss(g, null)))).toEqual({ p: ['lin2'], l: null });
+    expect(pins(ok(setLoss(g, 'err.out')))).toEqual({ p: ['lin2'], l: 'err' });
+  });
+
+  test('setLoss refuses the same node, unknown nodes and bad ports', () => {
+    expect(err(setLoss(base(), 'loss'))).toBe('That is already the loss.');
+    expect(err(setLoss(base(), 'nope'))).toMatch(/not a node/);
+    expect(err(setLoss(base(), 'err.in'))).toMatch(/out/);
+  });
+
+  test('addPrediction appends; the same node is refused', () => {
+    const g = base();
+    expect(pins(ok(addPrediction(g, 'act1')))).toEqual({ p: ['lin2', 'act1'], l: 'loss' });
+    expect(err(addPrediction(g, 'lin2'))).toBe('That piece is already a prediction.');
+    expect(err(addPrediction(g, 'nope'))).toMatch(/not a node/);
+  });
+
+  test('movePrediction keeps the order; removePrediction drops one', () => {
+    const g = ok(addPrediction(base(), 'act1'));
+    expect(pins(ok(movePrediction(g, 0, 'lin1'))).p).toEqual(['lin1', 'act1']);
+    expect(err(movePrediction(g, 0, 'act1'))).toBe('That piece is already a prediction.');
+    expect(err(movePrediction(g, 0, 'lin2'))).toBe('That is already the prediction.');
+    expect(err(movePrediction(g, 5, 'lin1'))).toBe('That prediction does not exist.');
+    expect(pins(ok(removePrediction(g, 0))).p).toEqual(['act1']);
+    expect(pins(ok(removePrediction(base(), 0))).p).toEqual([]);
+    expect(err(removePrediction(base(), 1))).toBe('That prediction does not exist.');
+  });
+
+  test('a pin on a locked piece is fixed; pinning a free piece is fine', () => {
+    const g = base();
+    const locked = { locked: ['lin2'] };
+    expect(err(movePrediction(g, 0, 'act1', locked))).toBe('This piece is locked.');
+    expect(err(removePrediction(g, 0, locked))).toBe('This piece is locked.');
+    expect(err(addPrediction(g, 'lin2', locked))).toBe('This piece is locked.');
+    expect(err(setLoss(g, 'lin2', { locked: ['loss'] }))).toBe('This piece is locked.');
+    expect(err(setLoss(g, 'err', { locked: ['err'] }))).toBe('This piece is locked.');
+    ok(addPrediction(g, 'act1', locked));
+    ok(setLoss(g, 'err', locked));
+  });
+
+  test('inputs are not changed', () => {
+    const g = base();
+    ok(setLoss(g, 'err'));
+    ok(addPrediction(g, 'act1'));
   });
 });
