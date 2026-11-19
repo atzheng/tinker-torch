@@ -51,6 +51,13 @@ export type CorePiece<N extends Node> = {
   /** Drop-to-swap is allowed only within a family. */
   family: Family;
   inputPorts: string[];
+  /**
+   * Input ports (a subset of `inputPorts`) that take any number of wires, at least one. Absent or
+   * empty: every port takes exactly one wire. In `outShape`'s `inShapes`, a variadic port holds the
+   * shape every wire into it has (analyse checks they agree before calling `outShape`; a missing
+   * entry means no wire yet). The wires' order is their order in `graph.edges`.
+   */
+  variadicPorts?: readonly string[];
   defaults: () => Omit<N, 'id'>;
   /**
    * `inShapes` is keyed by input port. A missing entry means that port is not connected (or its

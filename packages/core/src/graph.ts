@@ -175,6 +175,16 @@ export function inputPortsOf(type: PieceType): string[] {
   return CORE_PIECES[type].inputPorts;
 }
 
+/** The input ports of a node type that take many wires (CONTRACTS.md section 3); empty for most pieces. */
+export function variadicPortsOf(type: PieceType): readonly string[] {
+  return CORE_PIECES[type].variadicPorts ?? [];
+}
+
+/** Whether `port` of a `type` node takes any number of wires instead of one. */
+export function isVariadicPort(type: PieceType, port: string): boolean {
+  return variadicPortsOf(type).includes(port);
+}
+
 /** Output port names of a node type: every piece has exactly `out`. */
 export function outputPortsOf(_type: PieceType): string[] {
   return ['out'];
