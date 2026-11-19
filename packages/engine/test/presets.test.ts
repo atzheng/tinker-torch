@@ -45,7 +45,12 @@ test.each(Object.keys(BEFORE))(
       state = r.state;
       if (i === 0 || i === 49 || i === 299) got.push(r.loss);
     }
-    want.losses.forEach((l, k) => expect(got[k]).toBe(l));
+    // logistic and xor use the log loss, rewritten constant-free (tinker-oob): last float32 digits moved
+    const loose = name === 'logistic' || name === 'xor';
+    want.losses.forEach((l, k) => {
+      if (loose) expect(Math.abs(((got[k] ?? NaN) - l) / l)).toBeLessThanOrEqual(1e-6);
+      else expect(got[k]).toBe(l);
+    });
     engine.dispose(state);
     engine.disposeModel(model);
   },

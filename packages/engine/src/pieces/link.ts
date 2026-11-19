@@ -1,6 +1,6 @@
-import { nn } from '@jax-js/jax';
 import type { NodeOf } from '@tinker/core';
 import { safeSigmoid } from './activation.js';
+import { softmax } from './softmax.js';
 import type { EnginePiece } from './types.js';
 
 /**
@@ -12,6 +12,6 @@ export const link: EnginePiece<NodeOf<'link'>> = {
   forward(node, inputs) {
     const z = inputs['in'];
     if (!z) throw new Error('A Link piece is missing its input.');
-    return node.fn === 'sigmoid' ? safeSigmoid(z) : nn.softmax(z, -1);
+    return node.fn === 'sigmoid' ? safeSigmoid(z) : softmax(z);
   },
 };
