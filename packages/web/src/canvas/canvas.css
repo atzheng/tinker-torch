@@ -840,3 +840,63 @@ path.tk-hit {
     grid-template-columns: 76px repeat(var(--wcols), 44px);
   }
 }
+
+/* Equation strip (tinker-96i): bottom of the canvas, clear of the ScalarBar (top right) */
+.tk-eqdock {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+.tk-eqdock > * {
+  pointer-events: auto;
+}
+.tk-eqtoggle {
+  flex: none;
+  min-width: 44px;
+  min-height: 36px;
+  padding: 0 8px;
+  background: var(--ctl-fill);
+  color: var(--ctl-fg);
+  border: 1px solid var(--ctl-border);
+  border-radius: var(--radius);
+  font: 14px var(--font);
+}
+.tk-eqtoggle[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+.tk-eqstrip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-height: 124px;
+  overflow: auto;
+  padding: 4px 10px;
+  background: var(--diag-bg);
+  color: var(--diag-value);
+  border: 1px solid var(--diag-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.tk-eqlines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 100%;
+}
+.tk-eqline {
+  white-space: nowrap;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.tk-eqline[data-numeric='true'] {
+  color: var(--diag-fg);
+}
+.tk-eqdock ~ .tk-hints {
+  bottom: 140px;
+}

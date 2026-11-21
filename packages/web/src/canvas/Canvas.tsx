@@ -32,6 +32,7 @@ import { LayerView } from './LayerView.js';
 import { NeuronView, UNIT_BTN_ROOM } from './NeuronView.js';
 import { Toast } from './Toast.js';
 import { ScalarBar } from './ScalarBar.js';
+import { EquationStrip } from './EquationStrip.js';
 import { linearGroups, pickGroup } from '../state/scalarActions.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
@@ -683,6 +684,7 @@ export function Canvas() {
             : `Tap empty canvas to place ${armed.label}.`}
         </div>
       )}
+      <EquationStrip graph={graph} analysis={analysis} />
       {graph.nodes.length === 0 ? (
         <div className="tk-empty" data-testid="empty-hint">
           {HINTS.empty}

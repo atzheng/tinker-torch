@@ -8,6 +8,7 @@ import {
   type Issue,
   type NodeId,
   type PortRef,
+  fmtWeight,
 } from '@tinker/core';
 
 /** Smallest on-screen font size (px) at which secondary drawing text is still drawn. */
@@ -364,18 +365,8 @@ export function labelSize(text: string, scale: number): { fs: number; lw: number
   return { fs, lw: text.length * 0.62 * fs + 0.8 * fs, lh: 1.4 * fs };
 }
 
-/** TeX (no dollars) of a Weight's name: w1 is `w_{1}`, any other id is set upright. */
-export function weightTex(id: NodeId): string {
-  const m = /^w(\d+)$/.exec(id);
-  if (m) return `w_{${m[1]}}`;
-  return id === 'w' ? 'w' : `\\mathrm{${id.replace(/_/g, '\\_')}}`;
-}
-
-/** A weight value as shown in its pill: two decimals, fewer as it grows (the limit is 100). */
-export function fmtWeight(v: number): string {
-  const a = Math.abs(v);
-  return a < 10 ? v.toFixed(2) : a < 100 ? v.toFixed(1) : v.toFixed(0);
-}
+// weightTex and fmtWeight live in core (equation.ts) so the equation strip and the pills share them.
+export { fmtWeight, weightTex } from '@tinker/core';
 
 /** The text of a weight pill without maths markers, for sizing and labels: `w1 = 0.42`. */
 export function weightPillPlain(id: NodeId, value: number | undefined): string {
