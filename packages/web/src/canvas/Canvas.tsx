@@ -16,6 +16,7 @@ import {
   dnd,
   dropCandidates,
   editForDrop,
+  visibleLimit,
   pinCanLandOn,
   inputEndAt,
   outputPortAt,
@@ -354,7 +355,7 @@ export function Canvas() {
       setMoving(null);
       if (!m) return;
       if (m.x !== m.from.x || m.y !== m.from.y) {
-        const r = apply(moveNodes(graph, { [id]: [m.x, m.y] }));
+        const r = apply(moveNodes(graph, { [id]: [m.x, m.y] }, visibleLimit(tRef.current, view)));
         if (!r.ok) return;
       }
       selectNode(id);
@@ -428,13 +429,14 @@ export function Canvas() {
         const edit = editForDrop(graph, payload, target, {
           locked: lockedIds(),
           boxes: layerLayout.nodes,
+          limit: visibleLimit(t, view),
         });
         if (!edit) return;
         const result = apply(edit);
         if (result.ok && result.select !== undefined) selectNode(result.select);
       },
     });
-  }, [graph, layout, layerLayout, analysis, t, coarse, apply, selectNode, toAbstract]);
+  }, [graph, layout, layerLayout, analysis, t, view, coarse, apply, selectNode, toAbstract]);
 
   const px = (x: number) => x * t.scale + t.tx;
   const py = (y: number) => y * t.scale + t.ty;

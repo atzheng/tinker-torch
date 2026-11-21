@@ -173,7 +173,12 @@ export function insertOnWire(
  * undo step. Any piece may be placed; it is inert until wired into what a ŷ or L pin needs (analyse).
  * A Weights tap reads the first Linear (refused when there is none).
  */
-export function addPiece(g: Graph, piece: NodeBody, at?: readonly [number, number]): EditResult {
+export function addPiece(
+  g: Graph,
+  piece: NodeBody,
+  at?: readonly [number, number],
+  limit?: readonly [number, number],
+): EditResult {
   if (piece.type === 'weights') {
     // A Weights tap must name a Linear (graph rule): it reads the first one; the wire is re-aimed by editing `of`.
     const lin = g.nodes.find((n) => n.type === 'linear');
@@ -187,7 +192,7 @@ export function addPiece(g: Graph, piece: NodeBody, at?: readonly [number, numbe
     if (!Number.isFinite(at[0]) || !Number.isFinite(at[1])) {
       return fail('A piece can only be placed at a position given as numbers.');
     }
-    const [maxX, maxY] = positionLimits(g.nodes.length + 1);
+    const [maxX, maxY] = positionLimits(g.nodes.length + 1, limit);
     positions = {
       ...g.positions,
       [id]: [
@@ -560,6 +565,7 @@ export function insertMacro(
   key: string,
   at?: { edge: number },
   pos?: readonly [number, number],
+  limit?: readonly [number, number],
 ): EditResult {
   const entry = PALETTE.find((p) => p.kind === 'macro' && p.key === key);
   if (entry?.kind !== 'macro') return fail(`There is no ready-made group called "${key}".`);
@@ -598,7 +604,10 @@ export function insertMacro(
     if (!Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) {
       return fail('A piece can only be placed at a position given as numbers.');
     }
-    positions = { ...g.positions, ...groupPositions(sub.nodes, sub.edges, pos, nodes.length) };
+    positions = {
+      ...g.positions,
+      ...groupPositions(sub.nodes, sub.edges, pos, nodes.length, limit),
+    };
   }
   const parsed = parseGraph({ ...g, nodes, edges, loss, ...(positions ? { positions } : {}) });
   if (!parsed.ok) return fail(parsed.error);
@@ -611,6 +620,7 @@ function groupPositions(
   edges: readonly Edge[],
   at: readonly [number, number],
   nodeCount: number,
+  limit?: readonly [number, number],
 ): Record<NodeId, [number, number]> {
   const depth: Record<NodeId, number> = Object.create(null) as Record<NodeId, number>;
   for (const n of sub) depth[n.id] = 0;
@@ -624,7 +634,7 @@ function groupPositions(
     }
   }
   const rows: Record<number, number> = {};
-  const [maxX, maxY] = positionLimits(nodeCount);
+  const [maxX, maxY] = positionLimits(nodeCount, limit);
   const out: Record<NodeId, [number, number]> = {};
   for (const n of sub) {
     const d = depth[n.id] ?? 0;
@@ -737,13 +747,20 @@ export function setColumns(
   );
 }
 
-/** Furthest a piece may be placed: two spare columns and rows past a drawing with every piece in its own. */
-function positionLimits(nodeCount: number): [number, number] {
+/**
+ * Furthest a piece may be placed: two spare columns and rows past a drawing with every piece in its
+ * own, or the optional far-corner `limit` (the visible canvas's bottom-right, in layout units) when
+ * that is further on an axis, so any spot the user can see is a valid place.
+ */
+export function positionLimits(
+  nodeCount: number,
+  limit?: readonly [number, number],
+): [number, number] {
   const spare = nodeCount + 2;
-  return [
-    LAYOUT.pad + spare * (LAYOUT.boxW + LAYOUT.layerGap),
-    LAYOUT.pad + spare * (LAYOUT.boxH + LAYOUT.rowGap),
-  ];
+  const x = LAYOUT.pad + spare * (LAYOUT.boxW + LAYOUT.layerGap);
+  const y = LAYOUT.pad + spare * (LAYOUT.boxH + LAYOUT.rowGap);
+  if (!limit || !Number.isFinite(limit[0]) || !Number.isFinite(limit[1])) return [x, y];
+  return [Math.max(x, limit[0]), Math.max(y, limit[1])];
 }
 
 /**
@@ -756,10 +773,11 @@ function positionLimits(nodeCount: number): [number, number] {
 export function moveNodes(
   g: Graph,
   moves: Readonly<Record<NodeId, readonly [number, number]>>,
+  limit?: readonly [number, number],
 ): EditResult {
   // No further than two spare columns and rows past a drawing with every piece in its own column
   // and row, so a far drag cannot make the drawing (and the fit) grow without limit.
-  const [maxX, maxY] = positionLimits(g.nodes.length);
+  const [maxX, maxY] = positionLimits(g.nodes.length, limit);
   const positions: Record<NodeId, [number, number]> = { ...g.positions };
   const collapsed = collapsedWeights(g);
   for (const [id, xy] of Object.entries(moves)) {

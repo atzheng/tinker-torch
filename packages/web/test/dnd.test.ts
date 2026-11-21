@@ -13,6 +13,7 @@ import {
   editForDrop,
   outputPortAt,
   resolveDrop,
+  visibleLimit,
   type DragPayload,
 } from '../src/canvas/dnd.js';
 import { mlpGraph as initialGraph } from './mlpGraph.js';
@@ -294,4 +295,25 @@ test('a piece dropped on an occupied spot is nudged to the nearest free grid slo
   const p = r2.graph.positions?.[id];
   expect(p).toBeDefined();
   expect(p?.[0] !== b.x || p?.[1] !== b.y).toBe(true);
+});
+
+test('a palette drop low in the visible canvas lands where it was released', () => {
+  const g = initialGraph();
+  const t = { scale: 0.75, tx: 40, ty: 60 };
+  const view = { w: 1180, h: 820 };
+  const limit = visibleLimit(t, view);
+  expect(limit).toEqual([(1180 - 40) / 0.75 - LAYOUT.boxW, (820 - 60) / 0.75 - LAYOUT.boxH]);
+  const at: [number, number] = [96, Math.floor(limit[1] / 8) * 8];
+  const e = entry('input');
+  const drop = { kind: 'palette', entry: e } as DragPayload;
+  const without = editForDrop(g, drop, { kind: 'free', at });
+  const withLimit = editForDrop(g, drop, { kind: 'free', at }, { limit });
+  const idOf = (r: typeof withLimit) =>
+    r?.ok ? r.graph.nodes.find((n) => !g.nodes.some((m) => m.id === n.id))?.id : undefined;
+  const id = idOf(withLimit);
+  expect(id).toBeDefined();
+  expect(withLimit?.ok && withLimit.graph.positions?.[id as string]).toEqual(at);
+  // without a limit the old cap applies (the point of the bug)
+  const id0 = idOf(without);
+  if (without?.ok && id0) expect(without.graph.positions?.[id0]?.[1]).toBeLessThan(at[1]);
 });
