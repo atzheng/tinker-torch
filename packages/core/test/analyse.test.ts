@@ -856,14 +856,49 @@ describe('analyse v2: loss pieces take probabilities', () => {
     expect(a.fusable).toEqual([{ link: 'p', loss: 'e' }]);
   });
 
-  test('a missing or wrong link, wrong width, regression data', () => {
-    expect(messages(analyse(build(null), bin))).toEqual([
-      'Log loss takes probabilities, so wire a Sigmoid link straight into its pred input.',
-    ]);
-    expect(messages(analyse(build('softmax', 1), bin))).toEqual([
+  test('no link in front: no issue, nothing fused (the engine checks the range)', () => {
+    const a = analyse(build(null), bin);
+    expect(a.issues).toEqual([]);
+    expect(a.trainable).toBe(true);
+    expect(a.fusable).toEqual([]);
+    // (the ŷ pin on a width-2 Linear still asks for a softmax: that is the pin rule, not the link rule)
+    const c = analyse(build(null, 2, 'cross_entropy'), bin);
+    expect(messages(c).filter((m) => m.includes('probabilities'))).toEqual([]);
+    expect(c.fusable).toEqual([]);
+    const c3 = analyse({ ...build(null, 2, 'cross_entropy'), predictions: [] }, bin);
+    expect(c3.issues).toEqual([]);
+    expect(c3.trainable).toBe(true);
+    // a link of the other kind in front is not fused either, and is not an issue
+    const m = analyse(build('softmax', 1), bin);
+    expect(messages(m)).toEqual([
       'This dataset has 2 classes, so the softmax prediction needs width 2, but "p" has width 1.',
-      'Log loss takes probabilities, so wire a Sigmoid link straight into its pred input.',
     ]);
+  });
+
+  test('an unwired Bias pinned as the prediction of a log loss is trainable', () => {
+    const gr = g(
+      [
+        input(['x1', 'x2']),
+        { id: 'b', type: 'bias' },
+        tgt,
+        { id: 'e', type: 'log_loss' },
+        { id: 'loss', type: 'mean' },
+      ],
+      [
+        ['b', 'e.pred'],
+        ['y', 'e.target'],
+        ['e', 'loss'],
+      ],
+      ['b'],
+      'loss',
+    );
+    const a = analyse(gr, bin);
+    expect(a.issues).toEqual([]);
+    expect(a.trainable).toBe(true);
+    expect(a.fusable).toEqual([]);
+  });
+
+  test('wrong width, regression data', () => {
     expect(messages(analyse(build('sigmoid', 2), bin))).toContain(
       'Log loss needs a prediction of width 1, but this one is 2.',
     );

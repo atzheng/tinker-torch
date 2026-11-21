@@ -13,6 +13,7 @@ import {
   disposeCompiled,
   guarded,
   internals,
+  probabilityRange,
 } from './compile.js';
 import type { ParamTree } from './convert.js';
 import {
@@ -211,6 +212,20 @@ function makeEngine(): Engine {
       const { x, y } = batchArrays(m, batch);
       const pRef = tree.ref(t);
       return guarded([pRef, x, y], () => m.evalFn()(pRef, x, y)).item();
+    },
+
+    /**
+     * Borrows `model`, `params` and `batch`; frees everything it makes. Not jitted (the training step is
+     * unchanged). One `{ node, min, max }` per UNFUSED log_loss / cross_entropy on the loss path (`node` is the
+     * loss node): the min and max over every entry of its `pred` on the batch (NaN if an entry is NaN),
+     * dropout off. A probability loss is in range when 0 < min and max < 1.
+     */
+    probabilityRange(model, params, batch) {
+      const m = internals(model);
+      const t = peekParams(params);
+      checkBatch(m, batch.x, batch.y, batch.n);
+      checkTree(m, t);
+      return probabilityRange(m, t, batch);
     },
 
     /** Borrows `model` and `params`. [a.length, b.length] row-major; dropout off. */

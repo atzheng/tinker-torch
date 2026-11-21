@@ -66,6 +66,7 @@ export function TrainingBar() {
     canTrain: useStore((x) => x.canTrain),
     running: useStore((x) => x.running),
     diverged: useStore((x) => x.diverged),
+    probIssue: useStore((x) => x.probIssue),
     step: useStore((x) => x.step),
     speed: useStore((x) => x.speed),
     best: useStore((x) => x.best),
@@ -197,7 +198,17 @@ export function TrainingBar() {
           Diverged
         </span>
       )}
-      {message && !s.diverged && (
+      {s.probIssue && !s.diverged && (
+        <span
+          className={`${styles.issue} tk-issue`}
+          role="status"
+          title={s.probIssue}
+          data-testid="status-prob"
+        >
+          {s.probIssue}
+        </span>
+      )}
+      {message && !s.diverged && !s.probIssue && (
         <span className={`${styles.issue} tk-issue`} title={message} data-testid="train-issue">
           {message}
         </span>

@@ -32,7 +32,7 @@ import type { PieceCtx } from './pieces/index.js';
 import type { Model } from './types.js';
 
 type NodeId = string;
-type Mode = 'predict' | 'loss';
+type Mode = 'predict' | 'loss' | 'prob';
 /** One node of a plan: the node and, per input port, the node that feeds it. */
 type Step = { node: Node; ports: [port: string, src: NodeId][] };
 
@@ -67,6 +67,8 @@ export type Internals = {
   /** Shapes of the Linears with live parameters (`analysis.paramNodes`). */
   shapes: Map<NodeId, LayerShape>;
   lossNode: NodeId;
+  /** Unfused log_loss / cross_entropy of the loss plan, with the node feeding their `pred` (same order as `plans.prob.outputs`). */
+  probLosses: { loss: NodeId; src: NodeId }[];
   plans: Record<Mode, Plan>;
   predictFn(): PredictFn;
   evalFn(): LossFn;
@@ -181,9 +183,26 @@ export function compile(graph: Graph, data: DataInfo): Model {
     lossPorts.get(loss)?.set('pred', logits);
     fused.add(loss);
   }
+  const lossPlan = makePlan(analysis.order, byId, lossPorts, [analysis.lossNode], fused);
+  // Probability plan (not jitted, `probabilityRange`): the values feeding the `pred` of each unfused
+  // log_loss / cross_entropy on the loss path.
+  const probLosses: { loss: NodeId; src: NodeId }[] = [];
+  for (const s of lossPlan.steps) {
+    if (s.node.type !== 'log_loss' && s.node.type !== 'cross_entropy') continue;
+    if (fused.has(s.node.id)) continue;
+    const src = s.ports.find(([port]) => port === 'pred')?.[1];
+    if (src !== undefined) probLosses.push({ loss: s.node.id, src });
+  }
   const plans: Record<Mode, Plan> = {
     predict: makePlan(analysis.modelOrder, byId, wired, analysis.predictions, new Set()),
-    loss: makePlan(analysis.order, byId, lossPorts, [analysis.lossNode], fused),
+    loss: lossPlan,
+    prob: makePlan(
+      analysis.order,
+      byId,
+      lossPorts,
+      probLosses.map((p) => p.src),
+      new Set(),
+    ),
   };
 
   const shapes = new Map<NodeId, LayerShape>();
@@ -203,6 +222,7 @@ export function compile(graph: Graph, data: DataInfo): Model {
     dataColumns: data.columns,
     shapes,
     lossNode: analysis.lossNode,
+    probLosses,
     plans,
     disposables: new Set(),
     disposed: false,
@@ -401,6 +421,38 @@ function walk(
     tree.dispose(l);
   }
   return out;
+}
+
+/**
+ * Min and max of the values feeding each unfused log_loss / cross_entropy `pred` (plan `prob`, run
+ * eagerly, dropout off). Borrows `params`; frees everything it makes. NaN when an entry is NaN.
+ */
+export function probabilityRange(
+  m: Internals,
+  params: ParamTree,
+  batch: Batch,
+): { node: NodeId; min: number; max: number }[] {
+  if (m.probLosses.length === 0) return [];
+  const { x, y } = batchArrays(m, batch);
+  const pRef = tree.ref(params);
+  const outs = guarded([pRef, x, y], () =>
+    walk(m, 'prob', pRef, x, y, { train: false, masks: null }),
+  );
+  return outs.map((o, i) => {
+    const v = o.dataSync() as Float32Array;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const a of v) {
+      if (Number.isNaN(a)) {
+        min = NaN;
+        max = NaN;
+        break;
+      }
+      if (a < min) min = a;
+      if (a > max) max = a;
+    }
+    return { node: m.probLosses[i]?.loss ?? '', min, max };
+  });
 }
 
 /**

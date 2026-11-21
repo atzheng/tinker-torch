@@ -63,7 +63,7 @@ Version 1 ships 14 piece types. Each has typed ports, a rule for its output widt
 | Cross-entropy | Loss circle | None | 0 | `nn.CrossEntropyLoss` |
 | Weight penalty | Tag attached to the loss | L2 or L1, strength lambda | 0 | `weight_decay`, or an added term |
 
-One detail matters for the later code view. On the canvas the sigmoid or softmax is drawn as part of the Output piece and the loss takes probabilities, as on the slides. The engine computes the combined, numerically stable form, which is what `BCEWithLogitsLoss` and `CrossEntropyLoss` do, so picture and code will agree.
+One detail matters for the later code view. On the canvas the sigmoid or softmax is drawn as part of the Output piece and the loss takes probabilities, as on the slides. A loss whose prediction is a probability from anywhere else (for example a Bias pinned as ŷ, optimised by hand first) is computed as it is; if the prediction leaves (0, 1) the page says so in one sentence and stops the run. When a sigmoid or softmax is in front, the engine computes the combined, numerically stable form, which is what `BCEWithLogitsLoss` and `CrossEntropyLoss` do, so picture and code will agree.
 
 Pieces specified now and built later: Embedding, Position, Attention head, Layer norm, Transformer block (a group of Attention, Add, Layer norm and a small network), and Unembed.
 

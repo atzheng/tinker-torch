@@ -29,6 +29,12 @@ export interface Engine {
   /** One `[n, width]` array per ŷ pin, in pin order (empty with no ŷ). */
   predict(model: Model, params: Params, x: Float32Array, n: number): Float32Array[];
   evaluate(model: Model, params: Params, batch: Batch): number;
+  /** Per unfused log_loss / cross_entropy on the loss path: min and max of its `pred` over `batch`. Borrows everything. */
+  probabilityRange(
+    model: Model,
+    params: Params,
+    batch: Batch,
+  ): { node: NodeId; min: number; max: number }[];
   lossGrid(
     model: Model,
     params: Params,
