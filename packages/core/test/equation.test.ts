@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   analyse,
+  numericExtras,
   modelEquations,
   type DataInfo,
   type Edge,
@@ -63,7 +64,7 @@ describe('modelEquations', () => {
       3,
     );
     expect(e.lines).toEqual([
-      { lhs: '\\hat{y}', rhs: 'W_{1}\\,x + b_{1}', kind: 'pred' },
+      { lhs: '\\hat{y}', rhs: '\\mathbf{W}_{1}\\,x + \\mathbf{b}_{1}', kind: 'pred' },
       { lhs: 'L', rhs: '\\frac{1}{n}\\sum_i \\left(\\hat{y}_{i} - y_{i}\\right)^2', kind: 'loss' },
     ]);
     expect(e.numeric).toBeUndefined();
@@ -122,7 +123,7 @@ describe('modelEquations', () => {
     expect(e.lines).toEqual([
       {
         lhs: '\\hat{y}',
-        rhs: 'W_{2}\\,\\tanh\\left(W_{1}\\,x + b_{1}\\right) + b_{2}',
+        rhs: '\\mathbf{W}_{2}\\,\\tanh\\left(\\mathbf{W}_{1}\\,x + \\mathbf{b}_{1}\\right) + \\mathbf{b}_{2}',
         kind: 'pred',
       },
     ]);
@@ -148,7 +149,7 @@ describe('modelEquations', () => {
       ),
     );
     expect(e.lines).toEqual([
-      { lhs: 'h_{1}', rhs: 'W_{1}\\,x + b_{1}', kind: 'def' },
+      { lhs: 'h_{1}', rhs: '\\mathbf{W}_{1}\\,x + \\mathbf{b}_{1}', kind: 'def' },
       { lhs: '\\hat{y}', rhs: 'h_{1} + \\mathrm{ReLU}\\left(h_{1}\\right)', kind: 'pred' },
     ]);
   });
@@ -184,7 +185,7 @@ describe('modelEquations', () => {
       ),
     );
     const loss = e.lines.find((l) => l.kind === 'loss');
-    expect(loss?.rhs).toContain('+ 0.01\\,\\|W_{1}\\|_2^2');
+    expect(loss?.rhs).toContain('+ 0.01 \\cdot \\|\\mathbf{W}_{1}\\|_2^2');
   });
 
   test('invalid or unpinned graphs omit lines and never throw', () => {
@@ -211,5 +212,68 @@ describe('modelEquations', () => {
       null,
     );
     expect(() => eq(cyc)).not.toThrow();
+  });
+
+  test('a Linear and a Bias piece have distinct names', () => {
+    const e = eq(
+      g(
+        [
+          { id: 'in', type: 'input', columns: ['x1'] },
+          { id: 'l1', type: 'linear', out: 1, bias: true },
+          { id: 'b', type: 'bias' },
+        ],
+        [
+          ['in', 'l1'],
+          ['l1', 'b'],
+        ],
+        ['b'],
+        null,
+      ),
+    );
+    expect(e.lines[0]?.rhs).toBe('\\mathbf{W}_{1}\\,x + \\mathbf{b}_{1} + b_{1}');
+  });
+
+  test('scale and a number use a dot; negative zero prints 0.00', () => {
+    const graph = g(
+      [
+        { id: 'in', type: 'input', columns: ['x1'] },
+        { id: 'l1', type: 'linear', out: 1, bias: true },
+        { id: 'wt', type: 'weights', of: 'l1' },
+        { id: 'n', type: 'norm', kind: 'l1' },
+        { id: 'sc', type: 'scale', c: 0.1 },
+      ],
+      [
+        ['in', 'l1'],
+        ['wt', 'n'],
+        ['n', 'sc'],
+      ],
+      ['sc'],
+      null,
+    );
+    const e = eq(graph, 1, { l1: { W: f32(-3), b: f32(-0.001) } });
+    expect(e.lines[0]?.rhs).toBe('0.1 \\cdot \\|\\mathbf{W}_{1}\\|_1');
+    expect(e.numeric?.[0]?.rhs).toBe('0.1 \\cdot 3.00');
+    const z = eq(graph, 1, { l1: { W: f32(-0.001), b: f32(0) } });
+    expect(z.numeric?.[0]?.rhs).toBe('0.1 \\cdot 0.00');
+    const lin = g(
+      [
+        { id: 'in', type: 'input', columns: ['x1'] },
+        { id: 'l1', type: 'linear', out: 1, bias: true },
+      ],
+      [['in', 'l1']],
+      ['l1'],
+      null,
+    );
+    const lz = eq(lin, 1, { l1: { W: f32(1), b: f32(-0.001) } });
+    expect(lz.numeric?.[0]?.rhs).toBe('1.00\\,x + 0.00');
+  });
+
+  test('numericExtras drops numeric lines equal to the symbolic ones', () => {
+    const l = squaredLoss('b');
+    const e = eq(g([{ id: 'b', type: 'bias' }, ...l.nodes], l.edges, ['b'], 'mean'), 1, {
+      b: { b: f32(2.5) },
+    });
+    expect(e.numeric?.length).toBe(2);
+    expect(numericExtras(e).map((x) => x.lhs)).toEqual(['\\hat{y}']);
   });
 });

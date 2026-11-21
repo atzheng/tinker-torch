@@ -53,7 +53,30 @@ const colNumber = (name: string, data: DataInfo): string | null => {
   const i = data.columns.indexOf(name);
   return i >= 0 ? String(i + 1) : null;
 };
+/** `fmtWeight` for equations: a value that rounds to zero prints `0.00`, never `-0.00`. */
+const fmtEq = (v: number): string => {
+  const t = fmtWeight(v);
+  return /^-0(\.0+)?$/.test(t) ? t.slice(1) : t;
+};
 const short = (c: number): string => String(Number(c.toPrecision(3)));
+
+/** Whether numeric lines apply: every live parameter is a scalar piece, or there are at most `NUMERIC_MAX_PARAMS`. */
+export function wantsNumeric(graph: Graph, analysis: Analysis): boolean {
+  if (analysis.paramNodes.length === 0) return false;
+  const type = new Map(graph.nodes.map((n) => [n.id, n.type]));
+  const onlyScalars = analysis.paramNodes.every((id) => {
+    const t = type.get(id);
+    return t === 'scalew' || t === 'bias';
+  });
+  return onlyScalars || analysis.totalParams <= NUMERIC_MAX_PARAMS;
+}
+
+/** The numeric lines worth showing: those that differ from the symbolic line with the same lhs. */
+export function numericExtras(eq: ModelEquations): EquationLine[] {
+  return (eq.numeric ?? []).filter(
+    (l) => l.rhs !== eq.lines.find((x) => x.lhs === l.lhs && x.kind === l.kind)?.rhs,
+  );
+}
 
 /** Never throws: a graph that does not resolve gives fewer (or no) lines. */
 export function modelEquations(
@@ -118,14 +141,15 @@ function build(
 
     const num = (v: number | undefined): Ex => {
       if (v === undefined || !Number.isFinite(v)) throw new Unresolved();
-      return { tex: fmtWeight(v), prec: v < 0 ? SUM : ATOM };
+      const t = fmtEq(v);
+      return { tex: t, prec: t.startsWith('-') ? SUM : ATOM };
     };
     const matrix = (vals: number[], rows: number, cols: number): Ex => {
       if (vals.some((v) => !Number.isFinite(v))) throw new Unresolved();
       const rowsTex: string[] = [];
       for (let r = 0; r < rows; r++) {
         const cells: string[] = [];
-        for (let c = 0; c < cols; c++) cells.push(fmtWeight(vals[r * cols + c] as number));
+        for (let c = 0; c < cols; c++) cells.push(fmtEq(vals[r * cols + c] as number));
         rowsTex.push(cells.join(' & '));
       }
       return { tex: `\\begin{bmatrix}${rowsTex.join(' \\\\ ')}\\end{bmatrix}`, prec: ATOM };
@@ -214,10 +238,10 @@ function build(
           const k = linearK.get(n.id);
           if (k === undefined) throw new Unresolved();
           const h = one();
-          const W = numeric ? wMat(n.id) : { tex: `W_{${k}}`, prec: ATOM };
+          const W = numeric ? wMat(n.id) : { tex: `\\mathbf{W}_{${k}}`, prec: ATOM };
           const wh = mul(W.tex, paren(h, ATOM));
           if (!n.bias) return { tex: wh, prec: PROD };
-          const b = numeric ? bVec(n.id) : { tex: `b_{${k}}`, prec: ATOM };
+          const b = numeric ? bVec(n.id) : { tex: `\\mathbf{b}_{${k}}`, prec: ATOM };
           return { tex: terms([wh, b.tex]), prec: SUM };
         }
         case 'scalew': {
@@ -260,7 +284,7 @@ function build(
         case 'dropout':
           return fn(`\\mathrm{drop}_{${short(n.p)}}`);
         case 'scale':
-          return { tex: `${short(n.c)}\\,${paren(one(), ATOM)}`, prec: PROD };
+          return { tex: `${short(n.c)} \\cdot ${paren(one(), ATOM)}`, prec: PROD };
         case 'square':
           return { tex: `${paren(one(), ATOM)}^2`, prec: ATOM };
         case 'abs':
@@ -282,7 +306,7 @@ function build(
         case 'weights': {
           const k = linearK.get(n.of);
           if (k === undefined) throw new Unresolved();
-          return numeric ? wMat(n.of) : { tex: `W_{${k}}`, prec: ATOM };
+          return numeric ? wMat(n.of) : { tex: `\\mathbf{W}_{${k}}`, prec: ATOM };
         }
         case 'norm': {
           const src = byId.get(inputOf(n.id, 'in'));
@@ -298,7 +322,7 @@ function build(
             );
           }
           return {
-            tex: n.kind === 'l2' ? `\\|W_{${k}}\\|_2^2` : `\\|W_{${k}}\\|_1`,
+            tex: n.kind === 'l2' ? `\\|\\mathbf{W}_{${k}}\\|_2^2` : `\\|\\mathbf{W}_{${k}}\\|_1`,
             prec: ATOM,
           };
         }
@@ -335,15 +359,7 @@ function build(
   };
 
   const lines = gen(false);
-  const onlyScalars = analysis.paramNodes.every((id) => {
-    const t = byId.get(id)?.type;
-    return t === 'scalew' || t === 'bias';
-  });
-  const wantNumeric =
-    host !== undefined &&
-    analysis.paramNodes.length > 0 &&
-    (onlyScalars || analysis.totalParams <= NUMERIC_MAX_PARAMS);
-  if (wantNumeric) {
+  if (host !== undefined && wantsNumeric(graph, analysis)) {
     try {
       const numeric = gen(true);
       if (numeric.length === lines.length) return { lines, numeric };

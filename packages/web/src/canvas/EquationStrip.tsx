@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  initParams,
   modelEquations,
+  numericExtras,
+  wantsNumeric,
   type Analysis,
   type EquationLine,
   type Graph,
   type HostParams,
 } from '@tinker/core';
 
-import { useInitialWeights } from '../state/derived.js';
 import { useStore } from '../state/store.js';
 import { Tex } from '../tex/Tex.js';
 
@@ -57,8 +59,18 @@ export function EquationStrip(p: { graph: Graph; analysis: Analysis }) {
   const [open, setOpen] = useState(true);
   const info = useStore((s) => s.dataInfo);
   const trained = useFrameHost();
-  const initial = useInitialWeights(p.analysis);
-  const host = trained ?? initial;
+  // Values are only needed for numeric lines: skip them when closed or when the model is too big.
+  const numeric = open && wantsNumeric(p.graph, p.analysis);
+  const seed = p.graph.train.seed;
+  const initial = useMemo(() => {
+    if (!numeric) return undefined;
+    try {
+      return initParams(p.analysis, seed);
+    } catch {
+      return undefined;
+    }
+  }, [numeric, p.analysis, seed]);
+  const host = numeric ? (trained ?? initial) : undefined;
   const eq = useMemo(
     () => modelEquations(p.graph, p.analysis, info, host),
     [p.graph, p.analysis, info, host],
@@ -82,13 +94,9 @@ export function EquationStrip(p: { graph: Graph; analysis: Analysis }) {
             {eq.lines.map((l, i) => (
               <Line key={`${l.kind}${i}`} l={l} />
             ))}
-            {eq.numeric?.map(
-              (l, i) =>
-                // A line with no parameter in it reads the same with values: show it once.
-                l.rhs !== eq.lines.find((x) => x.lhs === l.lhs)?.rhs && (
-                  <Line key={`n${l.kind}${i}`} l={l} numeric />
-                ),
-            )}
+            {numericExtras(eq).map((l, i) => (
+              <Line key={`n${l.kind}${i}`} l={l} numeric />
+            ))}
           </div>
         </div>
       )}
