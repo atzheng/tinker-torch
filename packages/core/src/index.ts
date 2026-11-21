@@ -15,3 +15,4 @@ export * from './params.js';
 export * from './file.js';
 export * from './stats.js';
 export * from './scalar.js';
+export * from './equation.js';
