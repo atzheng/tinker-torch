@@ -5,6 +5,8 @@ import {
   layoutLayers,
   layoutNeurons,
   moveNodes,
+  positionLimits,
+  addPiece,
   parseFileText,
   parseGraph,
   serializeFile,
@@ -80,6 +82,30 @@ describe('positions in the graph', () => {
       predictions: [],
     });
     expect(cut.ok && cut.graph.positions).toEqual({ lin2: [60, 50] });
+  });
+});
+
+describe('position limit', () => {
+  test('the effective cap per axis is the larger of the default and `limit`', () => {
+    const [dx, dy] = positionLimits(4);
+    expect(dy).toBeLessThan(dx);
+    expect(positionLimits(4, [10, 10])).toEqual([dx, dy]);
+    expect(positionLimits(4, [dx + 100, 10])).toEqual([dx + 100, dy]);
+    expect(positionLimits(4, [10, dy + 100])).toEqual([dx, dy + 100]);
+    expect(positionLimits(4, [NaN, 10])).toEqual([dx, dy]);
+  });
+
+  test('moveNodes and addPiece honour it, and clamp as before without it', () => {
+    const g = chain();
+    const [, dy] = positionLimits(g.nodes.length);
+    const y = dy + 200;
+    expect(mv(g, { lin1: [100, y] }).positions?.['lin1']).toEqual([100, dy]);
+    const m = moveNodes(g, { lin1: [100, y] }, [0, y + 50]);
+    expect(m.ok && m.graph.positions?.['lin1']).toEqual([100, y]);
+    const far = moveNodes(g, { lin1: [100, y + 500] }, [0, y]);
+    expect(far.ok && far.graph.positions?.['lin1']).toEqual([100, y]);
+    const a = addPiece(g, { type: 'add' }, [100, y], [0, y + 50]);
+    expect(a.ok && a.select && a.graph.positions?.[a.select]).toEqual([100, y]);
   });
 });
 

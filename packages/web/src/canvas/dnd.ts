@@ -250,11 +250,12 @@ export function pinCanLandOn(
  */
 function placeFree(
   graph: Graph,
-  add: (g: Graph, at?: readonly [number, number]) => EditResult,
+  add: (g: Graph, at?: readonly [number, number], limit?: readonly [number, number]) => EditResult,
   at: readonly [number, number] | undefined,
   boxes: Readonly<Record<NodeId, { x: number; y: number }>> | undefined,
+  limit?: readonly [number, number],
 ): EditResult {
-  if (!at || !boxes) return add(graph, at);
+  if (!at || !boxes) return add(graph, at, limit);
   const dx = Math.max(0, LAYOUT.pad - at[0]);
   const dy = Math.max(0, LAYOUT.pad - at[1]);
   const placed = new Set(
@@ -265,15 +266,15 @@ function placeFree(
     shift && placed.has(id) ? [b.x + dx, b.y + dy] : [b.x, b.y],
   );
   const slot = freeSlot([at[0] + dx, at[1] + dy], where);
-  if (!shift) return add(graph, slot);
+  if (!shift) return add(graph, slot, limit);
   const moves: Record<NodeId, [number, number]> = {};
   for (const id of placed) {
     const b = boxes[id];
     if (b) moves[id] = [b.x + dx, b.y + dy];
   }
-  const moved = moveNodes(graph, moves);
+  const moved = moveNodes(graph, moves, limit);
   if (!moved.ok) return moved;
-  return add(moved.graph, slot);
+  return add(moved.graph, slot, limit);
 }
 
 /**
@@ -320,6 +321,17 @@ export function freeSlot(
   return best ?? [at[0], at[1]];
 }
 
+/**
+ * The far corner a piece's top-left may reach so that its whole box stays visible: the canvas
+ * element's bottom-right corner in layout units, minus one box. `t` maps layout units to element pixels.
+ */
+export function visibleLimit(
+  t: { scale: number; tx: number; ty: number },
+  view: { w: number; h: number },
+): [number, number] {
+  return [(view.w - t.tx) / t.scale - LAYOUT.boxW, (view.h - t.ty) / t.scale - LAYOUT.boxH];
+}
+
 /** The pure edit a drop stands for, or null when the pair makes no edit. */
 export function editForDrop(
   graph: Graph,
@@ -328,6 +340,8 @@ export function editForDrop(
   opts?: {
     locked?: readonly NodeId[];
     boxes?: Readonly<Record<NodeId, { x: number; y: number }>>;
+    /** Far corner a piece's top-left may reach (the visible canvas; `visibleLimit`), layout units. */
+    limit?: readonly [number, number];
   },
 ): EditResult | null {
   if (payload.kind === 'wire') {
@@ -348,9 +362,10 @@ export function editForDrop(
     return target.kind === 'free'
       ? placeFree(
           graph,
-          (g, at) => insertMacro(g, entry.key, undefined, at),
+          (g, at, lim) => insertMacro(g, entry.key, undefined, at, lim),
           target.at,
           opts?.boxes,
+          opts?.limit,
         )
       : null;
   }
@@ -358,7 +373,13 @@ export function editForDrop(
   if (target.kind === 'wire') return insertOnWire(graph, target.edge, made, opts);
   if (target.kind === 'node') return swapPiece(graph, target.id, made, opts);
   if (target.kind === 'free' && placeable(entry)) {
-    return placeFree(graph, (g, at) => addPiece(g, made, at), target.at, opts?.boxes);
+    return placeFree(
+      graph,
+      (g, at, lim) => addPiece(g, made, at, lim),
+      target.at,
+      opts?.boxes,
+      opts?.limit,
+    );
   }
   return null;
 }
