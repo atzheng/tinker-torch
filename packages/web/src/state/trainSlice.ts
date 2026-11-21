@@ -451,6 +451,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       return false;
     } catch (e) {
       set({
+        probIssue: null, // an engine error is never hidden behind a stale probability sentence
         trainIssue: e instanceof Error ? e.message : 'Training stopped on an error.',
         running: false,
       });
@@ -472,6 +473,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       publish();
     } catch (e) {
       set({
+        probIssue: null,
         trainIssue: e instanceof Error ? e.message : 'Training stopped on an error.',
         running: false,
       });
