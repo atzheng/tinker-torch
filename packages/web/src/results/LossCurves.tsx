@@ -4,6 +4,7 @@ import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { AxisLabels } from '../plot/AxisLabels.js';
 import { MARGINS, drawAxes, drawLegend } from '../plot/draw.js';
 import { lossRange } from '../plot/loss.js';
+import { LossReadout } from './LossReadout.js';
 import { Pins } from './Pins.js';
 import { mergeBounds } from './pinsModel.js';
 import { isMiniBatch } from '../state/trainSlice.js';
@@ -102,7 +103,7 @@ export function LossCurves() {
 
   const ref = usePlotCanvas(draw, [history, best, log, miniBatch, pins]);
   return (
-    <div className={styles.panel} data-testid="loss-curves">
+    <div className={`${styles.panel} ${styles.lossPanel}`} data-testid="loss-curves">
       <div className={styles.head} data-panel-head="">
         <span className={styles.title}>Loss</span>
         <label className={styles.toggle}>
@@ -123,6 +124,7 @@ export function LossCurves() {
           Restore best
         </button>
       </div>
+      <LossReadout />
       <Pins />
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Loss curves" />

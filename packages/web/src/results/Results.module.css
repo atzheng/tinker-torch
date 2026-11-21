@@ -102,3 +102,71 @@
   font-variant-numeric: tabular-nums;
   cursor: default;
 }
+
+/* Loss readout (tinker-wha): big train number, smaller val beside it. Wraps and shrinks, never overflows. */
+.readout {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 16px;
+  padding: 0 8px 2px;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.readoutGroup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.readoutLabel {
+  font-family: var(--font);
+  font-size: var(--fs-xs);
+  color: var(--diag-fg);
+}
+
+.readoutTrain {
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--series-train);
+  white-space: nowrap;
+}
+
+.readoutVal {
+  font-size: 18px;
+  color: var(--series-val);
+  white-space: nowrap;
+}
+
+.readoutDiverged {
+  font-size: 18px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* Short panels: one compact line, and none at the 96 px minimum, where the header and the Pins row
+   already leave the plot little room. The loss panel is a size container. */
+@container lossPanel (max-height: 120px) {
+  .readout {
+    display: none;
+  }
+}
+@container lossPanel (max-height: 200px) {
+  .readoutTrain {
+    font-size: 16px;
+  }
+  .readoutVal,
+  .readoutDiverged {
+    font-size: 13px;
+  }
+}
+
+.lossPanel {
+  container: lossPanel / size;
+}
