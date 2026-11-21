@@ -150,13 +150,29 @@ function makeEngine(): Engine {
       const pRef = tree.ref(oldTree);
       const oRef = tree.ref(oldOpt);
       const kRef = (state.key as JArray).ref;
-      const [newTree, newOpt, lossArr, checkArr, newKey] = guarded([pRef, oRef, x, y, kRef], () =>
-        m.stepFn()(pRef, oRef, x, y, kRef),
-      );
+      // With unfused probability losses the step also reports min and max of each pred; a value
+      // outside (0, 1) is treated like a divergence (update not applied, state unchanged).
+      const withRange = m.probLosses.length > 0;
+      const [newTree, newOpt, lossArr, checkArr, newKey, rangeArr] = guarded(
+        [pRef, oRef, x, y, kRef],
+        () => (withRange ? m.stepRangeFn() : m.stepFn())(pRef, oRef, x, y, kRef),
+      ) as [ParamTree, optax.OptState, JArray, JArray, JArray, JArray | undefined];
       const loss = lossArr.item();
       const check = checkArr.item();
+      let ranges: { node: NodeId; min: number; max: number }[] | undefined;
+      let outOfRange = false;
+      if (rangeArr) {
+        const v = rangeArr.dataSync() as Float32Array;
+        ranges = m.probLosses.map((p, i) => ({
+          node: p.loss,
+          min: v[2 * i] ?? NaN,
+          max: v[2 * i + 1] ?? NaN,
+        }));
+        // NaN is a divergence, not a range problem
+        outOfRange = ranges.some((r) => !Number.isNaN(r.min + r.max) && !(r.min > 0 && r.max < 1));
+      }
       deadStates.add(state);
-      if (!Number.isFinite(loss) || check !== 0) {
+      if (!Number.isFinite(loss) || check !== 0 || outOfRange) {
         tree.dispose(newTree);
         tree.dispose(newOpt);
         newKey.dispose();
@@ -168,7 +184,7 @@ function makeEngine(): Engine {
           key: state.key,
         };
         stateOptimizer.set(same, m.graph.train.optimizer);
-        return { state: same, loss, diverged: true };
+        return { state: same, loss, diverged: true, ...(ranges ? { ranges } : {}) };
       }
       disposeParams(state.params);
       tree.dispose(oldOpt);
@@ -180,7 +196,7 @@ function makeEngine(): Engine {
         key: newKey,
       };
       stateOptimizer.set(next, m.graph.train.optimizer);
-      return { state: next, loss, diverged: false };
+      return { state: next, loss, diverged: false, ...(ranges ? { ranges } : {}) };
     },
 
     /**

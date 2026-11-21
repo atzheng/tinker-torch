@@ -81,30 +81,56 @@ test('sentence wording', () => {
   expect(probabilitySentence(g, r(NaN, NaN))).toBeNull();
 });
 
-test('training from p in range with a large lr stops with the sentence, params at the last good value', () => {
+test('training from p in range with a large lr stops on the step that sees the value, params where it left the range', () => {
   s().loadGraph(probGraph(5));
   setB(0.3);
   expect(s().probIssue).toBeNull();
-  let good = s().host?.b?.b?.[0] ?? NaN;
-  for (let i = 0; i < 50 && s().probIssue === null; i++) {
-    good = s().host?.b?.b?.[0] ?? NaN;
-    s().stepOnce();
-  }
+  for (let i = 0; i < 50 && s().probIssue === null; i++) s().stepOnce();
   expect(s().probIssue).toMatch(
     /^Log loss takes probabilities between 0 and 1, but the prediction reached /,
   );
   expect(s().diverged).toBe(false);
   expect(s().running).toBe(false);
-  // the parameters are the last finite (in range) values
+  // the update of the refused step is not applied: b is the value the sentence names
   const now = s().host?.b?.b?.[0] ?? NaN;
-  expect(now).toBeCloseTo(good, 6);
-  // the last update overshot: the value that broke the loss is the one the sentence names
   expect(now >= 1 || now <= 0).toBe(true);
   expect(s().probIssue).toContain(`reached ${Number(now.toPrecision(3))}.`);
-  // the readout and the status show the sentence, not "diverged"
+  // the readout shows the sentence, not "diverged"
   const m = mount();
   expect(m.q('loss-readout-prob')?.textContent).toBe(s().probIssue);
   act(() => m.root.unmount());
+});
+
+test('cross-entropy with p[class] above 1 (a finite loss) stops the run with the sentence', () => {
+  const g = mlpGraph();
+  s().loadGraph({
+    ...g,
+    nodes: [
+      { id: 'in', type: 'input', columns: ['x1', 'x2'] },
+      { id: 'lin', type: 'linear', out: 2, bias: true },
+      { id: 'y', type: 'target' },
+      { id: 'err', type: 'cross_entropy' },
+      { id: 'loss', type: 'mean' },
+    ],
+    edges: [
+      ['in', 'lin'],
+      ['lin', 'err.pred'],
+      ['y', 'err.target'],
+      ['err', 'loss'],
+    ],
+    predictions: [],
+    loss: 'loss',
+    positions: {},
+    data: { ...g.data, set: 'blobs', n: 40, val: 0.25 },
+    train: { ...g.train, optimizer: 'sgd', lr: 0.1, batch: 'full' },
+  });
+  s().writeParams('lin', { W: new Float32Array(4), b: Float32Array.of(0.4, 1.5) });
+  expect(s().probIssue).toContain('Cross-entropy takes probabilities between 0 and 1');
+  const before = s().step;
+  s().stepOnce();
+  expect(s().step).toBe(before);
+  expect(s().diverged).toBe(false);
+  expect(s().probIssue).toContain('reached 1.5.');
 });
 
 test('a paused hand edit out of range shows the sentence and editing back clears it', () => {

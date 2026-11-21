@@ -66,6 +66,77 @@ describe('probabilityRange', () => {
   });
 });
 
+describe('range checked on every step', () => {
+  /** Linear(3) straight into cross-entropy (k = 3 classes, no softmax, no sigmoid). */
+  function bareCrossEntropy() {
+    const { fx, graph, data } = loadFixture('prob_direct_cross_entropy');
+    const g = {
+      ...graph,
+      nodes: graph.nodes.filter((n) => n.id !== 'a1'),
+      edges: graph.edges
+        .filter((e) => e[1] !== 'a1')
+        .map((e) => (e[0] === 'a1' ? (['lin1', e[1]] as typeof e) : e)),
+    };
+    // the Linear's output is the probability row: W = 0, so the output is b
+    const host = (b: number[]) => toHostParams({ lin1: { W: new Array<number>(6).fill(0), b } });
+    return { fx, graph: g, data, host };
+  }
+
+  test('cross-entropy with p[class] above 1 (a finite negative loss) stops the step, update not applied', () => {
+    const { fx, graph, data, host } = bareCrossEntropy();
+    const model = engine.compile(graph, data);
+    const batch = toBatch(fx);
+    // inside (0, 1): trains
+    let st = engine.startTraining(model, engine.fromHost(model, host([0.3, 0.4, 0.5])), 1);
+    const ok = engine.step(model, st, batch);
+    expect(ok.diverged).toBe(false);
+    expect(ok.ranges?.[0]?.min).toBeCloseTo(0.3, 5);
+    expect(ok.ranges?.[0]?.max).toBeCloseTo(0.5, 5);
+    engine.dispose(ok.state);
+    // one entry above 1 (not necessarily the picked one): the loss may be finite, the step is refused
+    st = engine.startTraining(model, engine.fromHost(model, host([0.3, 1.5, 0.5])), 1);
+    const before = engine.toHost(st.params).lin1?.b?.slice();
+    const bad = engine.step(model, st, batch);
+    expect(bad.diverged).toBe(true);
+    expect(bad.ranges?.[0]?.max).toBeCloseTo(1.5, 5);
+    expect(Array.from(engine.toHost(bad.state.params).lin1?.b ?? [])).toEqual(
+      Array.from(before ?? []),
+    );
+    expect(bad.state.step).toBe(0);
+    engine.dispose(bad.state);
+    // all entries above 1 and the picked one too: loss finite and negative, still refused
+    st = engine.startTraining(model, engine.fromHost(model, host([1.5, 1.5, 1.5])), 1);
+    const neg = engine.step(model, st, batch);
+    expect(Number.isFinite(neg.loss) && neg.loss < 0).toBe(true);
+    expect(neg.diverged).toBe(true);
+    engine.dispose(neg.state);
+    engine.disposeModel(model);
+  });
+
+  test('log loss: the step that sees p outside (0, 1) is refused with the range; a model with no probability loss has no ranges', () => {
+    const { fx, graph, data } = loadFixture('prob_direct_log_loss');
+    const model = engine.compile(graph, data);
+    const st = engine.startTraining(
+      model,
+      engine.fromHost(model, toHostParams({ b: { b: [1.3] } })),
+      1,
+    );
+    const r = engine.step(model, st, toBatch(fx));
+    expect(r.diverged).toBe(true);
+    expect(r.ranges?.[0]?.max).toBeCloseTo(1.3, 5);
+    engine.dispose(r.state);
+    engine.disposeModel(model);
+
+    const f = loadFixture('mlp_tanh_sgd_5steps');
+    const m2 = engine.compile(f.graph, f.data);
+    const s2 = engine.startTraining(m2, engine.fromHost(m2, toHostParams(f.fx.params)), 1);
+    const r2 = engine.step(m2, s2, toBatch(f.fx));
+    expect(r2.ranges).toBeUndefined();
+    engine.dispose(r2.state);
+    engine.disposeModel(m2);
+  });
+});
+
 describe('no clipping', () => {
   test('a pred outside (0, 1) is a non-finite loss and a diverged step with the state unchanged', () => {
     const { fx, graph, data } = loadFixture('prob_direct_log_loss');

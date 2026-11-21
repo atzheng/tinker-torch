@@ -407,7 +407,8 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     const r = engine.step(model, state, batch);
     rt.state = r.state;
     if (r.diverged) {
-      const sentence = probSentence();
+      // the engine refuses a step whose probability prediction is outside (0, 1) and says so in `ranges`
+      const sentence = r.ranges ? probabilitySentence(get().graph, r.ranges) : null;
       if (sentence === null) return 'diverged';
       set({ probIssue: sentence });
       return 'range';

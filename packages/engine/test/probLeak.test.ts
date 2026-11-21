@@ -21,6 +21,16 @@ test.each(['prob_direct_log_loss', 'prob_direct_cross_entropy'])(
       const other = engine.fromHost(model, toHostParams(fx.params));
       engine.probabilityRange(model, other, batch);
       engine.dispose(other);
+      // a step that sees a pred above 1 is refused and returns the state unchanged
+      const over = toHostParams(fx.params);
+      for (const l of Object.values(over)) if (l.b) l.b = l.b.map(() => 1.5);
+      const refused = engine.step(
+        model,
+        engine.startTraining(model, engine.fromHost(model, over), 1),
+        batch,
+      );
+      expect(refused.diverged).toBe(name === 'prob_direct_log_loss'); // the other one ends in a sigmoid
+      engine.dispose(refused.state);
       // a batch that does not fit throws before anything is allocated
       const bad = engine.fromHost(model, toHostParams(fx.params));
       expect(() => engine.probabilityRange(model, bad, { ...batch, n: batch.n + 1 })).toThrow();
