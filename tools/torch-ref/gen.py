@@ -477,7 +477,7 @@ class ModelV2(nn.Module):
 
 
 def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, ytype="reg",
-                 optimizer=None, steps=5, lr=0.1, mask_for=None, xscale=1.5):
+                 optimizer=None, steps=5, lr=0.1, mask_for=None, xscale=1.5, set_params=None):
     rng = np.random.default_rng(seed)
     x = rng.uniform(-xscale, xscale, size=(n, d))
     if ytype == "reg":
@@ -505,6 +505,8 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
             sc = 1.0 / math.sqrt(max(1, d))
             key = "W" if nd["type"] == "scalew" else "b"
             params[nd["id"]] = {key: rng.uniform(-sc, sc, size=1).tolist()}
+    for pid, vals in (set_params or {}).items():  # fixed values (drawn above, so the seeds do not move)
+        params[pid].update(vals)
     mask = None
     if mask_for:
         dn = next(k for k in nodes if k["type"] == "dropout")
@@ -835,6 +837,19 @@ def main():
     nodes = [n_("b", "bias"), TARGET, n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")]
     edges = [["b", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]]
     add2("intercept_only_mse", nodes, edges, ["b"], "loss", d=1, n=8, steps=4, lr=0.2)
+
+    # tinker-ddg: a probability used directly, no link in front, no clipping. An unwired Bias is the
+    # prediction of a log loss on a binary set; b is set to 0.3 so p stays inside (0, 1) for 4 SGD steps.
+    nodes = [n_("b", "bias"), TARGET, n_("err", "log_loss"), n_("loss", "mean")]
+    edges = [["b", "err.pred"], ["y", "err.target"], ["err", "loss"]]
+    add2("prob_direct_log_loss", nodes, edges, ["b"], "loss", d=1, ytype="cls", n=8, steps=4,
+         lr=0.2, optimizer="sgd", set_params={"b": {"b": [0.3]}})
+    # Cross-entropy on probabilities that are not a softmax: sigmoid outputs, rows do not sum to 1.
+    nodes = [inp(2), lin("lin1", 3), act("a1", "sigmoid"), TARGET, n_("err", "cross_entropy"),
+             n_("loss", "mean")]
+    edges = [["x", "lin1"], ["lin1", "a1"], ["a1", "err.pred"], ["y", "err.target"], ["err", "loss"]]
+    add2("prob_direct_cross_entropy", nodes, edges, [], "loss", d=2, ytype="cls3", n=9,
+         steps=4, lr=0.5, optimizer="sgd")
 
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)

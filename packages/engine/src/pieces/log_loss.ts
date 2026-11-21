@@ -15,7 +15,8 @@ export function logLossFromLogit(z: np.Array, y: np.Array): np.Array {
 /**
  * Per example -(y log p + (1 - y) log(1 - p)), `[n, 1]`. Consumes `pred` and `target`.
  * Fused (`ctx.fused`): `pred` is the logit, see `logLossFromLogit`. Otherwise `pred` is a
- * probability clipped to [1e-7, 1 - 1e-7] (safety net: analyse only lets a sigmoid feed this).
+ * probability used as it is, with no clipping (tinker-ddg): a value outside (0, 1) gives a
+ * non-finite loss, which the engine reports as a diverged step (`probabilityRange` says why).
  */
 export const log_loss: EnginePiece<NodeOf<'log_loss'>> = {
   forward(node, inputs, _layer, ctx) {
@@ -25,12 +26,11 @@ export const log_loss: EnginePiece<NodeOf<'log_loss'>> = {
     if (ctx.fused(node.id)) {
       return logLossFromLogit(pred, y);
     }
-    const p = np.clip(pred, 1e-7, 1 - 1e-7);
-    const pos = y.ref.mul(np.log(p.ref));
+    const pos = y.ref.mul(np.log(pred.ref));
     const neg = y
       .neg()
       .add(1)
-      .mul(np.log(p.neg().add(1)));
+      .mul(np.log(pred.neg().add(1)));
     return pos.add(neg).neg();
   },
 };

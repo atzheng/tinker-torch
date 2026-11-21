@@ -65,6 +65,9 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   scalar_activation_after_sum: {},
   scalar_adam_5steps: {},
   intercept_only_mse: {},
+  // probabilities used directly, no clipping, no link in front (tinker-ddg)
+  prob_direct_log_loss: {},
+  prob_direct_cross_entropy: {},
 };
 
 /** Skipped until the named bead lands. */

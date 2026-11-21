@@ -15,6 +15,7 @@ export function LossReadout() {
       lossReadout(s.history, isMiniBatch(s.graph.train.batch, s.dataset.nTrain), s.diverged).val,
   );
   const diverged = useStore((s) => s.diverged);
+  const probIssue = useStore((s) => s.probIssue);
   return (
     <div className={styles.readout} data-testid="loss-readout">
       <span className={styles.readoutGroup}>
@@ -22,6 +23,14 @@ export function LossReadout() {
         {diverged ? (
           <span className={`${styles.readoutDiverged} tk-issue`} data-testid="loss-readout-train">
             diverged
+          </span>
+        ) : probIssue ? (
+          <span
+            className={`${styles.readoutProb} tk-issue`}
+            role="status"
+            data-testid="loss-readout-prob"
+          >
+            {probIssue}
           </span>
         ) : (
           <span className={styles.readoutTrain} data-testid="loss-readout-train">

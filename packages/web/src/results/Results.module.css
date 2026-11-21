@@ -150,6 +150,14 @@
   white-space: nowrap;
 }
 
+/* The one-sentence probability message replaces the number: smaller, and it may wrap. */
+.readoutProb {
+  font-size: 12px;
+  line-height: 1.3;
+  padding: 1px 8px;
+  max-width: 28em;
+}
+
 /* Short panels: one compact line, and none at the 96 px minimum, where the header and the Pins row
    already leave the plot little room. The loss panel is a size container. */
 @container lossPanel (max-height: 120px) {

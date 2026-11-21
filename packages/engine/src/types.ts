@@ -12,7 +12,16 @@ export type Params = { readonly __brand: 'Params' };
  * `step` counts successful updates.
  */
 export type TrainState = { params: Params; opt: unknown; step: number; key: unknown };
-export type StepResult = { state: TrainState; loss: number; diverged: boolean };
+/**
+ * `ranges`: only for models with unfused log_loss / cross_entropy; min and max of each one's pred
+ * at the parameters this step started from. A range outside (0, 1) makes the step `diverged`.
+ */
+export type StepResult = {
+  state: TrainState;
+  loss: number;
+  diverged: boolean;
+  ranges?: { node: NodeId; min: number; max: number }[];
+};
 /** One trained copy of `trainMany`: its parameters, and whether it diverged (then `params` are its last finite ones). */
 export type ManyResult = { params: HostParams; diverged: boolean };
 export type ParamAxis = { node: NodeId; tensor: 'W' | 'b'; index: number };
@@ -29,6 +38,12 @@ export interface Engine {
   /** One `[n, width]` array per ŷ pin, in pin order (empty with no ŷ). */
   predict(model: Model, params: Params, x: Float32Array, n: number): Float32Array[];
   evaluate(model: Model, params: Params, batch: Batch): number;
+  /** Per unfused log_loss / cross_entropy on the loss path: min and max of its `pred` over `batch`. Borrows everything. */
+  probabilityRange(
+    model: Model,
+    params: Params,
+    batch: Batch,
+  ): { node: NodeId; min: number; max: number }[];
   lossGrid(
     model: Model,
     params: Params,

@@ -16,6 +16,7 @@ import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engin
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
 import { plotIndex } from './plotPrediction.js';
+import { probabilitySentence } from './probRange.js';
 import type { Store } from './store.js';
 import { bumpWeightGeneration, scalarHostFor, type ScalarCarry } from './weightHistory.js';
 
@@ -63,6 +64,13 @@ export type TrainSlice = {
   canTrain: boolean;
   running: boolean;
   diverged: boolean;
+  /**
+   * Plain sentence when an unfused log loss / cross-entropy gets a prediction outside (0, 1)
+   * (tinker-ddg), else null. Set when a step stops on a non-finite loss for that reason, and
+   * re-checked after a hand edit, a reset and a compile; the run is stopped but not "diverged":
+   * the parameters are the last finite ones and a hand edit back into range clears it.
+   */
+  probIssue: string | null;
   /** Parameter updates done since the last Reset or structural edit. */
   step: number;
   trainLoss: number | null;
@@ -233,6 +241,23 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     });
   }
 
+  /**
+   * The sentence for a probability loss whose prediction is outside (0, 1) on the training set, or
+   * null. Non-jitted engine call, so it is made only when a loss is non-finite or after an edit.
+   */
+  function probSentence(): string | null {
+    const { engine, model, state, trainBatch } = rt;
+    if (!engine || !model || !state || !trainBatch || trainBatch.n === 0) return null;
+    try {
+      return probabilitySentence(
+        get().graph,
+        engine.probabilityRange(model, state.params, trainBatch),
+      );
+    } catch {
+      return null;
+    }
+  }
+
   function clearRun(): void {
     rt.history = [];
     rt.best = null;
@@ -296,6 +321,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
         canTrain: false,
         running: false,
         diverged: false,
+        probIssue: null,
         host: null, // rt.host belongs to an earlier graph; the canvas must not see it with this one
         step: rt.step,
         trainLoss: rt.trainLoss,
@@ -361,19 +387,33 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     const canTrain = rt.state !== null;
     const keepRunning = !structural && wasRunning && canTrain; // a group / expand keeps running
     // One store update, so a reader never sees the new analysis with the old host.
-    publish({ analysis, trainIssue: issue, canTrain, running: false, diverged: false });
+    publish({
+      analysis,
+      trainIssue: issue,
+      canTrain,
+      running: false,
+      diverged: false,
+      probIssue: probSentence(),
+    });
     if (keepRunning) startLoop();
   }
 
-  function doStep(): boolean {
+  function doStep(): 'ok' | 'diverged' | 'range' {
     const { engine, model, state, batches } = rt;
     const { dataset, dataInfo } = get();
-    if (!engine || !model || !state || !batches) return false;
+    if (!engine || !model || !state || !batches) return 'diverged';
     const idx = batches.next().value;
     const batch = gatherBatch(dataset.xTrain, dataset.yTrain, dataInfo.columns.length, idx);
     const r = engine.step(model, state, batch);
     rt.state = r.state;
-    if (r.diverged) return false;
+    if (r.diverged) {
+      // the engine refuses a step whose probability prediction is outside (0, 1) and says so in `ranges`
+      const sentence = r.ranges ? probabilitySentence(get().graph, r.ranges) : null;
+      if (sentence === null) return 'diverged';
+      set({ probIssue: sentence });
+      return 'range';
+    }
+    if (get().probIssue !== null) set({ probIssue: null });
     rt.step += 1;
     rt.trainLoss = r.loss;
     let val: number | null = null;
@@ -398,17 +438,20 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       const last = rt.history.length - 1;
       rt.history = rt.history.filter((_, i) => i % 2 === 0 || i === last);
     }
-    return true;
+    return 'ok';
   }
 
   /** Runs doStep and turns divergence or an engine error into store state. Returns whether to go on. */
   function guardedStep(): boolean {
     try {
-      if (doStep()) return true;
-      set({ diverged: true, running: false });
+      const r = doStep();
+      if (r === 'ok') return true;
+      // A probability out of range stops the run like a divergence, but the weights are fine.
+      set(r === 'range' ? { running: false } : { diverged: true, running: false });
       return false;
     } catch (e) {
       set({
+        probIssue: null, // an engine error is never hidden behind a stale probability sentence
         trainIssue: e instanceof Error ? e.message : 'Training stopped on an error.',
         running: false,
       });
@@ -430,6 +473,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       publish();
     } catch (e) {
       set({
+        probIssue: null,
         trainIssue: e instanceof Error ? e.message : 'Training stopped on an error.',
         running: false,
       });
@@ -463,6 +507,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     canTrain: false,
     running: false,
     diverged: false,
+    probIssue: null,
     step: 0,
     trainLoss: null,
     valLoss: null,
@@ -511,7 +556,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
         rt.batches = batchSchedule(get().dataset.nTrain, get().graph.train.batch, rt.seed);
         rt.valLoss = best.val;
         rt.trainLoss = null; // no loss was computed for the restored parameters yet
-        publish({ running: false, diverged: false });
+        publish({ running: false, diverged: false, probIssue: probSentence() });
       } catch (e) {
         if (params) engine.dispose(params); // not consumed by startTraining
         set({
@@ -545,7 +590,13 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
           issue = e instanceof Error ? e.message : 'The saved weights could not be loaded.';
         }
       }
-      publish({ trainIssue: issue, canTrain: rt.state !== null, running: false, diverged: false });
+      publish({
+        trainIssue: issue,
+        canTrain: rt.state !== null,
+        running: false,
+        diverged: false,
+        probIssue: probSentence(),
+      });
       return !engine || rt.state !== null;
     },
     setRunSeed: (seed) => {
@@ -580,7 +631,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       } catch {
         return false; // the engine leaves the params valid when it throws
       }
-      publish();
+      publish({ probIssue: probSentence() }); // a hand edit can take a probability out of (0, 1) and back
       return true;
     },
     setSpeed: (n) => set({ speed: Math.max(1, Math.round(n)) }),

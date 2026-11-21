@@ -32,7 +32,7 @@ import type { PieceCtx } from './pieces/index.js';
 import type { Model } from './types.js';
 
 type NodeId = string;
-type Mode = 'predict' | 'loss';
+type Mode = 'predict' | 'loss' | 'prob';
 /** One node of a plan: the node and, per input port, the node that feeds it. */
 type Step = { node: Node; ports: [port: string, src: NodeId][] };
 
@@ -57,7 +57,9 @@ type StepFn = (
   x: JArray,
   y: JArray,
   key: JArray,
-) => [ParamTree, optax.OptState, JArray, JArray, JArray];
+) =>
+  | [ParamTree, optax.OptState, JArray, JArray, JArray]
+  | [ParamTree, optax.OptState, JArray, JArray, JArray, JArray];
 
 /** Private compiled state behind a Model. */
 export type Internals = {
@@ -67,10 +69,14 @@ export type Internals = {
   /** Shapes of the Linears with live parameters (`analysis.paramNodes`). */
   shapes: Map<NodeId, LayerShape>;
   lossNode: NodeId;
+  /** Unfused log_loss / cross_entropy of the loss plan, with the node feeding their `pred` (same order as `plans.prob.outputs`). */
+  probLosses: { loss: NodeId; src: NodeId }[];
   plans: Record<Mode, Plan>;
   predictFn(): PredictFn;
   evalFn(): LossFn;
   stepFn(): StepFn;
+  /** Same step with a 6th output: min and max of each unfused probability loss's pred (only for models with `probLosses`). */
+  stepRangeFn(): StepFn;
   optimizer(): optax.GradientTransformation;
   /** Jitted functions built for this model (here and in many.ts / surface.ts); freed by `disposeModel`. */
   disposables: Set<{ dispose(): void }>;
@@ -181,9 +187,26 @@ export function compile(graph: Graph, data: DataInfo): Model {
     lossPorts.get(loss)?.set('pred', logits);
     fused.add(loss);
   }
+  const lossPlan = makePlan(analysis.order, byId, lossPorts, [analysis.lossNode], fused);
+  // Probability plan (not jitted, `probabilityRange`): the values feeding the `pred` of each unfused
+  // log_loss / cross_entropy on the loss path.
+  const probLosses: { loss: NodeId; src: NodeId }[] = [];
+  for (const s of lossPlan.steps) {
+    if (s.node.type !== 'log_loss' && s.node.type !== 'cross_entropy') continue;
+    if (fused.has(s.node.id)) continue;
+    const src = s.ports.find(([port]) => port === 'pred')?.[1];
+    if (src !== undefined) probLosses.push({ loss: s.node.id, src });
+  }
   const plans: Record<Mode, Plan> = {
     predict: makePlan(analysis.modelOrder, byId, wired, analysis.predictions, new Set()),
-    loss: makePlan(analysis.order, byId, lossPorts, [analysis.lossNode], fused),
+    loss: lossPlan,
+    prob: makePlan(
+      analysis.order,
+      byId,
+      lossPorts,
+      probLosses.map((p) => p.src),
+      new Set(),
+    ),
   };
 
   const shapes = new Map<NodeId, LayerShape>();
@@ -195,6 +218,77 @@ export function compile(graph: Graph, data: DataInfo): Model {
   let predictFn: PredictFn | null = null;
   let evalFn: LossFn | null = null;
   let stepFn: StepFn | null = null;
+  let stepRangeFn: StepFn | null = null;
+  /** The jitted train step; with `withRange` it returns a 6th output, `[2 * probLosses]` min/max pairs. */
+  const makeStep = (withRange: boolean): StepFn => {
+    const optimizer = self.optimizer();
+    // jit consumes params, opt, x, y and key (the new key is returned). valueAndGrad consumes its arguments, so params is
+    // `.ref`ed for it and consumed again by applyUpdates.
+    const fn = jit(
+      (params: ParamTree, optState: optax.OptState, x: JArray, y: JArray, key: JArray) => {
+        // The masks are sampled outside valueAndGrad: random ops traced under it leave one
+        // constant buffer per compiled model that jit never frees.
+        const [newKey, masks] = sampleMasks(self, key, x.shape[0] ?? 0);
+        // Only parameters the loss reads are differentiated: a layer only the predictions read
+        // (a prediction-only head), or only a Weights tap reads (its bias), gets zero gradients
+        // built here from the parameter itself. Differentiating them leaves one constant buffer
+        // per such leaf and compile that jit never frees.
+        const lossParams: ParamTree = {};
+        const zeroGrads: ParamTree = {};
+        const lossPlan = self.plans.loss;
+        const ownForward = new Set(lossPlan.steps.map((s) => s.node.id));
+        for (const [id, layer] of Object.entries(params)) {
+          const read = lossPlan.layerUses.has(id);
+          const wOnly = read && !ownForward.has(id); // read through Weights taps only
+          const used: Layer = {};
+          const zeros: Layer = {};
+          for (const [k, a] of Object.entries(layer)) {
+            if (read && (!wOnly || k === 'W')) used[k] = a.ref;
+            else zeros[k] = a.ref.sub(a.ref);
+          }
+          if (Object.keys(used).length > 0) lossParams[id] = used;
+          if (Object.keys(zeros).length > 0) zeroGrads[id] = zeros;
+        }
+        // With `withRange` the forward pass also hands back min and max of each unfused probability
+        // loss's pred (reductions of values it computes anyway, no array constants).
+        let loss: JArray;
+        let lossGrads: unknown;
+        let range: JArray | null = null;
+        if (withRange) {
+          const [[l, r], g] = valueAndGrad(
+            (p: ParamTree, xx: JArray, yy: JArray, mm: Masks) => {
+              const rs: JArray[] = [];
+              const out = walk(self, 'loss', p, xx, yy, { train: true, masks: mm, ranges: rs });
+              return [out[0] as JArray, np.stack(rs)] as [JArray, JArray];
+            },
+            { hasAux: true },
+          )(lossParams, x, y, masks) as unknown as [[JArray, JArray], unknown];
+          loss = l;
+          range = r;
+          lossGrads = g;
+        } else {
+          [loss, lossGrads] = valueAndGrad(
+            (p: ParamTree, xx: JArray, yy: JArray, mm: Masks) =>
+              walk(self, 'loss', p, xx, yy, { train: true, masks: mm })[0] as JArray,
+          )(lossParams, x, y, masks) as unknown as [JArray, unknown];
+        }
+        const grads: ParamTree = {};
+        for (const id of Object.keys(params))
+          grads[id] = { ...(lossGrads as ParamTree)[id], ...zeroGrads[id] };
+        const [updates, newOpt] = optimizer.update(grads, optState);
+        const newParams = optax.applyUpdates(params, updates) as ParamTree;
+        // One scalar: how many updated parameters are non-finite (0 = all finite), read next to the loss.
+        // (jax-js folds x * 0 to 0, NaN included, so x * 0 cannot be used; isfinite is exact, also at 3e38.)
+        let check = np.array(0);
+        for (const leaf of tree.leaves(tree.ref(newParams)) as JArray[])
+          check = check.add(np.isfinite(leaf).astype(np.float32).mul(-1).add(1).sum());
+        if (range) return [newParams, newOpt, loss, check, newKey, range];
+        return [newParams, newOpt, loss, check, newKey];
+      },
+    ) as unknown as StepFn;
+    self.disposables.add(fn as unknown as { dispose(): void });
+    return fn;
+  };
   let opt: optax.GradientTransformation | null = null;
 
   const self: Internals = {
@@ -203,6 +297,7 @@ export function compile(graph: Graph, data: DataInfo): Model {
     dataColumns: data.columns,
     shapes,
     lossNode: analysis.lossNode,
+    probLosses,
     plans,
     disposables: new Set(),
     disposed: false,
@@ -227,54 +322,12 @@ export function compile(graph: Graph, data: DataInfo): Model {
       return opt;
     },
     stepFn() {
-      if (stepFn) return stepFn;
-      const optimizer = self.optimizer();
-      // jit consumes params, opt, x, y and key (the new key is returned). valueAndGrad consumes its arguments, so params is
-      // `.ref`ed for it and consumed again by applyUpdates.
-      stepFn = jit(
-        (params: ParamTree, optState: optax.OptState, x: JArray, y: JArray, key: JArray) => {
-          // The masks are sampled outside valueAndGrad: random ops traced under it leave one
-          // constant buffer per compiled model that jit never frees.
-          const [newKey, masks] = sampleMasks(self, key, x.shape[0] ?? 0);
-          // Only parameters the loss reads are differentiated: a layer only the predictions read
-          // (a prediction-only head), or only a Weights tap reads (its bias), gets zero gradients
-          // built here from the parameter itself. Differentiating them leaves one constant buffer
-          // per such leaf and compile that jit never frees.
-          const lossParams: ParamTree = {};
-          const zeroGrads: ParamTree = {};
-          const lossPlan = self.plans.loss;
-          const ownForward = new Set(lossPlan.steps.map((s) => s.node.id));
-          for (const [id, layer] of Object.entries(params)) {
-            const read = lossPlan.layerUses.has(id);
-            const wOnly = read && !ownForward.has(id); // read through Weights taps only
-            const used: Layer = {};
-            const zeros: Layer = {};
-            for (const [k, a] of Object.entries(layer)) {
-              if (read && (!wOnly || k === 'W')) used[k] = a.ref;
-              else zeros[k] = a.ref.sub(a.ref);
-            }
-            if (Object.keys(used).length > 0) lossParams[id] = used;
-            if (Object.keys(zeros).length > 0) zeroGrads[id] = zeros;
-          }
-          const [loss, lossGrads] = valueAndGrad(
-            (p: ParamTree, xx: JArray, yy: JArray, mm: Masks) =>
-              walk(self, 'loss', p, xx, yy, { train: true, masks: mm })[0] as JArray,
-          )(lossParams, x, y, masks);
-          const grads: ParamTree = {};
-          for (const id of Object.keys(params))
-            grads[id] = { ...(lossGrads as ParamTree)[id], ...zeroGrads[id] };
-          const [updates, newOpt] = optimizer.update(grads, optState);
-          const newParams = optax.applyUpdates(params, updates) as ParamTree;
-          // One scalar: how many updated parameters are non-finite (0 = all finite), read next to the loss.
-          // (jax-js folds x * 0 to 0, NaN included, so x * 0 cannot be used; isfinite is exact, also at 3e38.)
-          let check = np.array(0);
-          for (const leaf of tree.leaves(tree.ref(newParams)) as JArray[])
-            check = check.add(np.isfinite(leaf).astype(np.float32).mul(-1).add(1).sum());
-          return [newParams, newOpt, loss, check, newKey];
-        },
-      ) as unknown as StepFn;
-      self.disposables.add(stepFn as unknown as { dispose(): void });
+      stepFn ??= makeStep(false);
       return stepFn;
+    },
+    stepRangeFn() {
+      stepRangeFn ??= makeStep(true);
+      return stepRangeFn;
     },
   };
   const model: Model = Object.freeze({ graph, analysis });
@@ -286,7 +339,12 @@ export function compile(graph: Graph, data: DataInfo): Model {
 type Masks = Record<NodeId, JArray>;
 
 /** `train`: dropout on. `masks`: one per Dropout node when training (consumed; unused ones are disposed). */
-type WalkOpts = { train: boolean; masks: Masks | null };
+type WalkOpts = {
+  train: boolean;
+  masks: Masks | null;
+  /** The loss plan pushes min and max of each unfused probability loss's pred here (in `probLosses` order). */
+  ranges?: JArray[];
+};
 
 /**
  * Splits `key` (consumed) into the next key and one subkey per Dropout node of the loss plan, and
@@ -325,6 +383,7 @@ function walk(
   const plan = m.plans[mode];
   const n = x.shape[0] ?? 0;
   const masks = new Map(Object.entries(opts.masks ?? {}));
+  const probSet = new Set(m.probLosses.map((p) => p.loss));
   const values = new Map<NodeId, JArray>();
   const remaining = new Map(plan.uses);
   const layerLeft = new Map(plan.layerUses);
@@ -379,6 +438,10 @@ function walk(
     const { node } = s;
     const inputs: Record<string, JArray> = {};
     for (const [port, src] of s.ports) inputs[port] = take(src);
+    const predIn = inputs['pred'];
+    if (opts.ranges && predIn && probSet.has(node.id)) {
+      opts.ranges.push(np.min(predIn.ref), np.max(predIn.ref));
+    }
     const layer = ownsParams(node)
       ? takeLayer(node.id)
       : node.type === 'weights'
@@ -401,6 +464,38 @@ function walk(
     tree.dispose(l);
   }
   return out;
+}
+
+/**
+ * Min and max of the values feeding each unfused log_loss / cross_entropy `pred` (plan `prob`, run
+ * eagerly, dropout off). Borrows `params`; frees everything it makes. NaN when an entry is NaN.
+ */
+export function probabilityRange(
+  m: Internals,
+  params: ParamTree,
+  batch: Batch,
+): { node: NodeId; min: number; max: number }[] {
+  if (m.probLosses.length === 0) return [];
+  const { x, y } = batchArrays(m, batch);
+  const pRef = tree.ref(params);
+  const outs = guarded([pRef, x, y], () =>
+    walk(m, 'prob', pRef, x, y, { train: false, masks: null }),
+  );
+  return outs.map((o, i) => {
+    const v = o.dataSync() as Float32Array;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const a of v) {
+      if (Number.isNaN(a)) {
+        min = NaN;
+        max = NaN;
+        break;
+      }
+      if (a < min) min = a;
+      if (a > max) max = a;
+    }
+    return { node: m.probLosses[i]?.loss ?? '', min, max };
+  });
 }
 
 /**

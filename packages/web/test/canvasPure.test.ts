@@ -77,7 +77,7 @@ test('a ŷ of the wrong width: the wire into b and the pinned piece each get the
   expect(p.byNode.get('lin2')?.[0]).toContain('width 1');
 });
 
-test('log loss without a sigmoid: sentence on the pred wire; dataset sentence stays at the node', () => {
+test('log loss without a sigmoid: no wire sentence; dataset sentence stays at the node', () => {
   const g = edit(initialGraph(), (g) => ({
     nodes: [
       ...g.nodes.filter((n) => n.id !== 'diff' && n.id !== 'err'),
@@ -93,9 +93,7 @@ test('log loss without a sigmoid: sentence on the pred wire; dataset sentence st
     ],
   }));
   const { p } = placed(g);
-  expect(p.byEdge.get(3)).toEqual([
-    'Log loss takes probabilities, so wire a Sigmoid link straight into its pred input.',
-  ]);
+  expect(p.byEdge.size).toBe(0);
   expect(p.byNode.get('err')?.[0]).toContain('two classes');
 });
 

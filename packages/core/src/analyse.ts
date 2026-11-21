@@ -535,12 +535,11 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     }
   }
 
-  // ---- log loss and cross-entropy take probabilities from a matching link
+  // ---- log loss and cross-entropy take probabilities (a matching link in front is fused)
   const fusable: Analysis['fusable'] = [];
   for (const id of order) {
     const n = byId.get(id);
     if (n?.type !== 'log_loss' && n?.type !== 'cross_entropy') continue;
-    const label = n.type === 'log_loss' ? 'Log loss' : 'Cross-entropy';
     if (n.type === 'log_loss' && data.kind !== 'binary') {
       issues.push({
         at: { node: id },
@@ -559,13 +558,9 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     if (!pred) continue;
     const src = byId.get(pred.from);
     const wantFn = n.type === 'log_loss' ? 'sigmoid' : 'softmax';
+    // A matching link in front is fused (stable path). Any other pred is taken as probabilities
+    // as it is: the engine reports a value outside (0, 1) while training (tinker-ddg).
     if (src?.type === 'link' && src.fn === wantFn) fusable.push({ link: src.id, loss: id });
-    else {
-      issues.push({
-        at: { edge: pred.index, node: id },
-        message: `${label} takes probabilities, so wire a ${wantFn === 'sigmoid' ? 'Sigmoid' : 'Softmax'} link straight into its pred input.`,
-      });
-    }
     const w = shape[pred.from];
     if (n.type === 'cross_entropy' && w?.kind === 'example' && w.width !== data.numClasses) {
       issues.push({

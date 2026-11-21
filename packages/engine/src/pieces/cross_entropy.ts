@@ -8,15 +8,15 @@ import type { EnginePiece } from './types.js';
  * Consumes both.
  *
  * Fused (the softmax in front was folded in, `ctx.fused`): `pred` holds the logits and the value is
- * -logSoftmax(z)[class]: finite for any finite z. Otherwise `pred` is probabilities, clipped to
- * [1e-7, 1] before the log (safety net: analyse only lets a softmax link feed this piece).
+ * -logSoftmax(z)[class]: finite for any finite z. Otherwise `pred` is probabilities used as they are,
+ * with no clipping and no requirement that a row sums to 1 (tinker-ddg): -log p[class].
  */
 export const cross_entropy: EnginePiece<NodeOf<'cross_entropy'>> = {
   forward(node, inputs, _layer, ctx) {
     const pred = inputs['pred'];
     const y = inputs['target'];
     if (!pred || !y) throw new Error('The cross-entropy is missing its prediction or target.');
-    const logp = ctx.fused(node.id) ? logSoftmax(pred) : np.log(np.clip(pred, 1e-7, 1));
+    const logp = ctx.fused(node.id) ? logSoftmax(pred) : np.log(pred);
     // Pick logp[class] with one static slice per class and a scalar comparison. np.arange, cumsum, astype of a comparison and
     // gather all capture array constants in the trace, and jax-js never frees those.
     const k = logp.shape[1] ?? 1;
