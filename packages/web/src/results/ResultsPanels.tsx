@@ -6,6 +6,7 @@ import { useStore } from '../state/store.js';
 import { FitPlot } from './FitPlot.js';
 import { LossCurves } from './LossCurves.js';
 import { ExampleStrip } from './ExampleStrip.js';
+import { ClassBars } from './ClassBars.js';
 import { StepLog } from './StepLog.js';
 import { LossCurve1D } from './LossCurve1D.js';
 import { LossSurface } from './LossSurface.js';
@@ -34,6 +35,7 @@ const TITLES: Record<PanelId, string> = {
   histogram: 'Target',
   examples: 'Examples',
   'step-log': 'Steps',
+  'class-bars': 'Classes',
 };
 
 function Panel({ id }: { id: PanelId }) {
@@ -41,6 +43,7 @@ function Panel({ id }: { id: PanelId }) {
   if (id === 'loss') return <LossCurves />;
   if (id === 'loss-1d') return <LossCurve1D />;
   if (id === 'examples') return <ExampleStrip />;
+  if (id === 'class-bars') return <ClassBars />;
   if (id === 'step-log') return <StepLog />;
   if (id === 'histogram') return <TargetHistogram />;
   return <LossSurface />;
@@ -68,6 +71,7 @@ export function ResultsPanels() {
     s.host ? twoParams(s.host, s.analysis.order) !== null : false,
   );
   const hasHistogram = useHistogramApplies();
+  const classification = useStore((s) => s.dataset.info.kind !== 'regression');
   const columnRef = useRef<HTMLDivElement>(null);
   // The panel being dragged, how far it has moved, and its index among the other visible panels.
   const [lift, setLift] = useState<{ id: PanelId; d: number; to: number } | null>(null);
@@ -84,6 +88,7 @@ export function ResultsPanels() {
       ((p !== 'loss-1d' && p !== 'step-log') ||
         (hasParams && allowed?.includes(`panel-${p}`) === true)) &&
       (p !== 'examples' || allowed?.includes('panel-examples') === true) &&
+      (p !== 'class-bars' || (classification && allowed?.includes('panel-class-bars') === true)) &&
       (p !== 'histogram' || hasHistogram),
   );
   const visibleSet = new Set(visible);

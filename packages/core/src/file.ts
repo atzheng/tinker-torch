@@ -116,6 +116,7 @@ export const UI_IDS = {
     'panel-loss-1d',
     'panel-examples',
     'panel-step-log',
+    'panel-class-bars',
   ],
   // Controls inside the results panels; they never make the results region itself visible.
   'panel-controls': [
