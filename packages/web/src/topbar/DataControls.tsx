@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BUNDLED, REAL_META, isRealSet, type DatasetName } from '@tinker/core';
+import { BUNDLED, REAL_META, SETS, isRealSet, type DatasetName } from '@tinker/core';
 import { useStore } from '../state/store.js';
 import { CsvDialog } from './CsvDialog.js';
 import { Popover } from './Popover.js';
@@ -39,6 +39,13 @@ const GROUPS: { label: string; sets: { name: DatasetName; label: string }[] }[] 
     sets: [
       { name: 'blobs3', label: 'Three blobs' },
       { name: 'spiral3', label: 'Three spirals' },
+    ],
+  },
+  {
+    label: 'Delivery story',
+    sets: [
+      { name: 'delivery_late', label: 'Delivery: late or not' },
+      { name: 'delivery_time', label: 'Delivery: time (min)' },
     ],
   },
   {
@@ -158,7 +165,7 @@ export function DataControls() {
       >
         {(close) => (
           <>
-            {!real && (
+            {!real && !SETS[data.set].noiseUnused && (
               <NumField
                 label="Noise"
                 testid="data-noise"

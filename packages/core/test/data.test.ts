@@ -29,8 +29,10 @@ const cfg = (set: DatasetName, over: Partial<DataConfig> = {}): DataConfig => ({
 });
 
 const SYNTH = DATASET_NAMES.filter((s) => !SETS[s].real);
-const REG = SYNTH.filter((s) => SETS[s].kind === 'regression');
-const CLS = SYNTH.filter((s) => SETS[s].kind === 'binary');
+// The delivery sets (d = 3, Bernoulli labels, own noise scale) have their own tests in delivery.test.ts.
+const PLAIN = SYNTH.filter((s) => !s.startsWith('delivery_'));
+const REG = PLAIN.filter((s) => SETS[s].kind === 'regression');
+const CLS = PLAIN.filter((s) => SETS[s].kind === 'binary');
 const MULTI = SYNTH.filter((s) => SETS[s].kind === 'multiclass');
 
 const mean = (a: ArrayLike<number>) => Array.from(a).reduce((s, v) => s + v, 0) / a.length;
@@ -61,7 +63,7 @@ describe('sample', () => {
         expect(ds.yTrain.length).toBe(ds.nTrain);
         expect(ds.xVal.length).toBe(nVal * d);
         expect(ds.yVal.length).toBe(nVal);
-        expect(ds.info.columns).toEqual(d === 1 ? ['x1'] : ['x1', 'x2']);
+        expect(ds.info.columns).toEqual(Array.from({ length: d }, (_, c) => `x${c + 1}`));
       }
     }
   });
