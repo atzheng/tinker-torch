@@ -257,7 +257,7 @@ Version 1 is complete at step 6. Each step is tested against the PyTorch referen
 **Open questions**
 
 - [x] Hosting: Cloudflare (static assets deployed with wrangler). The bundle, including the jax-js Wasm, ships with the page. A `_headers` file sets cross-origin isolation so multi-threaded Wasm is available, but nothing depends on it.
-- [x] Devices: laptops and tablets in landscape (1024 by 768 and up), mouse, trackpad and touch. Every gesture uses Pointer Events. Phones and tablet portrait show a "rotate or use a wider screen" notice.
+- [x] Devices: laptops and tablets, mouse, trackpad and touch. Wide windows use the side-by-side layout; portrait tablets and narrow windows stack the regions (CONTRACTS section 10). Every gesture uses Pointer Events. Screens under 600 px wide or tall show a "use a larger screen" notice.
 - [ ] Wiring freedom: version 1 allows branches only through the Add piece. Is free wiring between any two ports needed earlier?
 - [x] Hand-set weights: kept in version 1 (milestone 3).
 - [ ] Student work: is file export enough, or will submissions need to be collected? Version 1 ships file export only.
