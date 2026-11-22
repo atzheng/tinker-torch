@@ -31,6 +31,7 @@
       "panel-score",
       "panel-loss-1d",
       "panel-examples",
+      "panel-class-bars",
       "panel-step-log",
       "loss-readout",
       "loss-mode-likelihood",
@@ -45,6 +46,7 @@
   },
   "labels": {
     "loss-readout": "Score",
+    "panel-score": "Score",
     "lr-slider": "Step size",
     "panel-loss-1d": "Score for each possible number",
     "panel-examples": "The 30 deliveries",

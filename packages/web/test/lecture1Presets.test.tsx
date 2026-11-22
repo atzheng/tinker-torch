@@ -102,6 +102,7 @@ test('stage 0: the loss tab only, the score and data, no palette and no training
   expect(m.host.querySelector('[data-panel="loss"]')).not.toBeNull();
   expect(m.host.querySelector('[aria-label="Loss curves"]')).toBeNull();
   expect(m.has('loss-log-toggle')).toBe(false);
+  expect(m.host.querySelector('[data-panel="class-bars"]')).not.toBeNull();
   for (const id of ['btn-step', 'btn-run', 'btn-reset', 'btn-random-start', 'lr-slider']) {
     expect(m.has(id), id).toBe(false);
   }
