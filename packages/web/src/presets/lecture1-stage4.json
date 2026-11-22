@@ -4,7 +4,7 @@
   "title": "Lecture 1, stage 4: a number that depends on the distance",
   "prompt": "Now the chance of being late depends on distance. Train the Weight and Bias, then add the zone as a category.",
   "instructions": [
-    "Press Run. The fit plot shows the chance of late against distance; the loss surface shows the Weight and Bias.",
+    "Press Run. The fit plot colours the area by the chance of late; the loss surface shows how the score changes with the Weight and Bias.",
     "Add an Input for the zone column and put a Lookup after it. Join it into the Sum.",
     "Switch to Neurons to see one dial for each zone. Run again: which zone is later?"
   ],
@@ -29,6 +29,7 @@
       "panel-fit",
       "panel-loss",
       "panel-loss-1d",
+      "panel-class-bars",
       "panel-surface",
       "loss-readout",
       "loss-mode-likelihood",

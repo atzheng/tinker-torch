@@ -5,7 +5,7 @@
   "prompt": "Predict whether a delivery is on time, late or very late from several inputs, with Softmax giving three chances that add to 1.",
   "instructions": [
     "Add rain and queue to the Input, then press Run. Does the loss go down?",
-    "Turn on Standardize, press Reset and Run again, with a larger step size.",
+    "Turn on Standardize, press Reset and Run again. Does the loss fall faster than before?",
     "Read the three chances for a delivery: which outcome does the model pick?"
   ],
   "show": {
@@ -38,6 +38,7 @@
       "panel-fit",
       "panel-loss",
       "panel-loss-1d",
+      "panel-class-bars",
       "panel-surface",
       "loss-readout",
       "loss-mode-likelihood",

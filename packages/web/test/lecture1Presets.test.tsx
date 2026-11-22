@@ -164,9 +164,14 @@ test('stage 3: squared error, the histogram view and its squares option', () => 
   expect(m.has('btn-run')).toBe(true);
   expect(m.host.querySelector('[data-panel="histogram"]')).not.toBeNull();
   expect(m.has('histogram-squares')).toBe(true);
+  expect(m.host.querySelector('[data-panel="class-bars"]')).not.toBeNull();
   expect(m.entries().sort()).toEqual(['palette-sigmoid']);
   act(() => s().setViewTab('loss'));
-  expect(m.entries().sort()).toEqual(['palette-log_loss', 'palette-loss_log_loss', 'palette-loss_squared_error']);
+  expect(m.entries().sort()).toEqual([
+    'palette-log_loss',
+    'palette-loss_log_loss',
+    'palette-loss_squared_error',
+  ]);
   m.done();
   train(400);
   expect(s().diverged).toBe(false);
@@ -178,7 +183,16 @@ test('stage 4: Input, Weight, Bias, categories, fit plot and the 2-parameter sur
   const m = mount();
   expect(m.region('palette')).toBe(true);
   expect(m.entries().sort()).toEqual(
-    ['palette-bias', 'palette-input', 'palette-column', 'palette-lookup', 'palette-onehot', 'palette-scalew', 'palette-sigmoid', 'palette-sum'].sort(),
+    [
+      'palette-bias',
+      'palette-input',
+      'palette-column',
+      'palette-lookup',
+      'palette-onehot',
+      'palette-scalew',
+      'palette-sigmoid',
+      'palette-sum',
+    ].sort(),
   );
   expect(m.has('grain-toggle')).toBe(true);
   expect(m.has('btn-random-start')).toBe(true);
@@ -211,6 +225,7 @@ test('stage 5: Standardize, several inputs, Linear and Softmax, trains without d
   const start = s().liveLoss?.train ?? NaN;
   train(300);
   expect(s().diverged).toBe(false);
+  expect(s().liveLoss?.train ?? NaN).toBeLessThan(start);
   act(() => s().setData({ standardize: true }));
   expect(s().canTrain).toBe(true);
   train(1);
