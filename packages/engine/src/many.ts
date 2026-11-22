@@ -31,19 +31,23 @@ const manySteps = new WeakMap<Internals, ManyStepFn>();
 
 /**
  * The vmapped step. Inputs are stacked on a leading axis k. Returns [params, opt, ok, key] with
- * ok [k] = 1 for a copy whose loss and updated parameters are all finite this step.
+ * ok [k] = 1 for a copy whose loss and updated parameters are all finite this step and whose
+ * unfused probability preds stay inside (0, 1). Consumes all its arguments.
  */
 function manyStep(m: Internals): ManyStepFn {
   const cached = manySteps.get(m);
   if (cached) return cached;
-  const vstep = vmap(m.stepFn());
+  // With unfused probability losses the step also returns each pred's min and max, [k, 2P] after vmap.
+  const withRange = m.probLosses.length > 0;
+  const vstep = vmap(withRange ? m.stepRangeFn() : m.stepFn());
   const fn = jit((params: ParamTree, opt: optax.OptState, x: JArray, y: JArray, key: JArray) => {
-    const [newP, newO, loss, check, newK] = vstep(params, opt, x, y, key) as [
+    const [newP, newO, loss, check, newK, range] = vstep(params, opt, x, y, key) as [
       ParamTree,
       optax.OptState,
       JArray,
       JArray,
       JArray,
+      JArray | undefined,
     ];
     // jax-js folds x * 0 to 0 (NaN included), so finiteness is tested with isfinite: the loss and
     // every updated parameter of the copy
@@ -56,7 +60,17 @@ function manyStep(m: Internals): ManyStepFn {
       count += per;
       finite = finite.add(np.isfinite(leaf).astype(np.float32).reshape([k, per]).sum(1));
     }
-    return [newP, newO, finite.equal(count + 1).astype(np.float32), newK];
+    let ok = finite.equal(count + 1).astype(np.float32);
+    if (range) {
+      // a pred leaving (0, 1) freezes the copy like a divergence (as `step` does); NaN fails too
+      for (let i = 0; i < m.probLosses.length; i++) {
+        const lo = range.ref.slice([], [2 * i, 2 * i + 1]).reshape([k]);
+        const hi = range.ref.slice([], [2 * i + 1, 2 * i + 2]).reshape([k]);
+        ok = ok.mul(lo.greater(0).astype(np.float32)).mul(hi.less(1).astype(np.float32));
+      }
+      range.dispose();
+    }
+    return [newP, newO, ok, newK];
   }) as unknown as ManyStepFn;
   manySteps.set(m, fn);
   m.disposables.add(fn as unknown as { dispose(): void });
