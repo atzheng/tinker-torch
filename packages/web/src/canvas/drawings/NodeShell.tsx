@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { ownsParams, parsePort, type Node } from '@tinker/core';
+import { createContext, useContext, type ReactNode } from 'react';
+import { ownsParams, parsePort, type Graph, type Node } from '@tinker/core';
 import { fitName, legibleAt } from '../pure.js';
 import { SvgTex } from '../../tex/Tex.js';
 import { splitTex } from '../../tex/Tex.js';
@@ -33,6 +33,31 @@ export function roleOfNode(node: Node, pins?: RolePins): NodeRole | undefined {
   return undefined;
 }
 
+/** What a node is: a value (data or a free parameter, a pill) or an operation (a rounded rectangle). */
+export type NodeShape = 'value' | 'op';
+
+/**
+ * The single place that maps graph data to a node's shape (tinker-paq). Values: Input, Target,
+ * Column, an unwired Bias (a free parameter: its optional `in` port has no wire) and a Weights tap
+ * (it reads a Linear's W). Everything else, including a Bias with an input, is an operation.
+ */
+export function shapeOfNode(node: Node, graph: Pick<Graph, 'edges'>): NodeShape {
+  switch (node.type) {
+    case 'input':
+    case 'target':
+    case 'column':
+    case 'weights':
+      return 'value';
+    case 'bias':
+      return graph.edges.some((e) => parsePort(e[1]).node === node.id) ? 'op' : 'value';
+    default:
+      return 'op';
+  }
+}
+
+/** The shape the enclosing node group has; the shell reads it so no piece passes it down. */
+export const NodeShapeContext = createContext<NodeShape>('op');
+
 /** The glyph (TeX, no dollars) of a role badge. */
 export const ROLE_GLYPH: Record<Exclude<NodeRole, 'param'>, string> = {
   input: 'x',
@@ -47,6 +72,9 @@ export function slotBox(w: number, h: number) {
 
 /** Corner radius of the body; the state ring sits 4 units outside it. */
 export const NODE_RADIUS = 8;
+/** Corner radius of a body: fully rounded ends (a pill) for a value. */
+export const bodyRadius = (shape: NodeShape, h: number): number =>
+  shape === 'value' ? h / 2 : NODE_RADIUS;
 export const PORT_R = 4.5;
 const PAD = 12;
 const NAME_PX = 15;
@@ -81,13 +109,14 @@ export type NodeShellProps = {
 
 export function NodeShell(p: NodeShellProps) {
   const { w, h } = p;
+  const shape = useContext(NodeShapeContext);
   const lines = p.secondary ?? [];
   const small = legibleAt(p.scale, SECONDARY_PX);
   const name = fitName(p.scale, p.name, w - PAD - 6, NAME_PX);
   const secondaryY = lines.length > 1 ? [h - 24, h - 10] : [h - 12];
   return (
-    <g data-piece={p.piece} data-role={p.role}>
-      <rect className="tk-body" x={0} y={0} width={w} height={h} rx={NODE_RADIUS} />
+    <g data-piece={p.piece} data-role={p.role} data-shape={shape}>
+      <rect className="tk-body" x={0} y={0} width={w} height={h} rx={bodyRadius(shape, h)} />
       <text className="tk-name" x={PAD} y={NAME_PX + 4} style={{ fontSize: name.size }}>
         {name.text}
       </text>

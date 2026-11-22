@@ -39,7 +39,14 @@ import { Wire, WireLabel } from './Wire.js';
 import { WeightPill } from './WeightPill.js';
 import type { Selection } from '../state/viewSlice.js';
 import { useStore } from '../state/store.js';
-import { roleOfNode, NODE_RADIUS, PORT_R } from './drawings/NodeShell.js';
+import {
+  roleOfNode,
+  shapeOfNode,
+  bodyRadius,
+  NodeShapeContext,
+  NODE_RADIUS,
+  PORT_R,
+} from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 
 export type LayerViewProps = {
@@ -346,6 +353,7 @@ export function LayerView(p: LayerViewProps) {
         const hit = found ?? { x: box.x, y: box.y, w: box.w, h: box.h };
         const Layer = WEB_PIECES[node.type].Layer as ComponentType<LayerProps<typeof node.type>>;
         const ghost = p.ghosts?.[node.id];
+        const shape = shapeOfNode(node, graph);
         return (
           <g
             key={node.id}
@@ -353,6 +361,7 @@ export function LayerView(p: LayerViewProps) {
             data-testid={`node-${node.id}`}
             data-type={node.type}
             data-role={roleOfNode(node, graph)}
+            data-shape={shape}
             data-locked={locked.has(node.id)}
             data-selected={selected}
             data-error={p.errorNodes.has(node.id)}
@@ -401,7 +410,7 @@ export function LayerView(p: LayerViewProps) {
               y={-4}
               width={box.w + 8}
               height={box.h + 8}
-              rx={NODE_RADIUS + 4}
+              rx={bodyRadius(shape, box.h) + 4}
             />
             {ghost !== undefined ? (
               <GhostBody
@@ -412,7 +421,9 @@ export function LayerView(p: LayerViewProps) {
                 pred={graph.predictions.some((x) => parsePort(x).node === node.id)}
               />
             ) : (
-              <Layer {...layerProps(node, box, analysis, p.weights, scale, probBars[node.id])} />
+              <NodeShapeContext.Provider value={shape}>
+                <Layer {...layerProps(node, box, analysis, p.weights, scale, probBars[node.id])} />
+              </NodeShapeContext.Provider>
             )}
             {ghost === undefined && p.analysis.inert.includes(node.id) && (
               <>
