@@ -1,5 +1,4 @@
 import { Fragment, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { isShown } from '@tinker/core';
 import { startDrag } from '../gestures/drag.js';
 import { twoParams } from '../plot/lossSurface.js';
 import { useStore } from '../state/store.js';
@@ -24,6 +23,7 @@ import {
   resizePair,
   type Orientation,
   type PanelId,
+  panelListed,
 } from './panelLayout.js';
 import styles from './ResultsPanels.module.css';
 
@@ -83,7 +83,7 @@ export function ResultsPanels() {
   const visible = order.filter(
     (p) =>
       panelOnTab(p, tab, split) &&
-      isShown(allowed, `panel-${p}`) &&
+      panelListed(allowed, p) &&
       (p !== 'surface' || hasSurface) &&
       ((p !== 'loss-1d' && p !== 'step-log') ||
         (hasParams && allowed?.includes(`panel-${p}`) === true)) &&

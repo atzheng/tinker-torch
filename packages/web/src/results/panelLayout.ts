@@ -30,6 +30,21 @@ export function panelOnTab(id: PanelId, tab: 'model' | 'loss', split: boolean): 
   return !split || PANEL_TAB[id] === tab;
 }
 
+/**
+ * Whether the preset's `ui` list (undefined: everything) puts panel `id` on screen. The Loss panel
+ * is also on screen for `panel-score` alone: the score readout without the loss-over-steps chart
+ * (tinker-bo1). Only `panel-loss` itself adds the chart; see `lossChartShown`.
+ */
+export function panelListed(ui: readonly string[] | undefined, id: PanelId): boolean {
+  if (ui === undefined || ui.includes(`panel-${id}`)) return true;
+  return id === 'loss' && ui.includes('panel-score');
+}
+
+/** Whether the Loss panel draws its chart (with its log toggle, Restore best and pins): `panel-loss` is listed or there is no list. */
+export function lossChartShown(ui: readonly string[] | undefined): boolean {
+  return ui === undefined || ui.includes('panel-loss');
+}
+
 export const DEFAULT_ORDER: readonly PanelId[] = PANEL_IDS;
 export const DEFAULT_WEIGHTS: PanelWeights = {
   fit: 1,

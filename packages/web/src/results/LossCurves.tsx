@@ -5,6 +5,7 @@ import { AxisLabels } from '../plot/AxisLabels.js';
 import { MARGINS, drawAxes, drawLegend } from '../plot/draw.js';
 import { lossRange } from '../plot/loss.js';
 import { LossReadout } from './LossReadout.js';
+import { lossChartShown } from './panelLayout.js';
 import { Pins } from './Pins.js';
 import { mergeBounds } from './pinsModel.js';
 import { isMiniBatch } from '../state/trainSlice.js';
@@ -13,6 +14,25 @@ import styles from './Results.module.css';
 
 /** Train and validation loss against step. Plotted by `step` (the history may be decimated). */
 export function LossCurves() {
+  const chart = useStore((s) => lossChartShown(s.show?.ui));
+  return chart ? <LossChartPanel /> : <ScorePanel />;
+}
+
+/** The Loss panel with only its score readout (`panel-score` without `panel-loss`): no chart, log toggle, Restore best or pins. */
+function ScorePanel() {
+  const showReadout = useUiShown('loss-readout');
+  const panelTitle = useUiLabel('panel-score', 'Loss');
+  return (
+    <div className={`${styles.panel} ${styles.lossPanel}`} data-testid="loss-curves">
+      <div className={styles.head} data-panel-head="">
+        <span className={styles.title}>{panelTitle}</span>
+      </div>
+      {showReadout && <LossReadout />}
+    </div>
+  );
+}
+
+function LossChartPanel() {
   const history = useStore((s) => s.history);
   const best = useStore((s) => s.best);
   const restoreBest = useStore((s) => s.restoreBest);

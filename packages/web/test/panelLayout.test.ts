@@ -72,3 +72,15 @@ describe('resizePair', () => {
     expect(start).toEqual(DEFAULT_WEIGHTS);
   });
 });
+
+test('panelListed and lossChartShown: panel-score shows the Loss panel without its chart', async () => {
+  const { panelListed, lossChartShown } = await import('../src/results/panelLayout.js');
+  expect(panelListed(undefined, 'loss')).toBe(true);
+  expect(lossChartShown(undefined)).toBe(true);
+  expect(panelListed(['panel-loss'], 'loss')).toBe(true);
+  expect(lossChartShown(['panel-loss'])).toBe(true);
+  expect(panelListed(['panel-score'], 'loss')).toBe(true);
+  expect(lossChartShown(['panel-score'])).toBe(false);
+  expect(panelListed(['panel-score'], 'fit')).toBe(false);
+  expect(panelListed(['panel-fit'], 'loss')).toBe(false);
+});

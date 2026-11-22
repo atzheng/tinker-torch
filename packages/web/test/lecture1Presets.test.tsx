@@ -98,6 +98,11 @@ test('stage 0: the loss tab only, the score and data, no palette and no training
   }
   expect(m.host.querySelector('[data-panel="loss-1d"]')).not.toBeNull();
   expect(m.host.querySelector('[data-panel="examples"]')).not.toBeNull();
+  // the score readout without the empty loss-over-steps chart (tinker-bo1)
+  expect(m.host.querySelector('[data-panel="loss"]')).not.toBeNull();
+  expect(m.host.querySelector('[aria-label="Loss curves"]')).toBeNull();
+  expect(m.has('loss-log-toggle')).toBe(false);
+  expect(m.host.querySelector('[data-panel="class-bars"]')).not.toBeNull();
   for (const id of ['btn-step', 'btn-run', 'btn-reset', 'btn-random-start', 'lr-slider']) {
     expect(m.has(id), id).toBe(false);
   }
@@ -237,4 +242,21 @@ test('stage 5: Standardize, several inputs, Linear and Softmax, trains without d
   train(300);
   expect(s().diverged).toBe(false);
   expect(s().liveLoss?.train ?? NaN).toBeLessThan(start2);
+});
+
+test('score readout without the chart on stages 0 and 1; stages that list panel-loss keep the chart', () => {
+  for (const [i, chart] of [
+    [0, false],
+    [1, false],
+    [2, true],
+  ] as const) {
+    load(NAMES[i] as string);
+    const m = mount();
+    act(() => s().setViewTab('loss'));
+    expect(m.has('loss-readout'), `stage ${i} readout`).toBe(true);
+    expect(m.host.querySelector('[aria-label="Loss curves"]') !== null, `stage ${i} chart`).toBe(
+      chart,
+    );
+    m.done();
+  }
 });
