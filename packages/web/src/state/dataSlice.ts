@@ -5,6 +5,7 @@ import {
   loadRealSet,
   makeRng,
   registerCsv,
+  numericColumns,
   sample,
   setColumns,
   type DataConfig,
@@ -114,7 +115,7 @@ export const createDataSlice: StateCreator<Store, [], [], DataSlice> = (set, get
           const locked = get().preset?.locked ?? [];
           for (const n of graph.nodes) {
             if (n.type !== 'input') continue;
-            const r = setColumns(next, n.id, info.columns, { locked });
+            const r = setColumns(next, n.id, numericColumns(info), { locked });
             if (!r.ok) {
               get().apply(
                 locked.includes(n.id)

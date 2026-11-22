@@ -1,6 +1,6 @@
 /** Pure helpers for the results panels (tinker-ong): order, drop position, resize. No DOM, no React. */
 
-export const PANEL_IDS = ['fit', 'loss', 'surface', 'histogram', 'loss-1d'] as const;
+export const PANEL_IDS = ['fit', 'loss', 'surface', 'histogram', 'loss-1d', 'step-log'] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
 export type PanelWeights = Record<PanelId, number>;
 
@@ -11,6 +11,7 @@ export const DEFAULT_WEIGHTS: PanelWeights = {
   surface: 1,
   histogram: 1,
   'loss-1d': 1,
+  'step-log': 1,
 };
 
 /** A panel never shrinks below this share of the visible panels' total weight. */

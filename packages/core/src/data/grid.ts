@@ -1,4 +1,40 @@
-import { standardizeRows, type Standardization } from './sample.js';
+import { standardizeRows, unstandardizeRows, type Standardization } from './sample.js';
+
+/**
+ * The raw value each column is held at when a plot shows a 2-D slice of d > 2 columns: the training
+ * mean of a numeric column, the most common training category (lowest index on a tie) of a
+ * categorical one. The fit plot and the resample overlay both use it.
+ */
+export function heldValues(ds: {
+  info: { columns: string[]; columnKinds?: ('numeric' | 'categorical')[] };
+  xTrain: Float32Array;
+  nTrain: number;
+  standardization: Standardization | null;
+}): number[] {
+  const d = ds.info.columns.length;
+  const xt = ds.standardization ? unstandardizeRows(ds.xTrain, d, ds.standardization) : ds.xTrain;
+  return Array.from({ length: d }, (_, c) => {
+    if (ds.info.columnKinds?.[c] === 'categorical') {
+      const counts = new Map<number, number>();
+      for (let i = 0; i < ds.nTrain; i++) {
+        const v = xt[i * d + c] ?? 0;
+        counts.set(v, (counts.get(v) ?? 0) + 1);
+      }
+      let best = 0;
+      let bestN = -1;
+      for (const [v, k] of counts) {
+        if (k > bestN || (k === bestN && v < best)) {
+          best = v;
+          bestN = k;
+        }
+      }
+      return best;
+    }
+    let sum = 0;
+    for (let i = 0; i < ds.nTrain; i++) sum += xt[i * d + c] ?? 0;
+    return ds.nTrain > 0 ? sum / ds.nTrain : 0;
+  });
+}
 
 export type Grid = {
   /** Number of grid points (rows). */

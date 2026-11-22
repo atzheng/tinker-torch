@@ -89,7 +89,23 @@ export type DataInfo = {
   targetName?: string;
   /** Classification only: one name per class, in label order (`numClasses` entries). */
   classNames?: string[];
+  /**
+   * Per column (same order as `columns`): 'numeric' or 'categorical'. Absent: every column is numeric.
+   * A categorical column holds the category's index (0..K-1) as a float in `x`; Standardise skips it.
+   */
+  columnKinds?: ColumnKind[];
+  /** Category names by column id, for each categorical column (K = the list's length). */
+  categories?: Record<string, string[]>;
 };
+export type ColumnKind = 'numeric' | 'categorical';
+/** The numeric column ids of a dataset (all columns when none is numeric): what a new Input starts with. */
+export const numericColumns = (info: DataInfo): string[] => {
+  const nums = info.columns.filter((_, i) => info.columnKinds?.[i] !== 'categorical');
+  return nums.length > 0 ? nums : [...info.columns];
+};
+/** Number of categories of a column id, or 0 when the column is numeric (or unknown). */
+export const categoryCount = (info: Pick<DataInfo, 'categories'>, col: string): number =>
+  info.categories?.[col]?.length ?? 0;
 export type Endpoint = { node: NodeId; port: string };
 
 /** Splits "node" or "node.port". `port` is null for a bare node id. */

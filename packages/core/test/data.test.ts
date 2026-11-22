@@ -168,6 +168,7 @@ describe('sample', () => {
     const d = SETS[set].d;
     expect(ds.standardization).not.toBeNull();
     for (let c = 0; c < d; c++) {
+      if (ds.info.columnKinds?.[c] === 'categorical') continue; // category indices are not standardised
       const col = Array.from({ length: ds.nTrain }, (_, i) => ds.xTrain[i * d + c] ?? 0);
       expect(mean(col)).toBeCloseTo(0, 5);
       expect(std(col)).toBeCloseTo(1, 5);

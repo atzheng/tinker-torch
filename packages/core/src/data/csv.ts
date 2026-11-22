@@ -179,9 +179,21 @@ export function inferKind(csv: Csv, target: number): SetKind | null {
   return col.distinct <= CSV_LIMITS.classes ? 'multiclass' : null;
 }
 
-/** Numeric columns other than the target: the usable inputs. */
+/**
+ * How a column can be used as an input: numbers as they are; text with 2 to `CSV_LIMITS.classes`
+ * distinct values as a category (stored as the index of its sorted value); anything else (one
+ * value, or text with many values such as names or ids) not at all.
+ */
+export function inputKind(csv: Csv, i: number): 'numeric' | 'categorical' | null {
+  const c = csv.columns[i];
+  if (!c || c.distinct === 0) return null;
+  if (c.numeric) return 'numeric';
+  return c.distinct >= 2 && c.distinct <= CSV_LIMITS.classes ? 'categorical' : null;
+}
+
+/** Columns other than the target that can be inputs (numeric, or text with few distinct values). */
 export function usableInputs(csv: Csv, target: number): number[] {
-  return csv.columns.flatMap((c, i) => (i !== target && c.numeric ? [i] : []));
+  return csv.columns.flatMap((_, i) => (i !== target && inputKind(csv, i) !== null ? [i] : []));
 }
 
 export type CsvBuild = {
@@ -192,8 +204,11 @@ export type CsvBuild = {
 };
 
 /**
- * Builds the dataset from the chosen columns. Text input columns are dropped (with a note), as are
- * rows with a missing value in any used column. Classes are the sorted distinct target values.
+ * Builds the dataset from the chosen columns. A text input column with few distinct values becomes a
+ * categorical column: its categories are the sorted distinct values over the whole file (so the
+ * validation rows never hold a category the training rows lack) and its cells are stored as the
+ * category's index. Other unusable columns are dropped with a note, as are rows with a missing value
+ * in any used column. Classes are the sorted distinct target values.
  */
 export function buildCsv(
   csv: Csv,
@@ -204,16 +219,25 @@ export function buildCsv(
   if (!tcol) return { ok: false, error: 'Choose a target column.' };
   const inputs = opts.inputs.filter((i) => i !== target);
   const notes: string[] = [];
-  const text = inputs.filter((i) => !csv.columns[i]?.numeric);
-  const used = inputs.filter((i) => csv.columns[i]?.numeric);
-  if (text.length > 0) {
+  const left = inputs.filter((i) => inputKind(csv, i) === null);
+  const used = inputs.filter((i) => inputKind(csv, i) !== null);
+  const note = (cols: number[], why: string): void => {
+    if (cols.length === 0) return;
     notes.push(
-      `Left out ${text.length} text column${text.length === 1 ? '' : 's'}: ${text
+      `Left out ${cols.length} text column${cols.length === 1 ? '' : 's'} ${why}: ${cols
         .map((i) => csv.header[i])
         .join(', ')}.`,
     );
-  }
-  if (used.length === 0) return { ok: false, error: 'Choose at least one numeric input column.' };
+  };
+  note(
+    left.filter((i) => (csv.columns[i]?.distinct ?? 0) <= 1),
+    'with only one value',
+  );
+  note(
+    left.filter((i) => (csv.columns[i]?.distinct ?? 0) > 1),
+    'with too many distinct values',
+  );
+  if (used.length === 0) return { ok: false, error: 'Choose at least one input column.' };
   if (kind === 'regression' && !tcol.numeric) {
     return { ok: false, error: 'A regression target must be a numeric column.' };
   }
@@ -259,7 +283,20 @@ export function buildCsv(
     classNames = labels;
     y = kept.map((r) => labels.indexOf((r[target] as string).trim()));
   }
-  const x = kept.map((r) => used.map((c) => numberOf(r[c] as string)));
+  // categories: sorted distinct values over every kept row, before any split
+  const categories: Record<number, string[]> = {};
+  used.forEach((c, j) => {
+    if (inputKind(csv, c) !== 'categorical') return;
+    categories[j] = [...new Set(kept.map((r) => (r[c] as string).trim()))].sort((a, b) =>
+      a.localeCompare(b),
+    );
+  });
+  const x = kept.map((r) =>
+    used.map((c, j) => {
+      const names = categories[j];
+      return names ? names.indexOf((r[c] as string).trim()) : numberOf(r[c] as string);
+    }),
+  );
   const d = used.length;
   return {
     ok: true,
@@ -271,6 +308,7 @@ export function buildCsv(
       d,
       domain: Array.from({ length: d }, () => [0, 1] as [number, number]),
       ...(kind === 'multiclass' ? { numClasses: classNames?.length ?? 3 } : {}),
+      ...(Object.keys(categories).length > 0 ? { categories } : {}),
       featureNames: used.map((c) => csv.header[c] as string),
       targetName: csv.header[target] as string,
       ...(classNames ? { classNames } : {}),

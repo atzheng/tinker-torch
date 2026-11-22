@@ -13,5 +13,5 @@ test('WEB_PIECES has an entry for every piece type used by the palette', () => {
   for (const e of PALETTE) {
     if (e.kind === 'piece') expect(Object.keys(WEB_PIECES)).toContain(e.make().type);
   }
-  expect(PALETTE).toHaveLength(30);
+  expect(PALETTE).toHaveLength(32);
 });

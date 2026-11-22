@@ -22,13 +22,21 @@ export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'can
         s.dataset.info.kind !== 'multiclass' &&
         !predictionChain(s.graph, pred.split('.')[0] ?? pred).hasInput;
       return (
-        ['panel-fit', 'panel-loss', 'panel-surface', 'panel-histogram', 'panel-loss-1d'] as const
+        [
+          'panel-fit',
+          'panel-loss',
+          'panel-surface',
+          'panel-histogram',
+          'panel-loss-1d',
+          'panel-step-log',
+        ] as const
       ).some(
         (id) =>
           isShown(s.show?.ui, id) &&
           (id !== 'panel-surface' || surface) &&
           (id !== 'panel-histogram' || histogram) &&
-          (id !== 'panel-loss-1d' || (params && s.show?.ui?.includes(id) === true)),
+          ((id !== 'panel-loss-1d' && id !== 'panel-step-log') ||
+            (params && s.show?.ui?.includes(id) === true)),
       );
     }
     return UI_IDS[region].some((id) => isShown(s.show?.ui, id));

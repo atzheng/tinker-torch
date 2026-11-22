@@ -23,7 +23,8 @@ export type Family =
   | 'reductions'
   | 'math'
   | 'parameters'
-  | 'scalars';
+  | 'scalars'
+  | 'categories';
 
 /**
  * What flows along a wire. `example`: one row of `width` numbers per training example (batch rows
@@ -31,13 +32,24 @@ export type Family =
  * parameter matrix read by a Weights tap, never batched.
  */
 export type Shape =
-  | { kind: 'example'; width: number }
+  | {
+      kind: 'example';
+      width: number;
+      /**
+       * Set only on a category column (an Input or Column of one categorical dataset column): the
+       * value is the category's index, width 1, `count` categories. Only pieces that list the port in
+       * `categoryPorts` accept it (One-hot, Lookup); analyse refuses it anywhere else.
+       */
+      category?: { column: string; count: number };
+    }
   | { kind: 'scalar' }
   | { kind: 'param'; rows: number; cols: number };
 export type ShapeError = { error: string };
 
 export type ShapeCtx = {
   dataColumns: number;
+  /** Number of categories by column id, for the categorical columns of the dataset (absent: all numeric). */
+  categories?: Record<string, number>;
   numClasses: number;
   /** [rows, cols] of a Linear's W, or undefined when that Linear's input width is unknown. */
   weightShape(linearId: NodeId): [rows: number, cols: number] | undefined;
@@ -64,6 +76,11 @@ export type CorePiece<N extends Node> = {
    * issue and `outShape` gets no entry for the port. Absent or empty: every port is required.
    */
   optionalPorts?: readonly string[];
+  /**
+   * Input ports (a subset of `inputPorts`) that take a category column. Every other port refuses
+   * one (analyse gives the sentence); these ports need one (the piece's `outShape` says so).
+   */
+  categoryPorts?: readonly string[];
   defaults: () => Omit<N, 'id'>;
   /**
    * `inShapes` is keyed by input port. A missing entry means that port is not connected (or its
@@ -75,7 +92,7 @@ export type CorePiece<N extends Node> = {
    * `inWidth` is the example width entering the node (0 for a piece with no input port). A node owns
    * parameters when this is non-empty (see `ownsParams`).
    */
-  paramShapes(node: N, inWidth: number): ParamShapes;
+  paramShapes(node: N, inWidth: number, inShape?: Shape): ParamShapes;
   /** How the node's tensors start. Called only when `paramShapes` is non-empty. */
   paramInit(node: N, inWidth: number, data: DataInfo): ParamInit;
   /** Torch counterpart for the later code view. `inWidth` is the width entering the node, when known. */
@@ -106,7 +123,9 @@ const py = {
 
 export const describeShape = (s: Shape): string =>
   s.kind === 'example'
-    ? `${s.width} per example`
+    ? s.category
+      ? `the category "${s.category.column}"`
+      : `${s.width} per example`
     : s.kind === 'scalar'
       ? 'a single number'
       : `a ${s.rows} by ${s.cols} weight matrix`;
@@ -114,7 +133,10 @@ export const describeShape = (s: Shape): string =>
 /** Whether two wire shapes are the same kind and size. */
 export const sameShape = (a: Shape, b: Shape): boolean =>
   a.kind === b.kind &&
-  (a.kind !== 'example' || a.width === (b as typeof a).width) &&
+  (a.kind !== 'example' ||
+    (a.width === (b as typeof a).width &&
+      a.category?.column === (b as typeof a).category?.column &&
+      a.category?.count === (b as typeof a).category?.count)) &&
   (a.kind !== 'param' || (a.rows === (b as typeof a).rows && a.cols === (b as typeof a).cols));
 
 function needInput(label: string, s: Shape | undefined): Shape | ShapeError {
@@ -187,15 +209,48 @@ export function featureWidth(
   return d * f.degree + (f.sin ? d : 0) + (f.cos ? d : 0) + (f.products ? (d * (d - 1)) / 2 : 0);
 }
 
+/**
+ * The shape of an Input or Column over these dataset columns: their count, or, for one category
+ * column (a categorical dataset column, stored as its index), a width-1 shape that carries the
+ * category count. A category column cannot share an Input with other columns.
+ */
+function columnsShape(columns: readonly string[], ctx: ShapeCtx): Shape | ShapeError {
+  const cats = columns.filter((c) => (ctx.categories?.[c] ?? 0) > 0);
+  const first = cats[0];
+  if (first === undefined) return { kind: 'example', width: columns.length };
+  if (columns.length > 1) {
+    return {
+      error: `Input mixes the category column "${first}" with other columns; give the category its own Input.`,
+    };
+  }
+  return {
+    kind: 'example',
+    width: 1,
+    category: { column: first, count: ctx.categories?.[first] ?? 0 },
+  };
+}
+
+/** The `in` shape of One-hot and Lookup: a category column, as its category count. */
+function categoryIn(label: string, inShapes: Record<string, Shape>): number | ShapeError {
+  const s = needInput(label, inShapes['in']);
+  if ('error' in s) return s;
+  if (s.kind === 'example' && s.category) return s.category.count;
+  return {
+    error: `${label} needs a category column, but this input is ${describeShape(s)}; switch on a category column in an Input.`,
+  };
+}
+
 export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
   input: {
     family: 'inputs',
     inputPorts: [],
     defaults: () => ({ type: 'input', columns: ['x1'] }),
-    outShape: (node) =>
-      node.columns.length === 0
-        ? { error: 'Input needs at least one data column switched on.' }
-        : { kind: 'example', width: node.columns.length },
+    outShape: (node, _in, ctx) => {
+      if (node.columns.length === 0) {
+        return { error: 'Input needs at least one data column switched on.' };
+      }
+      return columnsShape(node.columns, ctx);
+    },
     paramShapes: noParams,
     paramInit: noInit,
     torch: (node) => `x[:, [${node.columns.map((c, i) => columnIndex(c, i)).join(', ')}]]`,
@@ -204,7 +259,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     family: 'inputs',
     inputPorts: [],
     defaults: () => ({ type: 'column', name: 'x1' }),
-    outShape: () => ({ kind: 'example', width: 1 }),
+    outShape: (node, _in, ctx) => columnsShape([node.name], ctx),
     paramShapes: noParams,
     paramInit: noInit,
     torch: (node) => `x[:, [${columnIndex(node.name, 0)}]]`,
@@ -250,6 +305,36 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     paramShapes: noParams,
     paramInit: noInit,
     torch: () => 'torch.stack(xs).sum(0)',
+  },
+  onehot: {
+    family: 'categories',
+    inputPorts: ['in'],
+    categoryPorts: ['in'],
+    defaults: () => ({ type: 'onehot' }),
+    // One column per category, no category dropped (with a bias the columns are redundant, which gradient descent tolerates).
+    outShape: (_node, inShapes) => {
+      const k = categoryIn('One-hot', inShapes);
+      return typeof k === 'number' ? { kind: 'example', width: k } : k;
+    },
+    paramShapes: noParams,
+    paramInit: noInit,
+    torch: () => 'F.one_hot(x[:, 0].long(), K).float()',
+  },
+  lookup: {
+    family: 'categories',
+    inputPorts: ['in'],
+    categoryPorts: ['in'],
+    defaults: () => ({ type: 'lookup', width: 1 }),
+    outShape: (node, inShapes) => {
+      const k = categoryIn('Lookup', inShapes);
+      return typeof k === 'number' ? { kind: 'example', width: node.width } : k;
+    },
+    // One row of `width` numbers per category (width 1: one learned number per category).
+    paramShapes: (node, _inWidth, inShape) => ({
+      W: [inShape?.kind === 'example' ? (inShape.category?.count ?? 1) : 1, node.width],
+    }),
+    paramInit: () => ({ kind: 'uniform', bound: 1 }),
+    torch: (node) => `nn.Embedding(K, ${node.width})`,
   },
   target: {
     family: 'inputs',
@@ -503,6 +588,8 @@ export const PALETTE: PaletteEntry[] = [
   piece('dropout', 'Dropout', 'dropout'),
   piece('add', 'Add', 'add'),
   piece('sum', 'Sum', 'sum'),
+  piece('onehot', 'One-hot', 'onehot'),
+  piece('lookup', 'Lookup', 'lookup'),
   piece('scalew', 'Weight', 'scalew'),
   piece('bias', 'Bias', 'bias'),
   piece('sigmoid', 'Sigmoid', 'link', () => ({ type: 'link', fn: 'sigmoid' })),
