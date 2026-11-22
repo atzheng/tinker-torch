@@ -1,4 +1,4 @@
-import type { Graph, HostParams } from '@tinker/core';
+import { fitView, type Graph, type HostParams } from '@tinker/core';
 import type { HistoryPoint } from '../state/trainSlice.js';
 
 /** Pinned runs are plain data (no engine objects). At most this many are kept; a fourth is refused. */
@@ -117,6 +117,11 @@ export function makePin(
     fit,
     finalLoss,
   };
+}
+
+/** Whether a pin stores a 1-D curve: one column that is numeric (a categorical axis draws none). */
+export function shouldSnapshotFit(info: Parameters<typeof fitView>[0]): boolean {
+  return info.columns.length === 1 && fitView(info).type === 'curve';
 }
 
 /**

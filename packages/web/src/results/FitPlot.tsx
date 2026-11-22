@@ -144,6 +144,7 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
       categorical ? Array.from({ length: fixed.k }, (_, i) => i) : niceTicks(xlo, xhi, 6),
       niceTicks(ylo, yhi, 4),
       categorical ? catLabel : undefined,
+      categorical,
     );
     // category index plus a fixed per-point offset (the points of a category spread sideways)
     const at = (v: number, i: number) => xs.px(categorical ? v + categoryJitter(i) : v);
