@@ -281,6 +281,10 @@ function build(
           return fn(n.fn === 'sigmoid' ? '\\sigma' : '\\mathrm{softmax}');
         case 'feature':
           return fn('\\phi');
+        case 'onehot':
+          return fn('\\mathrm{onehot}');
+        case 'lookup':
+          return fn('\\mathrm{lookup}');
         case 'dropout':
           return fn(`\\mathrm{drop}_{${short(n.p)}}`);
         case 'scale':

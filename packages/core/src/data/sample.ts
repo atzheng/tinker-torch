@@ -80,6 +80,8 @@ export function sample(config: DataConfig): Dataset {
     (train ? yTrain : yVal)[j] = row.y;
   });
 
+  const cats = spec.categories ?? {};
+  const isCat = (c: number): boolean => cats[c] !== undefined;
   let standardization: Standardization | null = null;
   let xt: Float32Array = xTrain;
   let xv: Float32Array = xVal;
@@ -88,6 +90,12 @@ export function sample(config: DataConfig): Dataset {
     const mean: number[] = [];
     const std: number[] = [];
     for (let c = 0; c < d; c++) {
+      if (isCat(c)) {
+        // a category index is not a quantity: leave it alone (mean 0, std 1)
+        mean.push(0);
+        std.push(1);
+        continue;
+      }
       let sum = 0;
       for (let i = 0; i < nTrain; i++) sum += xTrain[i * d + c] ?? 0;
       const m = sum / nTrain;
@@ -106,6 +114,16 @@ export function sample(config: DataConfig): Dataset {
     info: {
       columns: Array.from({ length: d }, (_, c) => `x${c + 1}`),
       ...(spec.featureNames ? { featureNames: spec.featureNames } : {}),
+      ...(Object.keys(cats).length > 0
+        ? {
+            columnKinds: Array.from({ length: d }, (_, c) =>
+              isCat(c) ? ('categorical' as const) : ('numeric' as const),
+            ),
+            categories: Object.fromEntries(
+              Object.entries(cats).map(([c, names]) => [`x${Number(c) + 1}`, [...names]]),
+            ),
+          }
+        : {}),
       kind: spec.kind,
       numClasses: classCount(config.set),
       targetName: spec.targetName ?? 'y',

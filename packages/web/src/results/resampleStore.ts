@@ -4,7 +4,7 @@
  * and clears it when the graph or the data change. Only plain numbers and Float32Arrays live here.
  */
 import { create } from 'zustand';
-import { biasVariance, grid1d, grid2d, truthProbs } from '@tinker/core';
+import { biasVariance, grid1d, grid2dSlice, heldValues, truthProbs } from '@tinker/core';
 import { plotIndex } from '../state/plotPrediction.js';
 import { useStore } from '../state/store.js';
 import type { ResampleRequest, ResampleResponse } from './resampleRun.js';
@@ -83,6 +83,8 @@ export function runOverlay(): void {
   const { graph, dataset } = st;
   const d = dataset.info.columns.length === 1 ? 1 : 2;
   const gridN = d === 1 ? 200 : 64;
+  // columns beyond the two plotted are held at their mean / most common category, as in the fit plot
+  const held = heldValues(dataset);
   const fallbackSteps = st.step === 0;
   const steps = fallbackSteps ? FALLBACK_STEPS : st.step;
   const mine = ++token;
@@ -105,7 +107,8 @@ export function runOverlay(): void {
     }
     if (!r.ok) return fail(r.message);
     // the plotted range: the grid spans the domain, so the plain mean over it is the average over x
-    const grid = d === 1 ? grid1d(dataset.domain, gridN) : grid2d(dataset.domain, gridN);
+    const grid =
+      d === 1 ? grid1d(dataset.domain, gridN) : grid2dSlice(dataset.domain, held, 0, 1, gridN);
     const multi = dataset.info.kind === 'multiclass';
     const k = multi ? dataset.info.numClasses : 1;
     const bv = biasVariance(r.curves, truthProbs(graph.data.set, grid.xRaw));
@@ -136,6 +139,7 @@ export function runOverlay(): void {
     k: COPIES,
     seed: graph.data.seed,
     gridN,
+    held,
     prediction: plotIndex(graph, st.plotPrediction),
   };
   w.postMessage(req);

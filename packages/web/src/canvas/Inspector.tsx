@@ -44,6 +44,8 @@ export const PIECE_LABEL: Record<PieceType, string> = {
   scalew: 'Weight',
   bias: 'Bias',
   sum: 'Sum',
+  onehot: 'One-hot',
+  lookup: 'Lookup',
 };
 
 function Issues({ messages }: { messages: string[] }) {
