@@ -26,6 +26,7 @@ export function saveText(withWeights: boolean): string {
   const doc = JSON.parse(text) as Record<string, unknown>;
   doc['title'] = preset.title;
   if (preset.prompt !== undefined) doc['prompt'] = preset.prompt;
+  if (preset.instructions !== undefined) doc['instructions'] = preset.instructions;
   if (preset.locked.length > 0) doc['locked'] = preset.locked;
   const { show } = useStore.getState();
   if (show) doc['show'] = show;
@@ -74,6 +75,7 @@ export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: str
       locked: (file.locked ?? []).filter((id) => ids.has(id)),
     };
     if (file.prompt !== undefined) active.prompt = file.prompt;
+    if (file.instructions !== undefined) active.instructions = file.instructions;
   }
   // The file's seed drives init of unsaved layers, batch order and dropout; one undo step.
   s.setRunSeed(file.graph.train.seed);

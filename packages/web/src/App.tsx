@@ -3,6 +3,7 @@ import styles from './App.module.css';
 import { Canvas } from './canvas/Canvas.js';
 import { Palette } from './palette/Palette.js';
 import { PromptLine } from './presets/PromptLine.js';
+import { InstructionsPanel } from './presets/InstructionsPanel.js';
 import { ResultsPanels } from './results/ResultsPanels.js';
 import { useRegionShown } from './state/disclosure.js';
 import { useStore } from './state/store.js';
@@ -71,6 +72,7 @@ export function App() {
         )}
         <main className={`${styles.region} ${styles.canvas}`} data-region="canvas">
           <PromptLine />
+          <InstructionsPanel />
           <div className={styles.canvasBody}>
             <Canvas />
           </div>
