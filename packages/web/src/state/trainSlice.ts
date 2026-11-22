@@ -19,7 +19,6 @@ import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engin
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { listParams } from '../plot/lossCurve1d.js';
 import { initialGraph } from './graphSlice.js';
-import { lockedIds } from './locks.js';
 import { currentLossMode, type ExampleStatsPair } from './lossMode.js';
 import { plotIndex } from './plotPrediction.js';
 import { probabilitySentence } from './probRange.js';
@@ -364,7 +363,8 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
   function lockedStart(start: HostParams | null): HostParams | null {
     if (!start) return null;
     const out = Object.create(null) as HostParams;
-    for (const id of lockedIds()) if (Object.hasOwn(start, id)) out[id] = start[id] as HostParams[string];
+    for (const id of get().preset?.locked ?? [])
+      if (Object.hasOwn(start, id)) out[id] = start[id] as HostParams[string];
     return out;
   }
 
@@ -392,11 +392,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
    * Brings model, TrainState and params in line with the current graph and dataset. `fresh`
    * discards the parameters (Reset).
    */
-  function resync(
-    freshArg = false,
-    carried: ScalarCarry | null = null,
-    randomStart = false,
-  ): void {
+  function resync(freshArg = false, carried: ScalarCarry | null = null, randomStart = false): void {
     const { graph, dataset, dataInfo } = get();
     // A diverged run leaves huge (finite) weights behind, so no lr, optimizer, batch or data
     // change could recover from them: the edit that follows a divergence starts from fresh weights.
