@@ -16,6 +16,7 @@ export const DATASET_NAMES = [
   'moons',
   'delivery_late',
   'delivery_time',
+  'delivery_lateness',
   'blobs3',
   'spiral3',
   'iris',

@@ -145,7 +145,7 @@ function mount(el: ReactElement) {
 test('DataControls: picking a set and Resample go through the store', () => {
   const host = mount(<DataControls />);
   const sel = host.querySelector<HTMLSelectElement>('[data-testid="data-set"]');
-  expect(sel?.querySelectorAll('option').length).toBe(20);
+  expect(sel?.querySelectorAll('option').length).toBe(21);
   act(() => {
     if (!sel) return;
     sel.value = 'circle';

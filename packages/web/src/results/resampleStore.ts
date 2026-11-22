@@ -111,7 +111,7 @@ export function runOverlay(): void {
       d === 1 ? grid1d(dataset.domain, gridN) : grid2dSlice(dataset.domain, held, 0, 1, gridN);
     const multi = dataset.info.kind === 'multiclass';
     const k = multi ? dataset.info.numClasses : 1;
-    const bv = biasVariance(r.curves, truthProbs(graph.data.set, grid.xRaw));
+    const bv = biasVariance(r.curves, truthProbs(graph.data.set, grid.xRaw, graph.data.noise));
     if (bv.k === 0) return fail('Every copy diverged. Try a smaller learning rate.');
     useOverlay.setState({
       status: 'done',

@@ -33,7 +33,8 @@ const SYNTH = DATASET_NAMES.filter((s) => !SETS[s].real);
 const PLAIN = SYNTH.filter((s) => !s.startsWith('delivery_'));
 const REG = PLAIN.filter((s) => SETS[s].kind === 'regression');
 const CLS = PLAIN.filter((s) => SETS[s].kind === 'binary');
-const MULTI = SYNTH.filter((s) => SETS[s].kind === 'multiclass');
+// delivery_lateness (d = 4, unbalanced) has its own tests in deliveryLateness.test.ts
+const MULTI = SYNTH.filter((s) => SETS[s].kind === 'multiclass' && s !== 'delivery_lateness');
 
 const mean = (a: ArrayLike<number>) => Array.from(a).reduce((s, v) => s + v, 0) / a.length;
 const std = (a: ArrayLike<number>) => {

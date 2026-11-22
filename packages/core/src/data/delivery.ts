@@ -1,7 +1,8 @@
 /**
  * The delivery story (CONTRACTS.md section 6): a generated dataset for the running example of the
- * first lectures. One generator, two target sets that share the same feature rows for a given seed
- * and n: `delivery_late` (binary) and `delivery_time` (continuous, minutes).
+ * first lectures. One generator, three target sets that share the same feature rows for a given seed
+ * and n: `delivery_late` (binary), `delivery_time` (continuous, minutes) and `delivery_lateness`
+ * (3 classes: the delivery time cut at LATENESS_CUTS).
  *
  * Columns, in the order the model sees them: distance (km), rain (mm/h), queue (orders ahead at
  * the kitchen) and zone, a categorical column (4 categories stored as the index 0..3; tinker-6t7.7).
@@ -10,7 +11,7 @@
 import type { Rng } from '../rng.js';
 import type { Row, SetSpec } from './sets.js';
 
-export const DELIVERY_SETS = ['delivery_late', 'delivery_time'] as const;
+export const DELIVERY_SETS = ['delivery_late', 'delivery_time', 'delivery_lateness'] as const;
 export type DeliveryName = (typeof DELIVERY_SETS)[number];
 
 export const DELIVERY_ZONES = ['centre', 'north', 'east', 'south'] as const;
@@ -59,6 +60,30 @@ export const TIME_TRUE = {
 /** Delivery-time noise standard deviation, in minutes, is NOISE_SD_PER_UNIT * noise. */
 export const NOISE_SD_PER_UNIT = 10;
 
+/**
+ * `delivery_lateness`: the same delivery time as `delivery_time` (same draws), cut into on time
+ * (< 38 min), late (38 to < 49) and very late (>= 49). The class shares depend on noise:
+ * about .51/.36/.13 at noise 0, .51/.35/.14 at 0.3, .51/.28/.21 at 1 and .51/.19/.30 at 2 (the 38
+ * and 49 minute marks are about the 50th and 85th percentiles of the time at noise 0.3).
+ */
+export const LATENESS_CUTS = [38, 49] as const;
+export const LATENESS_CLASSES = ['on time', 'late', 'very late'] as const;
+
+/** Standard normal CDF (Abramowitz and Stegun 7.1.26 via erf, error < 1.5e-7). */
+function normalCdf(z: number): number {
+  const a = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + 0.3275911 * a);
+  const poly =
+    t *
+    (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+  const erf = 1 - poly * Math.exp(-a * a);
+  return 0.5 * (1 + (z < 0 ? -erf : erf));
+}
+
+function lateness(minutes: number): number {
+  return minutes < LATENESS_CUTS[0] ? 0 : minutes < LATENESS_CUTS[1] ? 1 : 2;
+}
+
 function sigmoid(z: number): number {
   return 1 / (1 + Math.exp(-z));
 }
@@ -101,6 +126,23 @@ function timeTruth(x: readonly number[]): number {
   return timeMean(x, zoneOf(x));
 }
 
+/** The row's class probabilities at noise level `noise` (time ~ Normal(mean, 10 noise)). */
+export function latenessProbs(x: readonly number[], noise: number): number[] {
+  const m = timeMean(x, zoneOf(x));
+  const sd = NOISE_SD_PER_UNIT * noise;
+  if (sd <= 0) {
+    const out = [0, 0, 0];
+    out[lateness(m)] = 1;
+    return out;
+  }
+  const c0 = normalCdf((LATENESS_CUTS[0] - m) / sd);
+  const c1 = normalCdf((LATENESS_CUTS[1] - m) / sd);
+  return [c0, c1 - c0, 1 - c1];
+}
+
+/** The class of the mean delivery time (noise-free; at high noise it can differ from the most probable class). */
+const latenessTruth = (x: readonly number[]): number => lateness(timeTruth(x));
+
 const COMMON = {
   d: 4,
   domain: DELIVERY_DOMAIN,
@@ -125,6 +167,16 @@ export const DELIVERY_SPECS: Record<DeliveryName, SetSpec> = {
     kind: 'regression',
     targetName: 'delivery time (min)',
     f: timeTruth,
+  },
+  delivery_lateness: {
+    ...COMMON,
+    name: 'delivery_lateness',
+    kind: 'multiclass',
+    numClasses: 3,
+    targetName: 'lateness',
+    classNames: [...LATENESS_CLASSES],
+    f: latenessTruth,
+    probs: latenessProbs,
   },
 };
 
@@ -160,7 +212,9 @@ export function generateDelivery(set: DeliveryName, n: number, noise: number, rn
         ? u < sigmoid(lateLogit(x, zone))
           ? 1
           : 0
-        : timeMean(x, zone) + NOISE_SD_PER_UNIT * noise * eps;
+        : set === 'delivery_time'
+          ? timeMean(x, zone) + NOISE_SD_PER_UNIT * noise * eps
+          : lateness(timeMean(x, zone) + NOISE_SD_PER_UNIT * noise * eps);
     rows.push({ x, y });
   }
   return rows;

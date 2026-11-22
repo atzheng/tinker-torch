@@ -47,6 +47,7 @@ const GROUPS: { label: string; sets: { name: DatasetName; label: string }[] }[] 
     sets: [
       { name: 'delivery_late', label: 'Delivery: late or not' },
       { name: 'delivery_time', label: 'Delivery: time (min)' },
+      { name: 'delivery_lateness', label: 'Delivery: on time, late, very late' },
     ],
   },
   {

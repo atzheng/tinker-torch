@@ -20,9 +20,9 @@ meanwhile.
 ## Generated: the delivery story
 
 Not a table: `packages/core/src/data/delivery.ts` draws the rows from a seeded generator with known
-true parameters, so n and Resample change the sample and the fit plot can show the truth. Two
-sets share one generator (same seed and n give the same feature rows): `delivery_late` (binary) and
-`delivery_time` (continuous). A preset picks the target by setting `data.set`.
+true parameters, so n and Resample change the sample and the fit plot can show the truth. Three
+sets share one generator (same seed and n give the same feature rows): `delivery_late` (binary),
+`delivery_time` (continuous) and `delivery_lateness` (three classes). A preset picks the target by setting `data.set`.
 
 | Column               | Range                               | How it is drawn                                                                                                   |
 | -------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -32,9 +32,11 @@ sets share one generator (same seed and n give the same feature rows): `delivery
 | zone                 | centre, north, east, south (0 to 3) | uniform; a categorical input column (stored as the index 0 to 3; use One-hot or Lookup)                           |
 | late                 | 0 or 1                              | Bernoulli(sigmoid(-5.0 + 0.4 distance + 0.25 rain + 0.12 queue + zone effect)), zone effects -0.6, -0.2, 0.2, 0.6 |
 | delivery time (min)  |                                     | 12 + 3 distance + 0.8 rain + 1 queue + zone effect + noise, zone effects -2, -1, 1, 2                             |
+| lateness             | on time, late, very late (0 to 2)   | the delivery time (same draws as `delivery_time`) cut at 38 and 49 minutes: under 38, 38 to under 49, 49 or more  |
 
-The overall late rate is 0.341 (`DELIVERY_LATE_RATE`, the population rate by numerical integration over the input ranges and zones). Noise applies to delivery time only (standard deviation
-10 x noise minutes); lateness is already random, so the Noise field is hidden for `delivery_late`.
+The overall late rate is 0.341 (`DELIVERY_LATE_RATE`, the population rate by numerical integration over the input ranges and zones). Noise applies to delivery time and lateness (standard deviation
+10 x noise minutes; the class shares depend on noise (about .51/.36/.13 at noise 0, .51/.35/.14 at 0.3, .51/.28/.21 at 1, .51/.19/.30 at 2), not balanced, and at noise 0 the class is a
+deterministic function of the inputs); late labels are already random, so the Noise field is hidden for `delivery_late`.
 The fit plot's truth is the same formula at the row's own zone; the plot's slice holds zone at its
 most common category in the training rows (it cannot be an axis). Every random stream
 (distance, rain, queue, zone, late, time noise) is separate, so adding a column does not change the
@@ -48,3 +50,7 @@ header. A text input column with 2 to 20 distinct values becomes a category colu
 sorted, collected over the whole file before the train and validation split, so validation never
 sees a new category; use it through One-hot or Lookup); other text columns are left out. Rows with
 a missing value are dropped; what was left out or dropped is reported in the dialog. The opened file lives in the session only: it is not part of a saved model.
+
+`delivery_lateness` truth: `truth` is the class of the mean delivery time (noise-free, so the True boundary does not move with Noise, and at high noise it can differ from the most probable class); `truthProbs(set, x, noise)`
+gives the exact class probabilities (Normal CDF between the cuts, one-hot at noise 0). Zone as a
+target is not offered.
