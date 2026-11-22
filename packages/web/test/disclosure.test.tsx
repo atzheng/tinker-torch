@@ -2,7 +2,7 @@
 import { beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { PALETTE_GROUP_IDS } from '@tinker/core';
+import { PALETTE_GROUP_IDS, setLinearOut } from '@tinker/core';
 import { App, gridFor } from '../src/App.js';
 import { GROUPS } from '../src/palette/Palette.js';
 import { mlpGraph } from './mlpGraph.js';
@@ -108,6 +108,7 @@ test('stage 2: only the listed palette entries and controls', () => {
 test('hiding never changes behaviour; keyboard shortcuts of hidden controls are off', () => {
   loadText(presetText({ ui: ['btn-undo', 'btn-step'] }));
   expect(s().graph.train.optimizer).toBe(mlpGraph().train.optimizer);
+  s().apply(setLinearOut(s().graph, 'lin1', 6)); // an edit after the load, so undo keeps the preset
   const mounted = mount();
   const before = s().graph;
   const key = (init: KeyboardEventInit) =>
@@ -122,15 +123,36 @@ test('hiding never changes behaviour; keyboard shortcuts of hidden controls are 
   mounted.done();
 });
 
-test('disclosure is not part of the undo history, and Save writes it back', () => {
+test('disclosure travels with the preset in the undo history, and Save writes it back', () => {
   const show = { palette: ['sigmoid'], ui: ['btn-undo'] };
   loadText(presetText(show));
   expect(s().show).toEqual(show);
   expect(JSON.parse(saveText(false)).show).toEqual(show);
-  s().undo(); // back to the plain graph: its preset is gone, the disclosure stays
+  s().undo(); // back to the plain graph: its show is restored too
+  expect(s().show).toBeNull();
+  s().redo();
   expect(s().show).toEqual(show);
   s().loadGraph(mlpGraph()); // a new graph shows everything again
   expect(s().show).toBeNull();
+});
+
+test('a results list naming only the surface panel on a model without one removes the region', () => {
+  expect(s().host).not.toBeNull();
+  loadText(presetText({ ui: ['panel-surface', 'btn-undo'] }));
+  const { q, done } = mount();
+  expect(q('[data-region="results"]')).toBeNull();
+  done();
+});
+
+test('ids for the panel controls hide them one by one', () => {
+  loadText(presetText({ ui: ['panel-loss', 'loss-log-toggle', 'pins'] }));
+  const { host, done } = mount();
+  expect(host.querySelector('[data-testid="loss-log-toggle"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="pins"]')).not.toBeNull();
+  expect(host.querySelector('[data-testid="loss-restore-best"]')).toBeNull();
+  expect(host.querySelector('[data-testid="loss-readout"]')).toBeNull();
+  expect(host.querySelector('[data-testid="scalar-bar"]')).toBeNull();
+  done();
 });
 
 test('a bad id leaves the current graph and show alone', () => {

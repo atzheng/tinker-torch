@@ -1,3 +1,4 @@
+import { twoParams } from '../plot/lossSurface.js';
 import { useStore } from './store.js';
 import { isShown, UI_IDS, type UiRegion } from '@tinker/core';
 
@@ -7,8 +8,17 @@ export function useUiShown(id: string): boolean {
 }
 
 /** Is the region on screen: at least one of its ids is shown. */
-export function useRegionShown(region: UiRegion): boolean {
-  return useStore((s) => UI_IDS[region].some((id) => isShown(s.show?.ui, id)));
+export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'canvas'>): boolean {
+  return useStore((s) => {
+    if (region === 'results') {
+      // Only the panels that actually render count: the loss surface needs a 2-parameter model.
+      const surface = s.host ? twoParams(s.host, s.analysis.order) !== null : false;
+      return (['panel-fit', 'panel-loss', 'panel-surface'] as const).some(
+        (id) => isShown(s.show?.ui, id) && (id !== 'panel-surface' || surface),
+      );
+    }
+    return UI_IDS[region].some((id) => isShown(s.show?.ui, id));
+  });
 }
 
 /** Non-hook form for event handlers (keyboard shortcuts). */

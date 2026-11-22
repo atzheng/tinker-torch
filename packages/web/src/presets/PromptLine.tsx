@@ -1,3 +1,4 @@
+import { useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { TexText } from '../tex/Tex.js';
 import styles from './PromptLine.module.css';
@@ -10,7 +11,8 @@ export function PromptLine() {
   const prompt = useStore((s) => s.preset?.prompt);
   const dismissed = useStore((s) => s.promptDismissed);
   const dismiss = useStore((s) => s.dismissPrompt);
-  if (!prompt || dismissed) return null;
+  const shown = useUiShown('preset-prompt');
+  if (!prompt || dismissed || !shown) return null;
   return (
     <div className={styles.line} data-testid="preset-prompt" role="status">
       <span className={styles.text}>
