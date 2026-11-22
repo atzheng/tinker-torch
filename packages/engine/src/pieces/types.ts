@@ -24,6 +24,8 @@ export type PieceCtx = {
    * the test-only `debugTrainPass`, CONTRACTS.md section 11). The caller consumes it.
    */
   dropoutMask(nodeId: string): JArray;
+  /** Number of categories K of the category column feeding a One-hot or Lookup node (from the analysis). */
+  categoryCount(nodeId: string): number;
 };
 
 /**

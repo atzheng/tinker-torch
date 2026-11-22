@@ -28,6 +28,8 @@ const GLYPH: Record<string, string> = {
   weights: 'W',
   l2: '\\sum w^2',
   l1: '\\sum|w|',
+  onehot: 'e_k',
+  lookup: 'E',
   weight_penalty: '\\lambda',
 };
 function chipOf(entry: PaletteEntry): { role?: 'input' | 'pred' | 'loss'; glyph?: string } {
@@ -62,6 +64,10 @@ export const ENTRY_TITLES: Record<string, string> = {
   weights: 'Weights: reads the weights of a Linear piece.',
   l2: 'L2 norm: sum of the squared weights.',
   l1: 'L1 norm: sum of the absolute weights.',
+  onehot:
+    'One-hot: a category as one 0/1 column per category. Connects a category column to a Linear.',
+  lookup:
+    'Lookup: one learned number (or a vector) per category. Connects a category column onward.',
   loss_squared_error: `Squared error loss. ${GROUP}`,
   loss_absolute_error: `Absolute error loss. ${GROUP}`,
   loss_huber: `Huber loss. ${GROUP}`,
@@ -81,6 +87,7 @@ const inFamily = (f: PaletteEntry['family']) => (e: PaletteEntry) =>
   e.kind === 'piece' && e.family === f;
 export const GROUPS: Group[] = [
   { id: 'inputs', label: 'Inputs', open: true, has: inFamily('inputs') },
+  { id: 'categories', label: 'Categories', open: false, has: inFamily('categories') },
   { id: 'features', label: 'Features', open: false, has: inFamily('features') },
   { id: 'linear', label: 'Linear', open: true, has: inFamily('linear') },
   { id: 'activations', label: 'Activations', open: true, has: inFamily('activations') },

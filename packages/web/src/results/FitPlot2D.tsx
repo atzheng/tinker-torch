@@ -65,6 +65,24 @@ export function fillClassImage(
   }
 }
 
+/** The most common value of column `c` in the first `n` rows (the lowest on a tie); 0 with no rows. */
+function modeOf(x: Float32Array, d: number, c: number, n: number): number {
+  const counts = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const v = x[i * d + c] ?? 0;
+    counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  let best = 0;
+  let bestN = -1;
+  for (const [v, k] of counts) {
+    if (k > bestN || (k === bestN && v < best)) {
+      best = v;
+      bestN = k;
+    }
+  }
+  return best;
+}
+
 /** Fit plot for 2-D data: decision surface (classification) or prediction heat map (regression). */
 export function FitPlot2D() {
   const dataset = useStore((s) => s.dataset);
@@ -84,8 +102,15 @@ export function FitPlot2D() {
   // feature is held at its training mean (the points are all drawn, projected on the two axes).
   const d = dataset.info.columns.length;
   const [pick2, setPick2] = useState<[number, number]>([0, 1]);
-  const ia = Math.min(pick2[0], d - 1);
-  const ib = pick2[1] === ia || pick2[1] >= d ? (ia === 0 ? 1 : 0) : pick2[1];
+  // A categorical column cannot be an axis; it is held at its most common category (below).
+  const isCat = (c: number) => dataset.info.columnKinds?.[c] === 'categorical';
+  const axes = Array.from({ length: d }, (_, c) => c).filter((c) => !isCat(c));
+  const axisCols = axes.length >= 2 ? axes : Array.from({ length: d }, (_, c) => c);
+  const ia = axisCols.includes(pick2[0]) ? pick2[0] : (axisCols[0] ?? 0);
+  const ib =
+    pick2[1] !== ia && axisCols.includes(pick2[1])
+      ? pick2[1]
+      : (axisCols.find((c) => c !== ia) ?? 0);
   const canTruth = hasTruth(set);
   const nameA = featureName(dataset.info, dataset.info.columns[ia] ?? 'x1');
   const nameB = featureName(dataset.info, dataset.info.columns[ib] ?? 'x2');
@@ -96,6 +121,7 @@ export function FitPlot2D() {
     const xt = st ? unstandardizeRows(dataset.xTrain, d, st) : dataset.xTrain;
     const xv = st ? unstandardizeRows(dataset.xVal, d, st) : dataset.xVal;
     const means = Array.from({ length: d }, (_, c) => {
+      if (dataset.info.columnKinds?.[c] === 'categorical') return modeOf(xt, d, c, dataset.nTrain);
       let sum = 0;
       for (let i = 0; i < dataset.nTrain; i++) sum += xt[i * d + c] ?? 0;
       return dataset.nTrain > 0 ? sum / dataset.nTrain : 0;
@@ -398,7 +424,7 @@ export function FitPlot2D() {
           <span
             className={styles.key}
             style={{ flexWrap: 'nowrap', whiteSpace: 'nowrap', gap: 4 }}
-            title="The other features are held at their mean"
+            title="The other features are held at their mean (a category at its most common value)"
             data-testid="slice-pickers"
           >
             <label className={styles.toggle}>
@@ -413,9 +439,9 @@ export function FitPlot2D() {
                   setPick2([v, v === ib ? ia : ib]);
                 }}
               >
-                {dataset.info.columns.map((c, i) => (
-                  <option key={c} value={i}>
-                    {featureName(dataset.info, c)}
+                {axisCols.map((i) => (
+                  <option key={i} value={i}>
+                    {featureName(dataset.info, dataset.info.columns[i] ?? `x${i + 1}`)}
                   </option>
                 ))}
               </select>
@@ -432,9 +458,9 @@ export function FitPlot2D() {
                   setPick2([v === ia ? ib : ia, v]);
                 }}
               >
-                {dataset.info.columns.map((c, i) => (
-                  <option key={c} value={i}>
-                    {featureName(dataset.info, c)}
+                {axisCols.map((i) => (
+                  <option key={i} value={i}>
+                    {featureName(dataset.info, dataset.info.columns[i] ?? `x${i + 1}`)}
                   </option>
                 ))}
               </select>

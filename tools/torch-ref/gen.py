@@ -25,6 +25,10 @@ Conventions (fixed by CONTRACTS.md):
   losses are built from primitives (a log loss takes probabilities, so a sigmoid link in front is
   evaluated literally here and fused by the engine). `expect.pred` is the first prediction pin
   (empty with none) and `expect.predictions` has every pin in order.
+- cases named categorical_* (tinker-6t7.7) have categorical dataset columns: the case's `cats` maps a
+  column index to its number of categories K, the column of x holds the category index as a float,
+  and the fixture's top-level `categories` maps the column id (`x2`) to K. onehot is
+  F.one_hot(index, K) (no category dropped); lookup is nn.Embedding(K, width), params W [K, width] row-major.
 """
 
 import json
@@ -322,14 +326,31 @@ def src_of(edges):
     return s
 
 
-def widths_v2(nodes, edges, d):
+def category_counts(nodes, src, cats):
+    """Number of categories K for each node that carries one category column (an Input of one
+    categorical column); `cats` maps a column index to K."""
+    ck = {}
+    for n in nodes:
+        if n["type"] == "input" and len(n["columns"]) == 1:
+            idx = int(n["columns"][0][1:]) - 1
+            if idx in cats:
+                ck[n["id"]] = cats[idx]
+    return ck
+
+
+def widths_v2(nodes, edges, d, cats=None):
     """Example width per node (None for scalars and weight matrices)."""
     src = src_of(edges)
+    ck = category_counts(nodes, src, cats or {})
     w = {}
     for n in nodes:
         t, i = n["type"], n["id"]
         if t == "input":
             w[i] = len(n["columns"])
+        elif t == "onehot":
+            w[i] = ck[src[(i, "in")]]
+        elif t == "lookup":
+            w[i] = n["width"]
         elif t == "target":
             w[i] = 1
         elif t == "column":
@@ -355,8 +376,9 @@ def widths_v2(nodes, edges, d):
 
 
 class ModelV2(nn.Module):
-    def __init__(self, nodes, edges, params, w, src, dropout_mask=None):
+    def __init__(self, nodes, edges, params, w, src, dropout_mask=None, cats=None):
         super().__init__()
+        self.ck = category_counts(nodes, src, cats or {})
         self.nodes, self.src, self.mask = nodes, src, dropout_mask
         self.nodes_by_id = {n["id"]: n for n in nodes}
         # every wire into a node's input port, in edge order (a Sum takes several into `in`)
@@ -371,6 +393,13 @@ class ModelV2(nn.Module):
                 self.scal[n["id"]] = nn.Parameter(torch.tensor(params[n["id"]]["W"]).reshape(1, 1))
             elif n["type"] == "bias":
                 self.scal[n["id"]] = nn.Parameter(torch.tensor(params[n["id"]]["b"]))
+        self.embs = nn.ModuleDict()
+        for n in nodes:
+            if n["type"] == "lookup":
+                k = self.ck[src[(n["id"], "in")]]
+                m = nn.Embedding(k, n["width"])
+                m.weight.data = torch.tensor(np.array(params[n["id"]]["W"]).reshape(k, n["width"]))
+                self.embs[n["id"]] = m
         self.lins = nn.ModuleDict()
         for n in nodes:
             if n["type"] == "linear":
@@ -392,9 +421,14 @@ class ModelV2(nn.Module):
                 return v[self.src[(i, port)]]
 
             if t == "input":
-                v[i] = x
+                # the node's own columns, in order (all of x for the older cases)
+                v[i] = x[:, [int(c[1:]) - 1 for c in n["columns"]]]
             elif t == "target":
                 v[i] = y
+            elif t == "onehot":
+                v[i] = F.one_hot(get()[:, 0].long(), self.ck[self.src[(i, "in")]]).to(torch.float64)
+            elif t == "lookup":
+                v[i] = self.embs[i](get()[:, 0].long())
             elif t == "linear":
                 v[i] = self.lins[i](get())
             elif t == "column":
@@ -467,6 +501,11 @@ class ModelV2(nn.Module):
                     tb = torch.zeros_like(m.bias)
                 e["b"] = tb.detach().flatten().tolist()
             out[i] = e
+        for i, m in self.embs.items():
+            t = m.weight if what == "params" else m.weight.grad
+            if t is None:
+                t = torch.zeros_like(m.weight)
+            out[i] = {"W": t.detach().flatten().tolist()}
         for i, p in self.scal.items():
             t = p if what == "params" else p.grad
             if t is None:
@@ -477,9 +516,19 @@ class ModelV2(nn.Module):
 
 
 def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, ytype="reg",
-                 optimizer=None, steps=5, lr=0.1, mask_for=None, xscale=1.5, set_params=None):
+                 optimizer=None, steps=5, lr=0.1, mask_for=None, xscale=1.5, set_params=None,
+                 cats=None):
     rng = np.random.default_rng(seed)
     x = rng.uniform(-xscale, xscale, size=(n, d))
+    cats = cats or {}
+    if cats:
+        # categorical columns hold the category index as a float; drawn from their own stream so the
+        # other cases' draws do not move, and the first K rows cover every category
+        crng = np.random.default_rng(seed + 100_000)
+        for c, k in cats.items():
+            col = crng.integers(0, k, size=n)
+            col[:k] = np.arange(k)
+            x[:, c] = col.astype(float)
     if ytype == "reg":
         y = 0.7 * x[:, :1] + 0.3 * np.sin(2 * x[:, :1]) + 0.4 * rng.standard_normal((n, 1))
         y = y * 2.0
@@ -490,10 +539,14 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
     else:
         y = (rng.uniform(size=(n, 1)) > 0.5).astype(float)
         y[0, 0], y[1, 0] = 0.0, 1.0
-    w, src = widths_v2(nodes, edges, d)
+    w, src = widths_v2(nodes, edges, d, cats)
+    ck = category_counts(nodes, src, cats)
     params = {}
     for nd in nodes:
-        if nd["type"] == "linear":
+        if nd["type"] == "lookup":
+            k = ck[src[(nd["id"], "in")]]
+            params[nd["id"]] = {"W": rng.uniform(-1.0, 1.0, size=k * nd["width"]).tolist()}
+        elif nd["type"] == "linear":
             inw, o = w[src[(nd["id"], "in")]], nd["out"]
             s = 1.0 / math.sqrt(inw)
             e = {"W": rng.uniform(-s, s, size=inw * o).tolist()}
@@ -517,7 +570,7 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
     pin_nodes = [p.split(".")[0] for p in predictions]
     loss_node = loss_id.split(".")[0]
 
-    m = ModelV2(nodes, edges, params, w, src, maskt)
+    m = ModelV2(nodes, edges, params, w, src, maskt, cats)
     preds, obj = m(xt, yt, pin_nodes, loss_node)
     assert obj.dim() == 0
     obj.backward()
@@ -526,11 +579,11 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
               "grads": m.host("grads")}
     if mask is not None:
         expect["dropoutMask"] = mask.tolist()
-        pe, oe = ModelV2(nodes, edges, params, w, src, None)(xt, yt, pin_nodes, loss_node)
+        pe, oe = ModelV2(nodes, edges, params, w, src, None, cats)(xt, yt, pin_nodes, loss_node)
         expect["predEval"] = pe[0].detach().flatten().tolist() if pe else []
         expect["lossEval"] = oe.item()
     if optimizer:
-        m2 = ModelV2(nodes, edges, params, w, src, maskt)
+        m2 = ModelV2(nodes, edges, params, w, src, maskt, cats)
         opt = {"sgd": lambda ps: torch.optim.SGD(ps, lr=lr),
                "momentum": lambda ps: torch.optim.SGD(ps, lr=lr, momentum=0.9),
                "adam": lambda ps: torch.optim.Adam(ps, lr=lr)}[optimizer](m2.parameters())
@@ -550,8 +603,11 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
                  "n": 40, "noise": 0.1, "val": 0.25, "seed": 1, "standardize": False},
         "train": {"optimizer": optimizer or "sgd", "lr": lr, "batch": "full", "seed": 1},
     }
-    return {"name": name, "graph": graph, "params": params,
-            "batch": {"x": x.flatten().tolist(), "y": y.flatten().tolist(), "n": n}, "expect": expect}
+    fx = {"name": name, "graph": graph, "params": params,
+          "batch": {"x": x.flatten().tolist(), "y": y.flatten().tolist(), "n": n}, "expect": expect}
+    if cats:
+        fx["categories"] = {f"x{c + 1}": k for c, k in sorted(cats.items())}
+    return fx
 
 
 def v2_cases(add):
@@ -850,6 +906,29 @@ def main():
     edges = [["x", "lin1"], ["lin1", "a1"], ["a1", "err.pred"], ["y", "err.target"], ["err", "loss"]]
     add2("prob_direct_cross_entropy", nodes, edges, [], "loss", d=2, ytype="cls3", n=9,
          steps=4, lr=0.5, optimizer="sgd")
+
+    # tinker-6t7.7: categorical columns (last, so the seeds of the cases above do not move). A category
+    # column (x2, K = 3) goes through One-hot into a Linear, added to a Linear of the numeric column.
+    nodes = [n_("xn", "input", columns=["x1"]), n_("xc", "input", columns=["x2"]),
+             n_("oh", "onehot"), lin("lin_n", 1), lin("lin_c", 1), n_("sum", "add"), TARGET,
+             n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")]
+    edges = [["xn", "lin_n"], ["xc", "oh"], ["oh", "lin_c"], ["lin_n", "sum.a"], ["lin_c", "sum.b"],
+             ["sum", "diff.a"], ["y", "diff.b"], ["diff", "err"], ["err", "loss"]]
+    add2("categorical_onehot_linear", nodes, edges, ["sum"], "loss", d=2, n=9, cats={1: 3},
+         optimizer="adam", lr=0.05)
+    # A Lookup of width 1 (one learned number per category) into Sigmoid and log loss.
+    nodes = [n_("xc", "input", columns=["x1"]), n_("look", "lookup", width=1),
+             n_("p", "link", fn="sigmoid"), TARGET, n_("err", "log_loss"), n_("loss", "mean")]
+    edges = [["xc", "look"], ["look", "p"], ["p", "err.pred"], ["y", "err.target"], ["err", "loss"]]
+    add2("categorical_lookup_logloss", nodes, edges, ["p"], "loss", d=1, ytype="cls", n=10,
+         cats={0: 4}, optimizer="sgd", lr=0.5, steps=5)
+    # A Lookup of width 3 (an embedding) then a Linear to one output.
+    nodes = [n_("xc", "input", columns=["x2"]), n_("look", "lookup", width=3), lin("lin1", 1), TARGET,
+             n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")]
+    edges = [["xc", "look"], ["look", "lin1"], ["lin1", "diff.a"], ["y", "diff.b"], ["diff", "err"],
+             ["err", "loss"]]
+    add2("categorical_lookup_width3", nodes, edges, ["lin1"], "loss", d=2, n=8, cats={1: 4},
+         optimizer="momentum", lr=0.1)
 
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)

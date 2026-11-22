@@ -17,6 +17,9 @@ import {
   oneOf,
   parsePort,
   trainSchema,
+  categoryCount,
+  numericColumns,
+  type ColumnKind,
   type ActivationFn,
   type DataConfig,
   type DataInfo,
@@ -32,7 +35,10 @@ export {
   ACTIVATION_FNS,
   DATASET_NAMES,
   OPTIMIZERS,
+  categoryCount,
+  numericColumns,
   parsePort,
+  type ColumnKind,
   type ActivationFn,
   type DataConfig,
   type DataInfo,
@@ -69,6 +75,8 @@ export const NODE_TYPES = [
   'scalew',
   'bias',
   'sum',
+  'onehot',
+  'lookup',
 ] as const;
 
 const nodeSchema = z.discriminatedUnion('type', [
@@ -140,6 +148,8 @@ const nodeSchema = z.discriminatedUnion('type', [
   z.strictObject({ id: nodeId, type: z.literal('scalew') }),
   z.strictObject({ id: nodeId, type: z.literal('bias') }),
   z.strictObject({ id: nodeId, type: z.literal('sum') }),
+  z.strictObject({ id: nodeId, type: z.literal('onehot') }),
+  z.strictObject({ id: nodeId, type: z.literal('lookup'), width: int(1, 64).default(1) }),
 ]);
 
 const GRAPH_VERSION = 2 as const;
@@ -492,6 +502,8 @@ const NODE_KEY_ORDER: Record<PieceType, string[]> = {
   scalew: ['id', 'type'],
   bias: ['id', 'type'],
   sum: ['id', 'type'],
+  onehot: ['id', 'type'],
+  lookup: ['id', 'type', 'width'],
 };
 
 function pick(obj: object, keys: string[]): Record<string, unknown> {

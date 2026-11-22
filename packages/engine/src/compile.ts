@@ -405,6 +405,13 @@ function walk(
       if (!y) return np.zeros([n]);
       return --yLeft > 0 ? y.ref : y;
     },
+    categoryCount: (id) => {
+      const from = m.analysis.inputs[id]?.['in']?.[0]?.from;
+      const s = from === undefined ? undefined : m.analysis.shape[from];
+      const k = s?.kind === 'example' ? s.category?.count : undefined;
+      if (k === undefined) throw new Error('Internal error: this piece has no category input.');
+      return k;
+    },
     dropoutMask: (id) => {
       const mask = masks.get(id);
       if (!mask) throw new Error('Internal error: this pass has no dropout mask.');

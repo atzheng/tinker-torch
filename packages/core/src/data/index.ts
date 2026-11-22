@@ -31,6 +31,7 @@ export {
   CSV_LIMITS,
   buildCsv,
   inferKind,
+  inputKind,
   isMissing,
   parseCsv,
   parseCsvCells,

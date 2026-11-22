@@ -68,6 +68,10 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   // probabilities used directly, no clipping, no link in front (tinker-ddg)
   prob_direct_log_loss: {},
   prob_direct_cross_entropy: {},
+  // categorical columns: One-hot and Lookup (tinker-6t7.7)
+  categorical_onehot_linear: {},
+  categorical_lookup_logloss: {},
+  categorical_lookup_width3: {},
 };
 
 /** Skipped until the named bead lands. */
