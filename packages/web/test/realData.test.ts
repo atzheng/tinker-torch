@@ -85,6 +85,37 @@ test('a saved file carries the opened CSV and reopens without it', () => {
   expect(sample(s().graph.data).xTrain).toEqual(before.xTrain);
 });
 
+test('undo and redo bring back the CSV that went with the graph; no name gets a label', () => {
+  const make = (cols: string[]) => {
+    const rows = Array.from(
+      { length: 20 },
+      (_, i) => `${i},${(i * 7) % 5},${i % 3},${i % 2 ? 'a' : 'b'}`,
+    );
+    const p = parseCsv([[...cols, 'kind'].join(','), ...rows].join('\n'));
+    if (!p.ok) throw new Error(p.error);
+    const b = buildCsv(p.csv, { target: 3, inputs: cols.map((_, i) => i), kind: 'binary' });
+    if (!b.ok) throw new Error(b.error);
+    return b;
+  };
+  s().openCsv(make(['u', 'v', 'w']), 'A.csv');
+  const fileB = saveText(false);
+  s().openCsv(make(['p', 'q', 'r']), 'B.csv');
+  const textB = saveText(false);
+  s().openCsv(make(['u', 'v', 'w']), 'A.csv');
+  expect(fileB).not.toBe(textB);
+  const doc = JSON.parse(textB) as { csv: { name?: string } };
+  delete doc.csv.name;
+  expect(loadText(JSON.stringify(doc))).toEqual({ ok: true, message: null });
+  expect(s().dataInfo.featureNames).toEqual(['p', 'q', 'r']);
+  expect(s().csvName).toBe('your data');
+  s().undo();
+  expect(s().csvName).toBe('A.csv');
+  expect(s().dataInfo.featureNames).toEqual(['u', 'v', 'w']);
+  s().redo();
+  expect(s().csvName).toBe('your data');
+  expect(s().dataInfo.featureNames).toEqual(['p', 'q', 'r']);
+});
+
 test('fetchCsvText: fake fetch only, one-sentence errors', async () => {
   const ok = vi.fn(async () => new Response('a,b\n1,2\n', { status: 200 }));
   const r = await fetchCsvText('https://example.org/data/iris.csv', ok as unknown as typeof fetch);

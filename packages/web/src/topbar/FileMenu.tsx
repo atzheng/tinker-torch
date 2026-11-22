@@ -18,13 +18,16 @@ import { useStore } from '../state/store.js';
 import { Popover } from './Popover.js';
 import styles from './FileMenu.module.css';
 
+/** Label of an opened CSV whose file has no name. */
+export const DEFAULT_CSV_NAME = 'your data';
+
 export const SAVE_FILE_NAME = 'tinker-model.tinker.json';
 
 /** Text of the file Save would write; weights only when asked for and available. */
 export function saveText(withWeights: boolean): string {
   const { graph, host, preset, csvName } = useStore.getState();
   // The rows of an opened CSV travel with the file, so a student's session needs no CSV of its own.
-  const csv = graph.data.set === 'csv' ? embedCsv(csvName) : null;
+  const csv = graph.data.set === 'csv' ? embedCsv(csvName ?? DEFAULT_CSV_NAME) : null;
   const text = serializeFile(graph, withWeights && host ? paramsToJson(host) : undefined, csv);
   if (!preset) return text;
   // A preset that is being edited stays a preset: title, prompt, locked ids and the disclosure lists are written back.
@@ -57,10 +60,13 @@ export function loadText(text: string): { ok: boolean; message: string | null } 
  */
 export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: string | null } {
   const set = file.graph.data.set;
+  // The file carries its rows: they replace any CSV open in this session (as opening one does).
+  // `prevCsv` lets a rejected load put the session's CSV back.
+  const prevCsv = file.csv && set === 'csv' ? embedCsv(useStore.getState().csvName) : null;
+  const prevGraph = useStore.getState().graph;
   if (file.csv && set === 'csv') {
-    // The file carries its rows: they replace any CSV open in this session (as opening one does).
     registerEmbeddedCsv(file.csv);
-    useStore.setState({ csvName: file.csv.name ?? null });
+    useStore.setState({ csvName: file.csv.name || DEFAULT_CSV_NAME });
   }
   if (isRealSet(set) && !hasTable(set)) {
     if (set === 'csv') {
@@ -96,6 +102,11 @@ export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: str
   // The file's seed drives init of unsaved layers, batch order and dropout; one undo step.
   s.setRunSeed(file.graph.train.seed);
   s.apply({ ok: true, graph: file.graph }, active, 'show' in file ? (file.show ?? null) : null);
+  if (prevCsv && useStore.getState().graph === prevGraph) {
+    // The graph was not applied: keep the CSV the session had.
+    registerEmbeddedCsv(prevCsv);
+    useStore.setState({ csvName: prevCsv.name ?? null });
+  }
   const mode = 'options' in file ? file.options?.['loss-mode'] : undefined;
   if (mode !== undefined) s.setLossMode(mode as LossMode);
   if (!file.params) return { ok: true, message: null };
