@@ -15,7 +15,17 @@ export type ProbBar = {
 /** Examples whose value differs by less than this count as the same. */
 const SAME = 1e-6;
 /** At most this many training rows are fed to `predict` for the mean. */
-export const PROB_BAR_MAX_ROWS = 512;
+export const PROB_BAR_MAX_ROWS = 128;
+/** While training runs, the bars are recomputed at most this often (ms). */
+export const PROB_BAR_EVERY_MS = 250;
+
+/**
+ * Whether new parameters should be read now: always when not running or when the value is exact and
+ * cheap (a no-input model, one row), else at most every `PROB_BAR_EVERY_MS` while running.
+ */
+export function probBarDue(now: number, last: number, running: boolean, cheap: boolean): boolean {
+  return !running || cheap || now - last >= PROB_BAR_EVERY_MS;
+}
 
 /**
  * The bar for one pin's readback `out` (`n` rows of `width` columns). The value of a no-input model

@@ -7,7 +7,7 @@ import { loadEngine } from '../src/engine.js';
 import { useStore } from '../src/state/store.js';
 import { loadBundled } from '../src/topbar/PresetMenu.js';
 import { useProbBars } from '../src/state/derived.js';
-import { probBarOf, probBars, probBarTargets } from '../src/canvas/probBarPure.js';
+import { probBarDue, probBarOf, probBars, probBarTargets } from '../src/canvas/probBarPure.js';
 
 const s = () => useStore.getState();
 const sigmoid = (z: number) => 1 / (1 + Math.exp(-z));
@@ -73,4 +73,11 @@ test('no-input sigmoid preset: the Link bar equals sigmoid(b), live', () => {
   expect(b).not.toBe(2);
   expect(result.current['yhat']?.values[0]).toBeCloseTo(sigmoid(b), 5);
   act(() => root.unmount());
+});
+
+test('probBarDue: throttled only while running with many rows', () => {
+  expect(probBarDue(100, 0, true, false)).toBe(false);
+  expect(probBarDue(300, 0, true, false)).toBe(true);
+  expect(probBarDue(10, 0, false, false)).toBe(true);
+  expect(probBarDue(10, 0, true, true)).toBe(true);
 });

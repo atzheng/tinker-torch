@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { analyse, initParams, type Analysis, type HostParams } from '@tinker/core';
 import { edgeIndexOf, neuronSelectionLive, pinLive } from '../canvas/pure.js';
 import {
+  PROB_BAR_EVERY_MS,
   PROB_BAR_MAX_ROWS,
+  probBarDue,
   probBarTargets,
   probBars,
   type ProbBar,
@@ -59,16 +61,37 @@ export function useProbBars(analysis: Analysis): Record<string, ProbBar> {
   const graph = useStore((s) => s.graph);
   const dataset = useStore((s) => s.dataset);
   const host = useStore((s) => s.host);
+  const running = useStore((s) => s.running);
   const predictPins = useStore((s) => s.predictPins);
-  return useMemo(() => {
-    void host; // the recompute trigger: parameters changed
-    if (probBarTargets(graph, analysis.outWidth).length === 0) return {};
-    const d = dataset.info.columns.length;
-    const n = d === 0 ? 1 : Math.min(dataset.nTrain, PROB_BAR_MAX_ROWS);
-    if (n < 1) return {};
-    const outs = predictPins(dataset.xTrain.slice(0, n * d), n);
-    return outs ? probBars(graph, analysis.outWidth, outs, n) : {};
-  }, [graph, analysis, dataset, host, predictPins]);
+  const [, bump] = useState(0);
+  const cache = useRef<{
+    t: number;
+    host: unknown;
+    deps: unknown[];
+    bars: Record<string, ProbBar>;
+  } | null>(null);
+  const deps = [graph, analysis, dataset, predictPins];
+  const c = cache.current;
+  const depsSame = c !== null && c.deps.every((d, i) => d === deps[i]);
+  const d = dataset.info.columns.length;
+  const now = performance.now();
+  // while running, new parameters are read at most every PROB_BAR_EVERY_MS (a trailing timer catches up)
+  if (!c || !depsSame || (c.host !== host && probBarDue(now, c.t, running, d === 0))) {
+    let bars: Record<string, ProbBar> = {};
+    if (probBarTargets(graph, analysis.outWidth).length > 0) {
+      const n = d === 0 ? 1 : Math.min(dataset.nTrain, PROB_BAR_MAX_ROWS);
+      const outs = n < 1 ? null : predictPins(dataset.xTrain.slice(0, n * d), n);
+      if (outs) bars = probBars(graph, analysis.outWidth, outs, n);
+    }
+    cache.current = { t: now, host, deps, bars };
+  }
+  const pending = cache.current?.host !== host;
+  useEffect(() => {
+    if (!pending) return;
+    const id = setTimeout(() => bump((k) => k + 1), PROB_BAR_EVERY_MS);
+    return () => clearTimeout(id);
+  });
+  return cache.current?.bars ?? {};
 }
 
 /**
