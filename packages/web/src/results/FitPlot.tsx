@@ -1,5 +1,5 @@
-import { useUiLabel, useUiShown } from '../state/disclosure.js';
-import { useMemo, useState } from 'react';
+import { useUiLabel, useUiOption, useUiShown } from '../state/disclosure.js';
+import { useMemo } from 'react';
 import { grid1d, hasTruth, truth, unstandardizeRows } from '@tinker/core';
 import { fitYRange, linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
@@ -36,7 +36,7 @@ function FitPlot1D() {
   const noPrediction = useStore((s) => s.graph.predictions.length === 0);
   const pick = useStore((s) => s.plotPrediction);
   const predictions = useStore((s) => s.graph.predictions);
-  const [showTruth, setShowTruth] = useState(false);
+  const [showTruth, setShowTruth] = useUiOption('truth-toggle');
   const overlay = useOverlay1D();
   const pins = useStore((s) => s.pins);
 

@@ -7,6 +7,7 @@ import {
   paramsToJson,
   parseFileText,
   serializeFile,
+  type LossMode,
   type Preset,
   type SaveFile,
 } from '@tinker/core';
@@ -28,6 +29,7 @@ export function saveText(withWeights: boolean): string {
   if (preset.prompt !== undefined) doc['prompt'] = preset.prompt;
   if (preset.instructions !== undefined) doc['instructions'] = preset.instructions;
   if (preset.labels) doc['labels'] = preset.labels;
+  if (preset.options) doc['options'] = preset.options;
   if (preset.checks !== undefined) doc['checks'] = preset.checks;
   if (preset.locked.length > 0) doc['locked'] = preset.locked;
   const { show } = useStore.getState();
@@ -79,11 +81,14 @@ export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: str
     if (file.prompt !== undefined) active.prompt = file.prompt;
     if (file.instructions !== undefined) active.instructions = file.instructions;
     if (file.labels !== undefined) active.labels = file.labels;
+    if (file.options !== undefined) active.options = file.options;
     if (file.checks !== undefined) active.checks = file.checks;
   }
   // The file's seed drives init of unsaved layers, batch order and dropout; one undo step.
   s.setRunSeed(file.graph.train.seed);
   s.apply({ ok: true, graph: file.graph }, active, 'show' in file ? (file.show ?? null) : null);
+  const mode = 'options' in file ? file.options?.['loss-mode'] : undefined;
+  if (mode !== undefined) s.setLossMode(mode as LossMode);
   if (!file.params) return { ok: true, message: null };
   const after = useStore.getState();
   if (!after.analysis.trainable) {

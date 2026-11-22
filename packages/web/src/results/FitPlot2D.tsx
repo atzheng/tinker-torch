@@ -1,4 +1,4 @@
-import { useUiLabel, useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiOption, useUiShown } from '../state/disclosure.js';
 import { useMemo, useState } from 'react';
 import { grid2dSlice, hasTruth, truth, truthMargin, unstandardizeRows } from '@tinker/core';
 import { CLASS_COUNT, classColor, type PlotColors } from '../plot/color.js';
@@ -93,7 +93,7 @@ export function FitPlot2D() {
   const noPrediction = useStore((s) => s.graph.predictions.length === 0);
   const pick = useStore((s) => s.plotPrediction);
   const predictions = useStore((s) => s.graph.predictions);
-  const [showTruth, setShowTruth] = useState(false);
+  const [showTruth, setShowTruth] = useUiOption('truth-toggle');
   const classification = dataset.info.kind !== 'regression';
   const multiclass = dataset.info.kind === 'multiclass';
   const numClasses = dataset.info.numClasses;
