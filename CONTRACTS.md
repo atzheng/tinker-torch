@@ -660,6 +660,8 @@ Hidden controls are not rendered (so not focusable) and their keyboard shortcuts
 
 Later beads that add a panel, readout or control add its id to `UI_IDS` (and gate it with `useUiShown(id)` from `web/src/state/disclosure.ts`; `useRegionShown(region)` and `uiShown(id)` are the region and event-handler forms).
 
+Step log (tinker-6t7.10): `panel-step-log` is opt-in like `panel-loss-1d` (shown only when `show.ui` lists it). The store keeps `stepLog: StepLogRow[]` (`trainSlice`): only Step adds a row (Run does not), models with at most 4 scalar parameter entries only, last 50 rows; cleared with the run (Reset, structural change, load) and on a hand weight edit. A row holds the parameters and the first prediction (first training example, or the lone value with no input) AFTER the step, and the loss the step measured and the per-parameter slope (`engine.lossSlope`, full-batch, dropout off) from BEFORE it; the slopes are null (column left out) for a mini-batch or a graph with Dropout, where the full-batch slope is not the step's gradient.
+
 Adding an id to `UI_IDS` changes nothing for a preset without `ui` (everything shows). A preset that has a `ui` list shows only what it lists, so a newly added panel or control starts hidden in such presets until the preset adds its id (confirmed: this is the allow-list behaviour; presets are widened deliberately).
 
 ## 13. Commands

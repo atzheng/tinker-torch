@@ -15,6 +15,7 @@ import {
 } from '@tinker/core';
 import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engine';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
+import { listParams } from '../plot/lossCurve1d.js';
 import { initialGraph } from './graphSlice.js';
 import { plotIndex } from './plotPrediction.js';
 import { probabilitySentence } from './probRange.js';
@@ -53,6 +54,25 @@ export type HistoryPoint = {
   /** Loss on the whole training set, evaluated on the validation cadence; only when mini-batching. */
   trainFull?: number | null;
 };
+/**
+ * One Step of the step log (tinker-6t7.10). `values` are the parameters AFTER the step (in
+ * `listParams` order), `prediction` the first prediction pin at those parameters (first training
+ * example when the model has inputs), `slopes` the derivative of the full-batch loss at the
+ * parameters BEFORE the step (null for a mini-batch or dropout run, where it is not the step's
+ * gradient) and `loss` the loss the step measured before the update.
+ */
+export type StepLogRow = {
+  step: number;
+  values: number[];
+  prediction: number | null;
+  slopes: number[] | null;
+  loss: number;
+};
+/** The log is kept only for models with at most this many scalar parameter entries. */
+export const STEP_LOG_MAX_PARAMS = 4;
+/** Rows kept. */
+export const STEP_LOG_MAX_ROWS = 50;
+
 export type Best = { step: number; val: number; params: HostParams };
 
 export type TrainSlice = {
@@ -78,6 +98,8 @@ export type TrainSlice = {
   valLoss: number | null;
   history: HistoryPoint[];
   best: Best | null;
+  /** Rows of the step log; only Step adds rows (and only when the preset shows `panel-step-log`). */
+  stepLog: StepLogRow[];
   /** Steps per frame while running (12 ms budget per frame). */
   speed: number;
   /** Immutable snapshot of the current parameters, published at most once per frame. */
@@ -177,6 +199,7 @@ type Runtime = {
   lastDataset: unknown;
   history: HistoryPoint[];
   best: Best | null;
+  stepLog: StepLogRow[];
   step: number;
   trainLoss: number | null;
   valLoss: number | null;
@@ -199,6 +222,7 @@ const rt: Runtime = {
   lastDataset: null,
   history: [],
   best: null,
+  stepLog: [],
   step: 0,
   trainLoss: null,
   valLoss: null,
@@ -249,6 +273,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       valLoss: rt.valLoss,
       history: rt.history.slice(),
       best: rt.best,
+      stepLog: rt.stepLog,
       host,
       ...extra,
     });
@@ -274,6 +299,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
   function clearRun(): void {
     rt.history = [];
     rt.best = null;
+    rt.stepLog = [];
     rt.step = 0;
     rt.trainLoss = null;
     rt.valLoss = null;
@@ -377,6 +403,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
           // them, and the losses are measured on these weights (full train set, validation set).
           rt.step = carry.step;
           rt.history = rt.history.filter((h) => h.step <= carry.step);
+          rt.stepLog = rt.stepLog.filter((r) => r.step <= carry.step);
           const { trainBatch, valBatch } = rt;
           const t =
             trainBatch && trainBatch.n > 0
@@ -411,12 +438,55 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     if (keepRunning) startLoop();
   }
 
-  function doStep(): 'ok' | 'diverged' | 'range' {
+  /** Does this step add a log row: a Step press (not Run), the panel shown, a small model. */
+  function logging(logRow: boolean): number | null {
+    const { show, host, analysis } = get();
+    if (!logRow || !show?.ui?.includes('panel-step-log') || !host) return null;
+    const n = listParams(host, analysis.order).length;
+    return n > 0 && n <= STEP_LOG_MAX_PARAMS ? n : null;
+  }
+
+  /**
+   * Derivative of the full-batch loss per parameter entry at the current parameters, or null when
+   * it is not what the step applies (mini-batch, or dropout in the graph).
+   */
+  function slopesBefore(n: number): number[] | null {
+    const { graph, dataset, host, analysis } = get();
+    if (isMiniBatch(graph.train.batch, dataset.nTrain)) return null;
+    if (graph.nodes.some((nd) => nd.type === 'dropout') || !host) return null;
+    const out: number[] = [];
+    for (const p of listParams(host, analysis.order).slice(0, n)) {
+      const d = get().lossSlope(p.axis);
+      if (d === null) return null;
+      out.push(d);
+    }
+    return out;
+  }
+
+  /** First prediction pin at `params`: for the first training example, or the lone value when there is no input. */
+  function predictionOf(params: Params): number | null {
+    const { engine, model, trainBatch } = rt;
+    if (!engine || !model || !trainBatch) return null;
+    const d = get().dataInfo.columns.length;
+    try {
+      const x = trainBatch.x.slice(0, d);
+      const v = engine.predict(model, params, x, 1)[
+        plotIndex(get().graph, get().plotPrediction)
+      ]?.[0];
+      return v !== undefined && Number.isFinite(v) ? v : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function doStep(logRow = false): 'ok' | 'diverged' | 'range' {
     const { engine, model, state, batches } = rt;
     const { dataset, dataInfo } = get();
     if (!engine || !model || !state || !batches) return 'diverged';
     const idx = batches.next().value;
     const batch = gatherBatch(dataset.xTrain, dataset.yTrain, dataInfo.columns.length, idx);
+    const log = logging(logRow);
+    const slopes = log ? slopesBefore(log) : null; // before the step consumes the state
     const r = engine.step(model, state, batch);
     rt.state = r.state;
     if (r.diverged) {
@@ -447,6 +517,15 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       }
     }
     rt.history.push({ step: rt.step, train: r.loss, val, trainFull });
+    if (log) {
+      const values = listParams(engine.toHost(r.state.params), get().analysis.order).map(
+        (p) => p.value,
+      );
+      rt.stepLog = [
+        ...rt.stepLog,
+        { step: rt.step, values, prediction: predictionOf(r.state.params), slopes, loss: r.loss },
+      ].slice(-STEP_LOG_MAX_ROWS);
+    }
     if (rt.history.length > MAX_HISTORY) {
       const last = rt.history.length - 1;
       rt.history = rt.history.filter((_, i) => i % 2 === 0 || i === last);
@@ -455,9 +534,9 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
   }
 
   /** Runs doStep and turns divergence or an engine error into store state. Returns whether to go on. */
-  function guardedStep(): boolean {
+  function guardedStep(logRow = false): boolean {
     try {
-      const r = doStep();
+      const r = doStep(logRow);
       if (r === 'ok') return true;
       // A probability out of range stops the run like a divergence, but the weights are fine.
       set(r === 'range' ? { running: false } : { diverged: true, running: false });
@@ -526,6 +605,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     valLoss: null,
     history: [],
     best: null,
+    stepLog: [],
     speed: DEFAULT_SPEED,
     host: null,
     currentHost: () => {
@@ -535,7 +615,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     stepOnce: () => {
       const s = get();
       if (!s.canTrain || s.running || s.diverged) return;
-      guardedStep();
+      guardedStep(true);
       publish();
     },
     run: () => {
@@ -666,6 +746,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       } catch {
         return false; // the engine leaves the params valid when it throws
       }
+      rt.stepLog = []; // the rows no longer follow from the weights
       publish({ probIssue: probSentence() }); // a hand edit can take a probability out of (0, 1) and back
       return true;
     },

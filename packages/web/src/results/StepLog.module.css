@@ -1,0 +1,38 @@
+.wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 6px;
+}
+
+.note {
+  margin: 0;
+  padding: 4px 8px 8px;
+  color: var(--text);
+}
+
+.caption {
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  padding: 2px 5px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-bg, var(--bg));
+  font-weight: 600;
+  color: var(--header-fg);
+}
