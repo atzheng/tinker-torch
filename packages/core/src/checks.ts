@@ -1,3 +1,5 @@
+import { analyse, type Analysis } from './analyse.js';
+import { sample } from './data/index.js';
 import type { Graph } from './graph.js';
 import type { HostParams } from './params.js';
 
@@ -27,9 +29,27 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** Validates a preset's `checks`; returns the checks or one plain sentence. */
-export function parseChecks(raw: unknown, graph: Graph, stepCount: number): Check[] | string {
+/** Parameter shapes of the graph, or null when they cannot be known at parse time (e.g. a CSV). */
+function shapesOf(graph: Graph): Analysis['paramShapes'] | null {
+  try {
+    return analyse(graph, sample(graph.data).info).paramShapes;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validates a preset's `checks`; returns the checks or one plain sentence. `idMap` (a migrated
+ * version 1 file) maps old node ids to the new ones, as for `locked`.
+ */
+export function parseChecks(
+  raw: unknown,
+  graph: Graph,
+  stepCount: number,
+  idMap?: Record<string, string[]> | null,
+): Check[] | string {
   if (!Array.isArray(raw)) return 'The preset checks must be a list.';
+  let shapes: Analysis['paramShapes'] | null | undefined;
   const out: Check[] = [];
   for (let i = 0; i < raw.length; i++) {
     const c: unknown = raw[i];
@@ -60,8 +80,9 @@ export function parseChecks(raw: unknown, graph: Graph, stepCount: number): Chec
       out.push(chk);
       continue;
     }
-    const node = c['node'];
-    if (typeof node !== 'string') return `${at} needs the id of a piece in "node".`;
+    const rawNode = c['node'];
+    if (typeof rawNode !== 'string') return `${at} needs the id of a piece in "node".`;
+    const node: string = idMap ? (idMap[rawNode]?.[0] ?? rawNode) : rawNode;
     if (!graph.nodes.some((n) => n.id === node)) return `${at} names a piece that does not exist.`;
     const tol = c['tol'];
     if (!finite(tol) || tol < 0) return `${at} needs a "tol" that is a number, 0 or more.`;
@@ -73,6 +94,23 @@ export function parseChecks(raw: unknown, graph: Graph, stepCount: number): Chec
     if (index !== undefined && !(Number.isInteger(index) && (index as number) >= 0)) {
       return `${at} needs an "index" that is a whole number, 0 or more.`;
     }
+    shapes ??= shapesOf(graph);
+    const own = shapes && Object.hasOwn(shapes, node) ? shapes[node] : undefined;
+    if (shapes) {
+      if (!own) return `${at} names a piece that has no parameters.`;
+      const names = Object.keys(own);
+      if (tensor !== undefined && !names.includes(tensor)) {
+        return `${at} names a tensor that this piece does not have.`;
+      }
+      if (tensor === undefined && names.length > 1) {
+        return `${at} must say which tensor, "W" or "b", because the piece has both.`;
+      }
+      const shape = own[tensor ?? (names[0] as string)];
+      const size = shape ? shape.reduce((a, d) => a * d, 1) : 0;
+      if (index !== undefined && size > 0 && (index as number) >= size) {
+        return `${at} has an index beyond the size of that tensor.`;
+      }
+    }
     const chk: Check = { kind, node, value, tol };
     if (tensor !== undefined) chk.tensor = tensor;
     if (index !== undefined) chk.index = index as number;
@@ -82,7 +120,7 @@ export function parseChecks(raw: unknown, graph: Graph, stepCount: number): Chec
   return out;
 }
 
-/** True exactly while the condition holds now (no latch). Missing or non-finite values: false. */
+/** True exactly while the condition holds now (no latch). Missing or non-finite values: false (so `lossBelow` on `val` never holds when the validation fraction is 0). */
 export function evaluateCheck(check: Check, input: CheckInput): boolean {
   if (check.kind === 'lossBelow') {
     const v = input.liveLoss?.[check.split ?? 'train'];

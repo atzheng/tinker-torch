@@ -34,12 +34,13 @@ export function Tick({ testId }: { testId: string }) {
 
 /**
  * The tick for checks without a step when the preset has no instructions panel to carry it: a thin
- * row at the top of the canvas region. With instructions it shows in the panel header instead.
+ * row at the top of the canvas region. With a shown instructions panel it shows in the panel header instead.
  */
 export function SuccessTick() {
   const hasInstructions = useStore((s) => (s.preset?.instructions?.length ?? 0) > 0);
+  const panelShown = useUiShown('instructions');
   const { general } = useCheckResults();
-  if (hasInstructions || !general) return null;
+  if ((hasInstructions && panelShown) || !general) return null;
   return (
     <div className={styles.row}>
       <Tick testId="success-check" />

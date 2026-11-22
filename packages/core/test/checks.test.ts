@@ -118,3 +118,56 @@ describe('parseFile checks', () => {
     expect(parseFile(doc({ checks: [{ kind: 'lossBelow', value: 1, step: 0 }] })).ok).toBe(false);
   });
 });
+
+describe('parseFile checks against the parameters', () => {
+  const v1 = () => ({
+    kind: 'tinker',
+    version: 1,
+    title: 'T',
+    graph: {
+      version: 1,
+      nodes: [
+        { id: 'x', type: 'input', columns: ['x1'] },
+        { id: 'lin1', type: 'linear', out: 3, bias: true },
+        { id: 'act1', type: 'activation', fn: 'tanh' },
+        { id: 'lin2', type: 'linear', out: 1, bias: true },
+        { id: 'yhat', type: 'output', link: 'identity' },
+        { id: 'y', type: 'target' },
+        { id: 'loss', type: 'loss', fn: 'squared_error' },
+      ],
+      edges: [
+        ['x', 'lin1'],
+        ['lin1', 'act1'],
+        ['act1', 'lin2'],
+        ['lin2', 'yhat'],
+        ['yhat', 'loss.pred'],
+        ['y', 'loss.target'],
+      ],
+      data: { set: 'sine', n: 40, noise: 0.2, val: 0.3, seed: 7 },
+      train: { optimizer: 'adam', lr: 0.01, batch: 'full', seed: 11 },
+    },
+  });
+  const withCheck = (c: Record<string, unknown>) =>
+    parseFile({ ...v1(), checks: [{ kind: 'paramNear', value: 0, tol: 1, ...c }] });
+  test('a node id of a migrated file is mapped like locked ids', () => {
+    const r = withCheck({ node: 'lin2', tensor: 'b' });
+    expect(r.ok).toBe(true);
+    if (r.ok && 'checks' in r.file) {
+      const id = (r.file.checks?.[0] as { node: string }).node;
+      expect(r.file.graph.nodes.some((n) => n.id === id)).toBe(true);
+    }
+  });
+  test.each([
+    ['a node without parameters', { node: 'act1', tensor: 'b' }, /no parameters/],
+    ['a tensor the node lacks', { node: 'lin2', tensor: 'Q' }, /tensor/],
+    ['no tensor on a node with W and b', { node: 'lin2' }, /which tensor/],
+    ['an index beyond the tensor', { node: 'lin1', tensor: 'b', index: 3 }, /index/],
+  ])('%s is refused', (_n, c, re) => {
+    const r = withCheck(c);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(re);
+  });
+  test('an index inside the tensor is kept', () => {
+    expect(withCheck({ node: 'lin1', tensor: 'b', index: 2 }).ok).toBe(true);
+  });
+});

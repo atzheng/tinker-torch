@@ -265,6 +265,20 @@ test('success checks: ticks follow the live loss and parameters, are saved back 
   });
   live(0.9, 0.25);
   expect(q('success-check')).not.toBeNull();
+  // Instructions hidden, success-check shown: the shared tick stands alone.
+  act(() => {
+    loadText(
+      presetText({
+        title: 'W',
+        instructions: ['a'],
+        checks: [checks[1]],
+        show: { ui: ['success-check'] },
+      }),
+    );
+  });
+  live(0.9, 0.25);
+  expect(q('instructions')).toBeNull();
+  expect(q('success-check')).not.toBeNull();
   act(() => {
     loadText(presetText({ title: 'V', checks: [checks[1]], show: { ui: ['btn-step'] } }));
   });

@@ -198,7 +198,12 @@ export function parseFile(json: unknown): ParseFileResult {
     }
     let checks: Check[] | undefined;
     if (json['checks'] !== undefined) {
-      const c = parseChecks(json['checks'], g.graph, Array.isArray(instr) ? instr.length : 0);
+      const c = parseChecks(
+        json['checks'],
+        g.graph,
+        Array.isArray(instr) ? instr.length : 0,
+        g.idMap,
+      );
       if (typeof c === 'string') return fail(c);
       checks = c;
     }
