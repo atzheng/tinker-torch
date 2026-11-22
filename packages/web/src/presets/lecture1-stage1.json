@@ -28,7 +28,7 @@
       "instructions",
       "preset-prompt",
       "success-check",
-      "panel-loss",
+      "panel-score",
       "panel-loss-1d",
       "panel-examples",
       "panel-step-log",

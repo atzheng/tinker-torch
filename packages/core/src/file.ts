@@ -111,6 +111,7 @@ export const UI_IDS = {
   results: [
     'panel-fit',
     'panel-loss',
+    'panel-score',
     'panel-surface',
     'panel-histogram',
     'panel-loss-1d',

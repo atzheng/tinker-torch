@@ -2,7 +2,7 @@ import { predictionChain } from '../plot/histogramPure.js';
 import { plotIndex } from './plotPrediction.js';
 import { twoParams } from '../plot/lossSurface.js';
 import { useStore } from './store.js';
-import { PANEL_IDS, panelOnTab } from '../results/panelLayout.js';
+import { PANEL_IDS, panelListed, panelOnTab } from '../results/panelLayout.js';
 import {
   effectiveTab,
   isShown,
@@ -79,7 +79,7 @@ export function useRegionShown(
       return PANEL_IDS.map((p) => [p, `panel-${p}`] as const).some(
         ([p, id]) =>
           panelOnTab(p, tab, tabsSplit(s.show?.ui)) &&
-          isShown(s.show?.ui, id) &&
+          panelListed(s.show?.ui, p) &&
           (id !== 'panel-surface' || surface) &&
           (id !== 'panel-histogram' || histogram) &&
           ((id !== 'panel-loss-1d' && id !== 'panel-step-log') ||
