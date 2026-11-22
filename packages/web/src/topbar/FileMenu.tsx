@@ -84,6 +84,8 @@ export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: str
     return { ok: true, message: 'The saved weights were not loaded because the graph has issues.' };
   }
   const { params, dropped } = paramsFromJson(file.params, after.analysis);
+  // Reset returns to these values (nodes without an entry are drawn from the seed).
+  after.setStartParams(Object.keys(params).length > 0 ? params : null);
   if (!after.loadHost(params)) {
     return {
       ok: true,
