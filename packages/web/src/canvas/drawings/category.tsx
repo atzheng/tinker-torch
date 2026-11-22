@@ -91,7 +91,8 @@ export const lookupPiece: WebPiece<'lookup'> = {
         name="Lookup"
         glyph="E"
         secondary={[
-          cats ? `${cats.names.length} categories, width ${node.width}` : `width ${node.width}`,
+          // like a Linear's "d to m": one category index to `width` numbers
+          cats ? `${cats.names.length} to ${node.width}` : `? to ${node.width}`,
           cats ? `${paramCount} params` : 'no category input',
         ]}
         inPorts={1}

@@ -28,6 +28,7 @@ export type Preset = SaveFile & {
 /** The palette's group ids, in palette order (the web palette's `GROUPS` uses exactly these). */
 export const PALETTE_GROUP_IDS = [
   'inputs',
+  'categories',
   'features',
   'linear',
   'activations',

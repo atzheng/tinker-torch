@@ -29,13 +29,14 @@ sets share one generator (same seed and n give the same feature rows): `delivery
 | distance (km)        | 0.5 to 10                           | uniform                                                                                                           |
 | rain (mm/h)          | 0 to 10                             | uniform                                                                                                           |
 | queue (orders ahead) | 0 to 12                             | uniform whole number                                                                                              |
-| zone                 | centre, north, east, south (0 to 3) | uniform; drawn and used by the truth, not yet an input column (tinker-6t7.7 adds it)                              |
+| zone                 | centre, north, east, south (0 to 3) | uniform; a categorical input column (stored as the index 0 to 3; use One-hot or Lookup)                           |
 | late                 | 0 or 1                              | Bernoulli(sigmoid(-5.0 + 0.4 distance + 0.25 rain + 0.12 queue + zone effect)), zone effects -0.6, -0.2, 0.2, 0.6 |
 | delivery time (min)  |                                     | 12 + 3 distance + 0.8 rain + 1 queue + zone effect + noise, zone effects -2, -1, 1, 2                             |
 
 The overall late rate is 0.341 (`DELIVERY_LATE_RATE`, the population rate by numerical integration over the input ranges and zones). Noise applies to delivery time only (standard deviation
 10 x noise minutes); lateness is already random, so the Noise field is hidden for `delivery_late`.
-The fit plot's truth is the same formula averaged over the four zones. Every random stream
+The fit plot's truth is the same formula at the row's own zone; the plot's slice holds zone at its
+most common category in the training rows (it cannot be an axis). Every random stream
 (distance, rain, queue, zone, late, time noise) is separate, so adding a column does not change the
 others.
 
@@ -43,5 +44,7 @@ others.
 
 Data, Open CSV reads a CSV from a URL (only when you press Fetch; the server must allow cross-site
 reads) or from a local file. Limits: 5000 rows, 50 columns, 20 classes, 2 MB. The first row is the
-header. Text input columns are left out and rows with a missing value are dropped; both are
-reported in the dialog. The opened file lives in the session only: it is not part of a saved model.
+header. A text input column with 2 to 20 distinct values becomes a category column (its values,
+sorted, collected over the whole file before the train and validation split, so validation never
+sees a new category; use it through One-hot or Lookup); other text columns are left out. Rows with
+a missing value are dropped; what was left out or dropped is reported in the dialog. The opened file lives in the session only: it is not part of a saved model.
