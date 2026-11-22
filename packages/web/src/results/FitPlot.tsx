@@ -12,6 +12,7 @@ import {
   heldValues,
   truth,
   unstandardizeRows,
+  usedColumns,
 } from '@tinker/core';
 import { fitYRange, linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
@@ -35,15 +36,18 @@ import styles from './Results.module.css';
 export const GRID_N = 200;
 
 /**
- * Fit plot. Two or more continuous columns: FitPlot2D (its axes are continuous columns only).
+ * Fit plot. Two or more continuous columns the model reads: FitPlot2D (its axes are continuous columns only).
  * Otherwise the model curve over the one continuous column, or, when every column is categorical,
  * the model's value at each category as a mark over the data (tinker-hxq; `fitView`).
  */
 export function FitPlot() {
   const info = useStore((s) => s.dataset.info);
-  const view = useMemo(() => fitView(info), [info]);
+  const graph = useStore((s) => s.graph);
+  // only the columns the model's Input / Column pieces read count (tinker-oef)
+  const used = useMemo(() => usedColumns(graph, info), [graph, info]);
+  const view = useMemo(() => fitView(info, used), [info, used]);
   return view.type === 'surface' ? (
-    <FitPlot2D />
+    <FitPlot2D used={used} />
   ) : (
     <FitPlot1D col={view.col} categorical={view.type === 'categories'} />
   );

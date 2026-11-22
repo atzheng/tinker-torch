@@ -1,8 +1,8 @@
-import { grid1d } from '@tinker/core';
+import { grid1dSlice, heldValues, usedColumns } from '@tinker/core';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { useStore } from '../state/store.js';
 import { GRID_N } from './FitPlot.js';
-import { PIN_LIMIT, makePin, shouldSnapshotFit, snapshotFit, type Pin } from './pinsModel.js';
+import { PIN_LIMIT, makePin, snapshotFit, snapshotFitCol, type Pin } from './pinsModel.js';
 import { TexText, plainOf } from '../tex/Tex.js';
 import styles from './Pins.module.css';
 
@@ -56,9 +56,14 @@ export function Pins() {
     const s = useStore.getState();
     if (!s.host) return;
     const d = s.dataset;
-    const fit = shouldSnapshotFit(d.info)
-      ? snapshotFit(grid1d(d.domain, GRID_N, d.standardization), s.predictGrid)
-      : null;
+    const col = snapshotFitCol(d.info, usedColumns(s.graph, d.info));
+    const fit =
+      col !== null
+        ? snapshotFit(
+            grid1dSlice(d.domain, heldValues(d), col, GRID_N, d.standardization),
+            s.predictGrid,
+          )
+        : null;
     const p = makePin(s.graph, s.host, s.history, s.pins, fit);
     if (p) addPin(p);
   };

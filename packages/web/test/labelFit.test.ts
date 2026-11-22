@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fitCategoryLabels, truncateLabel } from '../src/plot/labelFit.js';
-import { shouldSnapshotFit } from '../src/results/pinsModel.js';
+import { snapshotFitCol } from '../src/results/pinsModel.js';
 
 const measure = (s: string) => s.length * 6;
 
@@ -38,13 +38,15 @@ describe('fitCategoryLabels', () => {
   it('handles an empty list', () => expect(fitCategoryLabels([], 20, measure)).toEqual([]));
 });
 
-describe('shouldSnapshotFit', () => {
-  it('is true for one numeric column', () =>
-    expect(shouldSnapshotFit({ columns: ['x'], columnKinds: ['numeric'] })).toBe(true));
-  it('is false for one categorical column', () =>
+describe('snapshotFitCol', () => {
+  it('is the column for one numeric column', () =>
+    expect(snapshotFitCol({ columns: ['x'], columnKinds: ['numeric'] })).toBe(0));
+  it('is null for one categorical column', () =>
     expect(
-      shouldSnapshotFit({ columns: ['c'], columnKinds: ['categorical'], categories: { c: ['a'] } }),
-    ).toBe(false));
-  it('is false for two columns', () =>
-    expect(shouldSnapshotFit({ columns: ['a', 'b'] })).toBe(false));
+      snapshotFitCol({ columns: ['c'], columnKinds: ['categorical'], categories: { c: ['a'] } }),
+    ).toBeNull());
+  it('is null for two numeric columns', () =>
+    expect(snapshotFitCol({ columns: ['a', 'b'] })).toBeNull());
+  it('is the one numeric column the model reads', () =>
+    expect(snapshotFitCol({ columns: ['a', 'b'] }, [1])).toBe(1));
 });
