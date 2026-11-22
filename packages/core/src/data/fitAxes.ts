@@ -24,15 +24,35 @@ export function categoryNames(info: Info, col: number): string[] {
 }
 
 /**
- * Which fit plot to draw. Two or more continuous columns: the 2-D surface (axis pickers offer only
- * those). Exactly one continuous column (or d = 1): the curve over it. No continuous column: the
- * per-category marks over the first column (the others held at their usual value).
+ * Indices of the dataset columns the graph reads: every Input piece's columns and every Column
+ * piece's name, in dataset order. Empty when the graph reads none (a no-input model).
  */
-export function fitView(info: Info): FitView {
-  const cont = continuousCols(info);
-  if (info.columns.length >= 2 && cont.length >= 2) return { type: 'surface' };
+export function usedColumns(
+  graph: { nodes: readonly { type: string; columns?: unknown; name?: unknown }[] },
+  info: Info,
+): number[] {
+  const names = new Set<string>();
+  for (const n of graph.nodes) {
+    if (n.type === 'input' && Array.isArray(n.columns)) {
+      for (const c of n.columns) if (typeof c === 'string') names.add(c);
+    } else if (n.type === 'column' && typeof n.name === 'string') names.add(n.name);
+  }
+  return info.columns.map((c, i) => i).filter((i) => names.has(info.columns[i] ?? ''));
+}
+
+/**
+ * Which fit plot to draw. Only the columns the model reads count (`used`, dataset column indices;
+ * undefined or empty means every column, the no-input case). Two or more continuous ones: the 2-D
+ * surface (axis pickers offer only those). Exactly one: the curve over it. None: the per-category
+ * marks over the first column read (the others held at their usual value).
+ */
+export function fitView(info: Info, used?: readonly number[]): FitView {
+  const all = info.columns.map((_, c) => c);
+  const cols = used && used.length > 0 ? all.filter((c) => used.includes(c)) : all;
+  const cont = continuousCols(info).filter((c) => cols.includes(c));
+  if (cont.length >= 2) return { type: 'surface' };
   if (cont.length >= 1) return { type: 'curve', col: cont[0] ?? 0 };
-  return { type: 'categories', col: 0 };
+  return { type: 'categories', col: cols[0] ?? 0 };
 }
 
 /** Number of categories on a categorical axis: the named ones, or the data's largest index + 1. */

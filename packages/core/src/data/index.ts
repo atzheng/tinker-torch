@@ -21,6 +21,7 @@ export {
   categorySeries,
   continuousCols,
   fitView,
+  usedColumns,
   grid1dSlice,
   gridCategories,
 } from './fitAxes.js';
