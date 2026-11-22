@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { PALETTE, analyse, connect, layoutLayers, setLoss } from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { fitTransform } from '../src/canvas/pure.js';
 import { layerBaseView } from '../src/canvas/viewport.js';
+import { dnd } from '../src/canvas/dnd.js';
 import { Palette } from '../src/palette/Palette.js';
 import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
@@ -16,6 +17,27 @@ import { UndoRedo } from '../src/topbar/UndoRedo.js';
 const s = () => useStore.getState();
 let host: HTMLDivElement;
 let root: Root;
+
+// The tests have no timers and no waitFor: every gesture is dispatched synchronously inside act().
+// The only time dependence is the 5 s default timeout against a cold first run (module JIT, first
+// layout and render), which starved CPUs stretch from ~0.4 s to seconds. The warm-up runs the
+// work once in a hook (10 s budget) so no test pays for it.
+beforeAll(() => {
+  const warm = document.createElement('div');
+  document.body.appendChild(warm);
+  const r = createRoot(warm);
+  s().loadGraph(initialGraph());
+  act(() =>
+    r.render(
+      <>
+        <Palette />
+        <Canvas />
+      </>,
+    ),
+  );
+  act(() => r.unmount());
+  warm.remove();
+});
 
 beforeEach(() => {
   // jsdom lays nothing out: the canvas region is 800 x 500 at the origin (the size `screenOf` assumes).
@@ -47,6 +69,10 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  // `dnd` is module state: a test that fails after arming an entry must not leak it into the next
+  // one (the mouse and touch cases of an entry are neighbours, and arming twice disarms).
+  act(() => dnd.arm(null));
+  dnd.cancel();
   act(() => root.unmount());
   host.remove();
 });
