@@ -1,6 +1,6 @@
 import { predictionChain } from '../plot/histogramPure.js';
 import { plotIndex } from './plotPrediction.js';
-import { twoParams } from '../plot/lossSurface.js';
+import { surfaceParams } from '../plot/lossSurface.js';
 import { useStore } from './store.js';
 import { PANEL_IDS, panelOnTab } from '../results/panelLayout.js';
 import {
@@ -67,8 +67,8 @@ export function useRegionShown(
 ): boolean {
   return useStore((s) => {
     if (region === 'results') {
-      // Only the panels that actually render count: the loss surface needs a 2-parameter model.
-      const surface = s.host ? twoParams(s.host, s.analysis.order) !== null : false;
+      // Only the panels that actually render count: the loss surface needs at least two parameters.
+      const surface = s.host ? surfaceParams(s.host, s.analysis.order) !== null : false;
       const params = s.host !== null && s.analysis.paramNodes.length > 0;
       const pred = s.graph.predictions[plotIndex(s.graph, s.plotPrediction)];
       const histogram =

@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { AxisLabels } from '../plot/AxisLabels.js';
@@ -13,26 +13,29 @@ import {
   linspace,
   lossScale,
   nextRange,
-  twoParams,
+  pairLabels,
+  resolvePair,
+  surfaceParams,
   type Pt,
   type SurfaceAxis,
   type SurfaceRange,
 } from '../plot/lossSurface.js';
 import { useUiLabel } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
+import type { CurveParam } from '../plot/lossCurve1d.js';
 import styles from './Results.module.css';
 
 /**
  * Loss surface: contours of the training loss over the model's two parameters, with the path of
- * the parameters so far. Rendered only when the model has exactly two parameters (SPEC "Result
+ * the parameters so far. Rendered when the model has two or more parameters (SPEC "Result
  * views"); otherwise nothing, and the results region keeps its two panels.
  */
 export function LossSurface() {
   const host = useStore((s) => s.host);
   const order = useStore((s) => s.analysis.order);
-  const info = host ? twoParams(host, order) : null;
-  if (!host || !info) return null;
-  return <Surface axes={info.axes} point={info.values} hostKey={host} />;
+  const params = useMemo(() => (host ? surfaceParams(host, order) : null), [host, order]);
+  if (!host || !params) return null;
+  return <Surface params={params} hostKey={host} />;
 }
 
 /** Any CSS colour to [r, g, b]: draw one pixel and read it back. */
@@ -48,17 +51,17 @@ function rgbOf(color: string): [number, number, number] {
   return [d[0] ?? 0, d[1] ?? 0, d[2] ?? 0];
 }
 
-type PathState = { key: object | null; path: Pt[]; range: SurfaceRange | null };
+type PathState = { key: object | null; pair: string; path: Pt[]; range: SurfaceRange | null };
 
-function Surface({
-  axes,
-  point,
-  hostKey,
-}: {
-  axes: [SurfaceAxis, SurfaceAxis];
-  point: [number, number];
-  hostKey: object;
-}) {
+function Surface({ params, hostKey }: { params: CurveParam[]; hostKey: object }) {
+  // Two pickers choose the pair when the model has more than two parameters (tinker-qzd); the
+  // others are held at their current values by the engine. With exactly two there is no picker.
+  const [pick, setPick] = useState<[string, string] | null>(null);
+  const pair = resolvePair(params, pick) as [CurveParam, CurveParam]; // params has two or more
+  const axes: [SurfaceAxis, SurfaceAxis] = [pair[0].axis, pair[1].axis];
+  const point: [number, number] = [pair[0].value, pair[1].value];
+  const pairKey = `${pair[0].key}|${pair[1].key}`;
+  const showPickers = params.length > 2;
   const dataset = useStore((s) => s.dataset);
   const graph = useStore((s) => s.graph);
   const step = useStore((s) => s.step);
@@ -68,11 +71,13 @@ function Surface({
 
   // The path and the range live in a ref; they change once per published host (not per redraw).
   // A new run (step 0: Reset, structural edit, hand-set weights) starts a new path and range.
-  const st = useRef<PathState>({ key: null, path: [], range: null });
-  if (st.current.key !== hostKey) {
+  const st = useRef<PathState>({ key: null, pair: '', path: [], range: null });
+  if (st.current.key !== hostKey || st.current.pair !== pairKey) {
     const p = st.current;
     p.key = hostKey;
-    if (step === 0) {
+    const newPair = p.pair !== pairKey;
+    p.pair = pairKey;
+    if (step === 0 || newPair) {
       p.path = [point];
       p.range = null;
     } else {
@@ -96,9 +101,9 @@ function Surface({
     );
     return { grid, scale, contours };
     // `axes` only changes with the graph; the array is rebuilt on every host, so it is not a dep
-  }, [range, dataset, graph, canTrain, lossSurface]);
+  }, [range, pairKey, dataset, graph, canTrain, lossSurface]);
 
-  const [labelA, labelB] = axisLabels(axes);
+  const [labelA, labelB] = showPickers ? pairLabels(pair) : axisLabels(axes);
 
   const draw: DrawFn = (ctx, w, h, c) => {
     if (!range) return;
@@ -200,6 +205,32 @@ function Surface({
       <div className={styles.head} data-panel-head="">
         <span className={styles.title}>{panelTitle}</span>
         {diverged ? <span data-testid="surface-diverged">Diverged</span> : null}
+        {showPickers && (
+          <>
+            {([0, 1] as const).map((k) => (
+              <select
+                key={k}
+                className={styles.picker}
+                value={pair[k].key}
+                onChange={(e) => {
+                  const next: [string, string] = [pair[0].key, pair[1].key];
+                  next[k] = e.target.value;
+                  setPick(next);
+                }}
+                data-testid={k === 0 ? 'surface-axis-x' : 'surface-axis-y'}
+                aria-label={
+                  k === 0 ? 'Parameter on the horizontal axis' : 'Parameter on the vertical axis'
+                }
+              >
+                {params.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label.replace(/\$/g, '').replace(/[{}]/g, '')}
+                  </option>
+                ))}
+              </select>
+            ))}
+          </>
+        )}
       </div>
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Loss surface of the two parameters" />

@@ -1,5 +1,6 @@
 /** Pure helpers for the loss-surface view: axes, range, contours, colour scale, path. No DOM. */
 import type { HostParams, NodeId } from '@tinker/core';
+import { listParams, type CurveParam } from './lossCurve1d.js';
 
 /** Grid points per axis. Fixed (CONTRACTS section 7: about 0.3 ms for two_param, 89 ms for an MLP at n = 500). */
 export const SURFACE_N = 50;
@@ -216,4 +217,48 @@ export function contourSegments(
     }
   }
   return out;
+}
+
+/**
+ * Every scalar parameter a loss surface can use (the 1-D curve's list, `listParams`), or null
+ * when the model has fewer than two (tinker-qzd). With exactly two this is the whole model, as
+ * `twoParams` finds it; with more the student picks the pair and the rest are held.
+ */
+export function surfaceParams(host: HostParams, order: readonly NodeId[]): CurveParam[] | null {
+  const all = listParams(host, order);
+  return all.length >= 2 ? all : null;
+}
+
+/**
+ * Default pair of keys. Prefers single-entry parameters (a Weight or a Bias: the ones a student
+ * can name), in model order, so lecture 1 stage 4 opens on the distance weight and the bias and
+ * not on the zone rows; falls back to the first two parameters.
+ */
+export function defaultPair(params: readonly CurveParam[]): [string, string] {
+  const single = params.filter((p) => !/_\{\d+\}/.test(p.label));
+  const pool = single.length >= 2 ? single : params;
+  return [pool[0]?.key ?? '', pool[1]?.key ?? ''];
+}
+
+/**
+ * The chosen pair as parameters: `pick` keys that exist and differ are used, otherwise the
+ * default; a pick equal to the other axis moves that other axis to the first parameter left.
+ */
+export function resolvePair(
+  params: readonly CurveParam[],
+  pick: readonly [string, string] | null,
+): [CurveParam, CurveParam] | null {
+  if (params.length < 2) return null;
+  const find = (k: string | undefined) => params.find((p) => p.key === k);
+  const [d0, d1] = defaultPair(params);
+  const a = find(pick?.[0]) ?? find(d0);
+  let b = find(pick?.[1]) ?? find(d1);
+  if (!a || !b) return null;
+  if (a.key === b.key) b = params.find((p) => p.key !== a?.key) ?? b;
+  return [a, b];
+}
+
+/** Axis title for a pair of any parameters in a larger model: the labels from `listParams`. */
+export function pairLabels(pair: readonly [CurveParam, CurveParam]): [string, string] {
+  return [pair[0].label, pair[1].label];
 }
