@@ -35,7 +35,7 @@ function axisShape(m: Internals, ax: ParamAxis): number[] {
   return shape;
 }
 
-function checkAxis(m: Internals, ax: ParamAxis): number[] {
+export function checkAxis(m: Internals, ax: ParamAxis): number[] {
   const shape = axisShape(m, ax);
   const size = shape.reduce((p, v) => p * v, 1);
   if (!Number.isInteger(ax.index) || ax.index < 0 || ax.index >= size) {
@@ -45,7 +45,7 @@ function checkAxis(m: Internals, ax: ParamAxis): number[] {
 }
 
 /** Writes `val` (a scalar tracer) into entry `ax` of the tree; consumes `oh` and `val`. Borrows nothing else. */
-function overwrite(t: ParamTree, ax: ParamAxis, oh: JArray, val: JArray): ParamTree {
+export function overwrite(t: ParamTree, ax: ParamAxis, oh: JArray, val: JArray): ParamTree {
   const layer = t[ax.node];
   if (!layer) throw new Error(`"${ax.node}" has no parameters to vary.`);
   const old = ax.tensor === 'W' ? layer.W : layer.b;
@@ -81,7 +81,7 @@ function gridFn(m: Internals, axes: [ParamAxis, ParamAxis]): GridFn {
   return fn;
 }
 
-function oneHot(shape: number[], index: number): JArray {
+export function oneHot(shape: number[], index: number): JArray {
   const size = shape.reduce((p, v) => p * v, 1);
   const v = new Float32Array(size);
   v[index] = 1;

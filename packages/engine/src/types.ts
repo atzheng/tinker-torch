@@ -52,6 +52,16 @@ export interface Engine {
     a: Float32Array,
     b: Float32Array,
   ): Float32Array;
+  /** 1-D sweep: loss with parameter `axis` = values[i], every other parameter as it is; dropout off. Borrows model and params. */
+  lossCurve(
+    model: Model,
+    params: Params,
+    batch: Batch,
+    axis: ParamAxis,
+    values: Float32Array,
+  ): Float32Array;
+  /** d(loss + penalty)/d(parameter `axis`) at the current params over `batch`, dropout off: what Step's gradient holds for it with full batch and no dropout. Borrows model and params. */
+  lossSlope(model: Model, params: Params, batch: Batch, axis: ParamAxis): number;
   trainMany(model: Model, seeds: number[], data: Batch[], steps: number): ManyResult[];
   disposeModel(model: Model): void;
   clone(params: Params): Params;
