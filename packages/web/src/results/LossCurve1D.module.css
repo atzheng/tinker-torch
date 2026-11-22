@@ -1,0 +1,25 @@
+.opts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  flex: none;
+  padding: 0 8px 4px;
+  min-width: 0;
+}
+
+.slope {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.opts select {
+  height: 26px;
+  max-width: 100%;
+}
+
+@media (pointer: coarse) {
+  .opts select {
+    height: 32px;
+  }
+}

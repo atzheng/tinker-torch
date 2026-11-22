@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  DEFAULT_ORDER,
   DEFAULT_WEIGHTS,
   MIN_SHARE,
   dropIndex,
@@ -10,14 +9,15 @@ import {
 } from '../src/results/panelLayout.js';
 
 const all = new Set<PanelId>(['fit', 'loss', 'surface']);
+const THREE: PanelId[] = ['fit', 'loss', 'surface'];
 const two = new Set<PanelId>(['fit', 'loss']);
 
 describe('movePanel', () => {
   test('moves a panel to an index among the others', () => {
-    expect(movePanel(DEFAULT_ORDER, all, 'fit', 1)).toEqual(['loss', 'fit', 'surface']);
-    expect(movePanel(DEFAULT_ORDER, all, 'fit', 2)).toEqual(['loss', 'surface', 'fit']);
-    expect(movePanel(DEFAULT_ORDER, all, 'surface', 0)).toEqual(['surface', 'fit', 'loss']);
-    expect(movePanel(DEFAULT_ORDER, all, 'loss', 1)).toEqual(['fit', 'loss', 'surface']);
+    expect(movePanel(THREE, all, 'fit', 1)).toEqual(['loss', 'fit', 'surface']);
+    expect(movePanel(THREE, all, 'fit', 2)).toEqual(['loss', 'surface', 'fit']);
+    expect(movePanel(THREE, all, 'surface', 0)).toEqual(['surface', 'fit', 'loss']);
+    expect(movePanel(THREE, all, 'loss', 1)).toEqual(['fit', 'loss', 'surface']);
   });
   test('a hidden panel keeps its place beside its neighbours', () => {
     expect(movePanel(['fit', 'surface', 'loss'], two, 'fit', 1)).toEqual([
@@ -32,8 +32,8 @@ describe('movePanel', () => {
     ]);
   });
   test('clamps the index', () => {
-    expect(movePanel(DEFAULT_ORDER, all, 'fit', 99)).toEqual(['loss', 'surface', 'fit']);
-    expect(movePanel(DEFAULT_ORDER, all, 'surface', -3)).toEqual(['surface', 'fit', 'loss']);
+    expect(movePanel(THREE, all, 'fit', 99)).toEqual(['loss', 'surface', 'fit']);
+    expect(movePanel(THREE, all, 'surface', -3)).toEqual(['surface', 'fit', 'loss']);
   });
 });
 

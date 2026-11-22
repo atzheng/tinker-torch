@@ -13,8 +13,12 @@ export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'can
     if (region === 'results') {
       // Only the panels that actually render count: the loss surface needs a 2-parameter model.
       const surface = s.host ? twoParams(s.host, s.analysis.order) !== null : false;
-      return (['panel-fit', 'panel-loss', 'panel-surface'] as const).some(
-        (id) => isShown(s.show?.ui, id) && (id !== 'panel-surface' || surface),
+      const params = s.host !== null && s.analysis.paramNodes.length > 0;
+      return (['panel-fit', 'panel-loss', 'panel-surface', 'panel-loss-1d'] as const).some(
+        (id) =>
+          isShown(s.show?.ui, id) &&
+          (id !== 'panel-surface' || surface) &&
+          (id !== 'panel-loss-1d' || params),
       );
     }
     return UI_IDS[region].some((id) => isShown(s.show?.ui, id));

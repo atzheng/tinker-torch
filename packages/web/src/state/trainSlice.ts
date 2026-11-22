@@ -121,6 +121,18 @@ export type TrainSlice = {
     b: Float32Array,
   ) => Float32Array | null;
   /**
+   * 1-D loss curve (tinker-6t7.2): training loss (as `lossSurface`) with the one parameter `axis`
+   * set to each of `values`, every other parameter as it is; one number per value, or null when
+   * there is no compiled model or the call fails.
+   */
+  lossCurve: (axis: ParamAxis, values: Float32Array) => Float32Array | null;
+  /**
+   * Derivative of the training loss (whole training set, dropout off) with respect to the one
+   * parameter `axis` at its current value: the gradient Step applies for it with full batch and no
+   * dropout. Null when there is no compiled model or the call fails.
+   */
+  lossSlope: (axis: ParamAxis) => number | null;
+  /**
    * Hand-set weights (tinker-ran.2): overwrite the W and/or b of one Linear in the live model
    * through `engine.write` (the optimizer state is kept) and republish `host`. Does not touch the
    * graph, the history or the step counter. False when there is no live model or the values do
@@ -619,6 +631,28 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       try {
         const batch = { x: dataset.xTrain, y: dataset.yTrain, n: dataset.nTrain };
         return engine.lossGrid(model, state.params, batch, axes, a, b);
+      } catch {
+        return null;
+      }
+    },
+    lossCurve: (axis, values) => {
+      const { engine, model, state } = rt;
+      if (!engine || !model || !state) return null;
+      const { dataset } = get();
+      try {
+        const batch = { x: dataset.xTrain, y: dataset.yTrain, n: dataset.nTrain };
+        return engine.lossCurve(model, state.params, batch, axis, values);
+      } catch {
+        return null;
+      }
+    },
+    lossSlope: (axis) => {
+      const { engine, model, state } = rt;
+      if (!engine || !model || !state) return null;
+      const { dataset } = get();
+      try {
+        const batch = { x: dataset.xTrain, y: dataset.yTrain, n: dataset.nTrain };
+        return engine.lossSlope(model, state.params, batch, axis);
       } catch {
         return null;
       }
