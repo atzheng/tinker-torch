@@ -76,7 +76,8 @@ beforeEach(() => {
   act(() => root.render(<LossReadout />));
 });
 
-test('component: dash, live values, diverged', () => {
+test('component: dash, history values, diverged', () => {
+  act(() => useStore.setState({ liveLoss: null })); // the history fallback; live values: lossModes.test.tsx
   expect(q('loss-readout-train')?.textContent).toBe(EM_DASH);
   expect(q('loss-readout-val')?.textContent).toBe(EM_DASH);
   act(() => useStore.setState({ history: [h(1, 0.5, 0.6, 0.4)] }));
@@ -91,6 +92,7 @@ test('component: dash, live values, diverged', () => {
 test('component: mini-batch follows trainFull', () => {
   const g = mlpGraph();
   useStore.getState().loadGraph({ ...g, train: { ...g.train, batch: 4 } });
+  act(() => useStore.setState({ liveLoss: null }));
   act(() => useStore.setState({ history: [h(1, 0.9, 0.6, 0.4)] }));
   expect(q('loss-readout-train')?.textContent).toBe('0.4');
 });
