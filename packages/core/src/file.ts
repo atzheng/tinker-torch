@@ -30,7 +30,21 @@ export type Preset = SaveFile & {
   show?: Show;
   /** Label overrides by `UI_IDS` id (CONTRACTS.md section 12). Plain text, 1 to `LABEL_MAX_LENGTH` characters. */
   labels?: Record<string, string>;
+  /** Initial state of panel option controls (CONTRACTS.md section 12): `OPTION_BOOL_IDS` take true/false, `loss-mode` a mode name. */
+  options?: Record<string, boolean | string>;
 };
+
+/** Panel toggles a preset's `options` can set (they are `UI_IDS` ids; the value is the initial checked state). */
+export const OPTION_BOOL_IDS = [
+  'histogram-squares',
+  'loss-1d-tangent',
+  'loss-1d-explored',
+  'loss-log-toggle',
+  'truth-toggle',
+] as const;
+/** The loss readout mode option key and its values. */
+export const OPTION_LOSS_MODE = 'loss-mode';
+export const OPTION_LOSS_MODES = ['likelihood', 'total', 'mean'] as const;
 
 /** Longest label override, in characters: the training bar still has to fit 1024 px. */
 export const LABEL_MAX_LENGTH = 40;
@@ -208,7 +222,8 @@ export function parseFile(json: unknown): ParseFileResult {
     'checks' in json ||
     'locked' in json ||
     'show' in json ||
-    'labels' in json
+    'labels' in json ||
+    'options' in json
   ) {
     const { title, prompt, locked } = json;
     if (typeof title !== 'string') return fail('The preset title must be text.');
@@ -248,8 +263,11 @@ export function parseFile(json: unknown): ParseFileResult {
     if (typeof shown === 'string') return fail(shown);
     const labels = parseLabels(json['labels']);
     if (typeof labels === 'string') return fail(labels);
+    const options = parseOptions(json['options']);
+    if (typeof options === 'string') return fail(options);
     const preset: Preset = { ...file, title };
     if (shown) preset.show = shown;
+    if (options) preset.options = options;
     if (labels) preset.labels = labels;
     if (prompt !== undefined) preset.prompt = prompt;
     if (instr !== undefined) preset.instructions = instr as string[];
@@ -339,6 +357,29 @@ function parseLabels(v: unknown): Record<string, string> | string | undefined {
       return `The label for "${id}" is longer than ${LABEL_MAX_LENGTH} characters.`;
     }
     out[id] = text;
+  }
+  return { ...out };
+}
+
+/** The preset's `options` field, or one plain sentence when it is malformed. */
+function parseOptions(v: unknown): Record<string, boolean | string> | string | undefined {
+  if (v === undefined) return undefined;
+  if (!isRecord(v)) return 'The preset "options" must be an object from option names to values.';
+  const out: Record<string, boolean | string> = Object.create(null) as Record<
+    string,
+    boolean | string
+  >;
+  for (const [id, value] of Object.entries(v)) {
+    if ((OPTION_BOOL_IDS as readonly string[]).includes(id)) {
+      if (typeof value !== 'boolean') return `The option "${id}" must be true or false.`;
+    } else if (id === OPTION_LOSS_MODE) {
+      if (!(OPTION_LOSS_MODES as readonly string[]).includes(value as string)) {
+        return `The option "loss-mode" must be one of ${OPTION_LOSS_MODES.map((m) => `"${m}"`).join(', ')}.`;
+      }
+    } else {
+      return `The preset "options" names "${id}", which is not an option a preset can set.`;
+    }
+    out[id] = value as boolean | string;
   }
   return { ...out };
 }

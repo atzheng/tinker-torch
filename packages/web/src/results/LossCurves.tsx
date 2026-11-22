@@ -1,5 +1,4 @@
-import { useUiLabel, useUiShown } from '../state/disclosure.js';
-import { useState } from 'react';
+import { useUiLabel, useUiOption, useUiShown } from '../state/disclosure.js';
 import { decimatePath, linearScale, logScale, logTicks, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { AxisLabels } from '../plot/AxisLabels.js';
@@ -20,7 +19,7 @@ export function LossCurves() {
   const canRestore = useStore((s) => s.canTrain);
   const miniBatch = useStore((s) => isMiniBatch(s.graph.train.batch, s.dataset.nTrain));
   const pins = useStore((s) => s.pins);
-  const [log, setLog] = useState(false);
+  const [log, setLog] = useUiOption('loss-log-toggle');
 
   const draw: DrawFn = (ctx, w, h, c) => {
     const m = MARGINS;

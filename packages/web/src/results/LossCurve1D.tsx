@@ -13,7 +13,7 @@ import {
   yRange,
   type Visited,
 } from '../plot/lossCurve1d.js';
-import { useUiLabel, useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiOption, useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import styles from './Results.module.css';
 import own from './LossCurve1D.module.css';
@@ -56,8 +56,8 @@ function Panel({ params, hostKey }: { params: ReturnType<typeof listParams>; hos
   const panelTitle = useUiLabel('panel-loss-1d', 'Loss vs parameter');
 
   const [pick, setPick] = useState('');
-  const [explored, setExplored] = useState(false);
-  const [tan, setTan] = useState(false);
+  const [explored, setExplored] = useUiOption('loss-1d-explored');
+  const [tan, setTan] = useUiOption('loss-1d-tangent');
   const param = (params.find((p) => p.key === pick) ?? params[0]) as CurveParam; // params is not empty
   const cur = param.value;
 

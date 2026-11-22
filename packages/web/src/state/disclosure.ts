@@ -17,6 +17,25 @@ export function useUiLabel(id: string, fallback: string): string {
   return useStore((s) => s.preset?.labels?.[id] ?? fallback);
 }
 
+/**
+ * A panel toggle's state (CONTRACTS.md section 12, `options`): the student's change, else the
+ * preset's initial value, else false. A toggle hidden by `show.ui` is fixed to the preset's value.
+ * Held in the store so a remount keeps it.
+ */
+export function useUiOption(id: string): [boolean, (v: boolean) => void] {
+  const epoch = useStore((s) => s.loadEpoch);
+  const value = useStore((s) => {
+    const init = s.preset?.options?.[id] === true;
+    const e = s.optionEdits;
+    if (!isShown(s.show?.ui, id) || e === null || e.preset !== s.preset || e.epoch !== epoch) {
+      return init;
+    }
+    return e.values[id] ?? init;
+  });
+  const setEdit = useStore((s) => s.setOptionEdit);
+  return [value, (v) => setEdit(id, v, epoch)];
+}
+
 /** Is the region on screen: at least one of its ids is shown. */
 export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'canvas'>): boolean {
   return useStore((s) => {

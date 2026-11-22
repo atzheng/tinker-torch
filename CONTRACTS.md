@@ -712,6 +712,16 @@ A preset's `labels` renames controls and readouts: `{ "lr-slider": "Step size", 
 
 Labels travel with the preset: they live in `ActivePreset.labels` (so undo of a file load restores them, a plain file or new graph clears them) and Save writes them back. Components read a label with `useUiLabel(id, defaultText)`; a later bead that makes another control renamable adds its id to `LABEL_IDS` and uses the hook.
 
+### Panel option defaults (`options`, tinker-59r)
+
+```ts
+Preset.options?: Record<string, boolean | string>;     // core/file.ts
+const OPTION_BOOL_IDS: readonly string[];              // 'histogram-squares', 'loss-1d-tangent', 'loss-1d-explored', 'loss-log-toggle', 'truth-toggle'
+useUiOption(id: string): [boolean, (v: boolean) => void];   // web/state/disclosure.ts
+```
+
+A preset's `options` sets the initial state of panel toggles, keyed by their `UI_IDS` ids: the five ids in `OPTION_BOOL_IDS` take `true`/`false`; `loss-mode` takes `"likelihood"`, `"total"` or `"mean"` (the readout mode). `parseFile` refuses, with one plain sentence each, a non-object, an unknown key, a non-boolean toggle and a bad `loss-mode`. The 1-D curve's axis is not an option. Semantics: the value is the toggle's state when the preset loads. If the control is shown the student can change it (the change is kept in the store, `optionEdits`, keyed to the preset object and `loadEpoch`, so a remount keeps it, while a new load, or undo/redo to a different preset, starts again from that preset's value); if `show.ui` hides it the preset's value stays fixed. Without `options` every toggle starts off, as before. `loss-mode` is applied once at load to the store's `lossMode` (a hidden mode still falls back as for `effectiveLossMode`); it is not restored by undo. `ActivePreset.options` carries the field and Save writes it back. Toggles that were component state (`FitPlot`, `FitPlot2D`, `LossCurves`, `TargetHistogram`, `LossCurve1D`) now read `useUiOption`.
+
 ## 13. Commands
 
 From the repo root: `pnpm install`, `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, `pnpm dev` (Vite on :5173), `pnpm e2e` (playwright-core against `pnpm preview`, added by `tinker-ysl.5`), `pnpm torch-ref` (runs the uv script; needs uv and network), `pnpm data-ref` (opt-in, Node and network: re-downloads the classic datasets and rewrites `packages/core/src/data/real/*.json`; the generated files are committed and tests never fetch). Per package: `pnpm --filter @tinker/<core|engine|web> <script>`.

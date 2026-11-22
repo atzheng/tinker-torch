@@ -206,3 +206,33 @@ describe('preset labels', () => {
     expect(LABEL_IDS.every((id) => ALL_UI_IDS.includes(id))).toBe(true);
   });
 });
+
+describe('preset options (initial panel toggles)', () => {
+  const base = () => ({ ...JSON.parse(serializeFile(graph())), title: 'T' });
+  test('accepts booleans and a loss mode; absent stays absent', () => {
+    const r = parseFile({
+      ...base(),
+      options: { 'histogram-squares': true, 'loss-1d-tangent': false, 'loss-mode': 'total' },
+    });
+    expect(r.ok && 'options' in r.file && r.file.options).toEqual({
+      'histogram-squares': true,
+      'loss-1d-tangent': false,
+      'loss-mode': 'total',
+    });
+    const r2 = parseFile(base());
+    expect(r2.ok && 'options' in r2.file).toBe(false);
+  });
+  test.each([
+    ['not an object', ['x'], /object/],
+    ['unknown key', { 'btn-step': true }, /"btn-step"/],
+    ['bool not a bool', { 'truth-toggle': 'yes' }, /"truth-toggle" must be true or false/],
+    ['bad mode', { 'loss-mode': 'sum' }, /"loss-mode" must be one of/],
+    ['mode not text', { 'loss-mode': true }, /"loss-mode"/],
+  ])('%s gives one sentence', (_n, options, re) => {
+    const r = parseFile({ ...base(), options });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(re);
+    expect(r.error).toMatch(/^[A-Z].*\.$/);
+  });
+});
