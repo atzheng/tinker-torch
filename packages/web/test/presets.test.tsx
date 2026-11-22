@@ -42,13 +42,19 @@ test('every bundled preset parses, is titled, has no prompt and analyses as trai
     'iris',
     'intercept-prob',
     'intercept-mean',
+    'lecture1-stage0',
+    'lecture1-stage1',
+    'lecture1-stage2',
+    'lecture1-stage3',
+    'lecture1-stage4',
+    'lecture1-stage5',
   ]);
   for (const name of PRESET_NAMES) {
     const f = bundledPreset(name);
     expect(f, name).not.toBeNull();
     if (!f) continue;
     expect('title' in f).toBe(true);
-    expect('prompt' in f).toBe(false);
+    expect('prompt' in f, name).toBe(name.startsWith('lecture1-'));
     expect(f.graph.version, name).toBe(2); // bundled files are native version 2
     expect(f.graph.predictions, name).toHaveLength(1);
     expect(f.graph.loss, name).toBe('loss');

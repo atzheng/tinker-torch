@@ -1,0 +1,94 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Lecture 1, stage 2: keep the chance between 0 and 1",
+  "prompt": "The number can drift outside 0 to 1. Add a Sigmoid in front of the loss so any number becomes a chance, then let it run.",
+  "instructions": [
+    "On the Model tab, drag Sigmoid onto the line between Bias and the loss.",
+    "Press Run and watch the loss over steps go down. Press Pause when it flattens.",
+    "The Bias is now a raw number. Which chance does it correspond to at the end?"
+  ],
+  "locked": ["y", "loss"],
+  "show": {
+    "palette": ["sigmoid", "log_loss"],
+    "tab": "model",
+    "ui": [
+      "preset-menu",
+      "tab-model",
+      "tab-loss",
+      "instructions",
+      "preset-prompt",
+      "success-check",
+      "panel-loss",
+      "panel-loss-1d",
+      "panel-class-bars",
+      "panel-examples",
+      "loss-readout",
+      "loss-mode-likelihood",
+      "loss-mode-total",
+      "loss-mode-mean",
+      "loss-1d-tangent",
+      "btn-step",
+      "btn-reset",
+      "lr-slider",
+      "step-count",
+      "btn-run",
+      "btn-undo",
+      "btn-redo"
+    ]
+  },
+  "labels": {
+    "loss-readout": "Score",
+    "lr-slider": "Step size",
+    "panel-loss-1d": "Score for each possible number",
+    "panel-examples": "The 30 deliveries"
+  },
+  "options": {
+    "loss-mode": "mean"
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "bias",
+        "type": "bias"
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "err",
+        "type": "log_loss"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["bias", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
+    ],
+    "predictions": ["bias"],
+    "loss": "loss",
+    "data": {
+      "set": "delivery_late",
+      "n": 30,
+      "noise": 0.3,
+      "val": 0,
+      "seed": 1,
+      "standardize": false
+    },
+    "train": {
+      "optimizer": "sgd",
+      "lr": 0.5,
+      "batch": "full",
+      "seed": 11
+    }
+  },
+  "params": {
+    "bias": 0.5
+  }
+}
