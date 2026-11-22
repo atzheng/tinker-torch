@@ -595,7 +595,7 @@ export function Canvas() {
           {lblTidy}
         </button>
       )}
-      {!isNeuron && (
+      {!isNeuron && tab === 'model' && (
         <ScalarBar
           graph={fullGraph}
           analysis={analysis}
