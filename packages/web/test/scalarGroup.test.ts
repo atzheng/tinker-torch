@@ -153,6 +153,16 @@ test('undo and redo after more training return step, losses and history with the
   expect(s().trainLoss).toBe(lossBack); // same weights, same loss
 });
 
+test('undo back to an earlier step drops the log rows after it', () => {
+  useStore.setState({ show: { ui: ['panel-step-log'] } });
+  for (let i = 0; i < 3; i++) s().stepOnce();
+  groupSelected();
+  for (let i = 0; i < 4; i++) s().stepOnce();
+  expect(s().stepLog.length).toBeGreaterThan(0);
+  s().undo();
+  expect(s().stepLog.every((r) => r.step <= s().step)).toBe(true);
+});
+
 test('the carried weights are the exact current ones (no lost steps)', () => {
   for (let i = 0; i < 3; i++) s().stepOnce();
   const exact = s().currentHost();
