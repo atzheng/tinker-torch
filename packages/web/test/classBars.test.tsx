@@ -6,7 +6,7 @@ import { beforeAll, expect, test, vi } from 'vitest';
 import { beginWeightEdit } from '../src/canvas/weightEdit.js';
 import { loadEngine } from '../src/engine.js';
 import { ClassBars } from '../src/results/ClassBars.js';
-import { classBars } from '../src/results/classBarsModel.js';
+import { classBars, isClassProbNode } from '../src/results/classBarsModel.js';
 import { PANEL_TAB } from '../src/results/panelLayout.js';
 import { useStore } from '../src/state/store.js';
 import { loadBundled } from '../src/topbar/PresetMenu.js';
@@ -93,7 +93,9 @@ test('a width-1 ŷ that is not a sigmoid Link gives the sentence, not P(class 1)
   const nodes = g.nodes.map((n) =>
     n.type === 'link' ? ({ id: n.id, type: 'activation', fn: 'relu' } as unknown as typeof n) : n,
   );
-  act(() => s().loadGraph({ ...g, nodes } as typeof g));
+  // and it no longer feeds a Log loss, so its values are not probabilities by construction
+  const edges = g.edges.filter(([, to]) => !to.endsWith('.pred'));
+  act(() => s().loadGraph({ ...g, nodes, edges } as typeof g));
   const m = mount();
   expect(m.el.querySelector('[data-testid="class-bars-none"]')).not.toBeNull();
 });
@@ -105,4 +107,52 @@ test('softmax preset: one bar pair per class, each side sums to 1', () => {
   expect(m.pred().length).toBe(k);
   expect(m.pred().reduce((a, v) => a + v, 0)).toBeCloseTo(1, 4);
   expect(m.obs().reduce((a, v) => a + v, 0)).toBeCloseTo(1, 4);
+});
+
+function plainProbGraph() {
+  expect(loadBundled('intercept-prob')).toBe(true);
+  const g = s().graph;
+  act(() =>
+    s().loadGraph({
+      ...g,
+      nodes: g.nodes.filter((n) => n.id !== 'yhat'),
+      edges: [
+        ['bias', 'err.pred'],
+        ['y', 'err.target'],
+        ['err', 'loss'],
+      ],
+      predictions: ['bias'],
+    } as typeof g),
+  );
+}
+
+test('plain probability: Bias into Log loss shows bars matching b and the observed share', () => {
+  plainProbGraph();
+  const m = mount();
+  const y = s().dataset.yTrain;
+  const ones = y.reduce((a, v) => a + (v === 1 ? 1 : 0), 0) / y.length;
+  act(() => {
+    const e = beginWeightEdit({ kind: 'bias', node: 'bias' });
+    e?.set(0.3);
+    e?.commit();
+  });
+  expect(m.pred()[1]).toBeCloseTo(0.3, 4);
+  expect(m.pred()[0]).toBeCloseTo(0.7, 4);
+  expect(m.obs()[1]).toBeCloseTo(ones, 4);
+  // past the range: the sentence, no NaN bars
+  act(() => {
+    const e = beginWeightEdit({ kind: 'bias', node: 'bias' });
+    e?.set(1.5);
+    e?.commit();
+  });
+  expect(m.el.querySelector('[data-testid="class-bars-none"]')).not.toBeNull();
+  expect(m.pred()).toEqual([]);
+});
+
+test('a Linear pinned for MSE is refused, a Bias into Log loss is accepted', () => {
+  expect(loadBundled('linear')).toBe(true);
+  const a = s().analysis;
+  expect(isClassProbNode(s().graph, a.outWidth, s().graph.predictions[0] as string)).toBe(false);
+  plainProbGraph();
+  expect(isClassProbNode(s().graph, s().analysis.outWidth, 'bias')).toBe(true);
 });
