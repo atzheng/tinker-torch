@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import { startDrag } from '../gestures/drag.js';
 import { beginWeightEdit, type WeightEdit } from '../canvas/weightEdit.js';
 import { AxisLabels } from '../plot/AxisLabels.js';
@@ -15,7 +15,7 @@ import {
   squareSides,
   valueToParam,
 } from '../plot/histogramPure.js';
-import { useUiLabel, useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiOption, useUiShown } from '../state/disclosure.js';
 import { plotIndex } from '../state/plotPrediction.js';
 import { useStore } from '../state/store.js';
 import { axisLabel } from '../state/names.js';
@@ -58,7 +58,7 @@ export function TargetHistogram() {
   const pick = useStore((s) => s.plotPrediction);
   const predictGrid = useStore((s) => s.predictGrid);
   const running = useStore((s) => s.running);
-  const [squares, setSquares] = useState(false);
+  const [squares, setSquares] = useUiOption('histogram-squares');
   const showSquaresToggle = useUiShown('histogram-squares');
   const panelTitle = useUiLabel('panel-histogram', 'Target');
   const boxRef = useRef<HTMLDivElement>(null);

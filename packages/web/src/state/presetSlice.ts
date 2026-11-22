@@ -9,6 +9,8 @@ export type ActivePreset = {
   /** Label overrides by UI id; read with `useUiLabel`. */
   labels?: Record<string, string>;
   checks?: Check[];
+  /** Initial panel toggle states (`Preset.options`); read with `useUiOption`. */
+  options?: Record<string, boolean | string>;
   /** Locked piece ids that exist in the loaded graph (unknown ids in the file are ignored). */
   locked: NodeId[];
 };
@@ -36,12 +38,36 @@ export type PresetSlice = {
   startParams: HostParams | null;
   /** True once the person dismissed the prompt line of the current preset. */
   promptDismissed: boolean;
+  /**
+   * The student's own changes to panel toggles, valid only for the preset object and load epoch
+   * they were made under (a different preset, or a new load, ignores them): the toggles start from
+   * the preset's `options` again. Lives here, not in the panels, so a remount keeps the value.
+   */
+  optionEdits: {
+    preset: ActivePreset | null;
+    epoch: number;
+    values: Record<string, boolean>;
+  } | null;
+  setOptionEdit: (id: string, value: boolean, epoch: number) => void;
   setPreset: (preset: ActivePreset | null) => void;
   setStartParams: (start: HostParams | null) => void;
   dismissPrompt: () => void;
 };
 
 export const createPresetSlice: StateCreator<PresetSlice, [], [], PresetSlice> = (set) => ({
+  optionEdits: null,
+  setOptionEdit: (id, value, epoch) =>
+    set((s) => {
+      const cur = s.optionEdits;
+      const same = cur !== null && cur.preset === s.preset && cur.epoch === epoch;
+      return {
+        optionEdits: {
+          preset: s.preset,
+          epoch,
+          values: { ...(same ? cur.values : {}), [id]: value },
+        },
+      };
+    }),
   preset: null,
   show: null,
   startParams: null,
