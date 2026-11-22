@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { parsePort } from '@tinker/core';
-import { PROB_BAR_EVERY_MS, probBarDue, probBarTargets } from '../canvas/probBarPure.js';
+import { PROB_BAR_EVERY_MS, probBarDue } from '../canvas/probBarPure.js';
 import { useUiLabel } from '../state/disclosure.js';
 import { plotIndex } from '../state/plotPrediction.js';
 import { useStore } from '../state/store.js';
-import { CLASS_BARS_MAX_ROWS, classBars, type ClassBar } from './classBarsModel.js';
+import {
+  CLASS_BARS_MAX_ROWS,
+  classBars,
+  isClassProbNode,
+  type ClassBar,
+} from './classBarsModel.js';
 import styles from './Results.module.css';
 import own from './ClassBars.module.css';
 
@@ -47,7 +52,7 @@ export function ClassBars() {
     if (pin !== undefined && dataset.info.kind !== 'regression' && n >= 1) {
       const node = parsePort(pin).node;
       const width = analysis.outWidth[node];
-      const isLink = probBarTargets(graph, analysis.outWidth).some((t) => t.id === node);
+      const isLink = isClassProbNode(graph, analysis.outWidth, node);
       const outs =
         width === undefined || !isLink ? null : predictPins(dataset.xTrain.slice(0, n * d), n);
       if (outs && width !== undefined) {
@@ -79,8 +84,8 @@ export function ClassBars() {
       </div>
       {!bars ? (
         <div className={own.note} data-testid="class-bars-none">
-          No class probabilities to show: the plotted prediction must be a sigmoid or softmax of a
-          valid, trained-or-initialised model (not diverged).
+          No class probabilities to show: the plotted prediction must be a sigmoid or softmax, or a
+          probability feeding log loss, of a valid model with values from 0 to 1 (not diverged).
         </div>
       ) : (
         <div className={own.body}>
