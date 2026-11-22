@@ -21,6 +21,8 @@ export type Show = {
 export type Preset = SaveFile & {
   title: string;
   prompt?: string;
+  /** Numbered exercise steps for the persistent instructions panel (TeX as in `prompt`). */
+  instructions?: string[];
   locked?: NodeId[];
   show?: Show;
 };
@@ -73,6 +75,7 @@ export const UI_IDS = {
     'expand-scalars',
     'equivalence',
     'preset-prompt',
+    'instructions',
   ],
   results: ['panel-fit', 'panel-loss', 'panel-surface', 'panel-histogram', 'panel-loss-1d'],
   // Controls inside the results panels; they never make the results region itself visible.
@@ -146,7 +149,13 @@ export function parseFile(json: unknown): ParseFileResult {
   const file: SaveFile = { kind: 'tinker', version: 2, graph: g.graph };
   if (params !== undefined) file.params = params as SaveFile['params'];
 
-  if ('title' in json || 'prompt' in json || 'locked' in json || 'show' in json) {
+  if (
+    'title' in json ||
+    'prompt' in json ||
+    'instructions' in json ||
+    'locked' in json ||
+    'show' in json
+  ) {
     const { title, prompt, locked } = json;
     if (typeof title !== 'string') return fail('The preset title must be text.');
     if (prompt !== undefined && typeof prompt !== 'string') {
@@ -158,11 +167,24 @@ export function parseFile(json: unknown): ParseFileResult {
     ) {
       return fail('The preset list of locked pieces must be a list of piece ids.');
     }
+    const instr = json['instructions'];
+    if (instr !== undefined) {
+      if (!Array.isArray(instr)) {
+        return fail('The preset instructions must be a list of steps, each one a piece of text.');
+      }
+      if (!instr.every((x) => typeof x === 'string')) {
+        return fail('Each step of the preset instructions must be text.');
+      }
+      if (instr.some((x) => (x as string).trim() === '')) {
+        return fail('A step of the preset instructions is empty.');
+      }
+    }
     const shown = parseShow(json['show']);
     if (typeof shown === 'string') return fail(shown);
     const preset: Preset = { ...file, title };
     if (shown) preset.show = shown;
     if (prompt !== undefined) preset.prompt = prompt;
+    if (instr !== undefined) preset.instructions = instr as string[];
     if (locked !== undefined) {
       const ids = locked as string[];
       const map = g.idMap;

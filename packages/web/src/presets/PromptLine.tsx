@@ -9,10 +9,12 @@ import styles from './PromptLine.module.css';
  */
 export function PromptLine() {
   const prompt = useStore((s) => s.preset?.prompt);
+  // With instructions, the prompt becomes the instructions panel's title line.
+  const hasInstructions = useStore((s) => (s.preset?.instructions?.length ?? 0) > 0);
   const dismissed = useStore((s) => s.promptDismissed);
   const dismiss = useStore((s) => s.dismissPrompt);
   const shown = useUiShown('preset-prompt');
-  if (!prompt || dismissed || !shown) return null;
+  if (!prompt || dismissed || !shown || hasInstructions) return null;
   return (
     <div className={styles.line} data-testid="preset-prompt" role="status">
       <span className={styles.text}>
