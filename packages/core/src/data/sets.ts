@@ -2,6 +2,7 @@
 import type { DatasetName } from '../common.js';
 import type { Rng } from '../rng.js';
 import { bundledSpec } from './real.js';
+import { DELIVERY_SPECS, generateDelivery } from './delivery.js';
 
 export type SetKind = 'regression' | 'binary' | 'multiclass';
 
@@ -17,6 +18,8 @@ export type SetSpec = {
   featureNames?: string[];
   /** A real dataset: fixed rows, `n` and `noise` do not apply (`f` is unused). */
   real?: boolean;
+  /** A generated set whose labels or targets do not use `noise` (the top bar hides Noise). */
+  noiseUnused?: boolean;
   /** Target name; default 'y'. */
   targetName?: string;
   /** Classification: one name per class in label order; default 'class 0', 'class 1', ... */
@@ -224,6 +227,8 @@ export const SETS: Record<DatasetName, SetSpec> = {
     domain: D2,
     f: (x) => nearestArm(at(x, 0), at(x, 1)),
   },
+  delivery_late: DELIVERY_SPECS.delivery_late,
+  delivery_time: DELIVERY_SPECS.delivery_time,
   iris: bundledSpec('iris'),
   penguins: bundledSpec('penguins'),
   wine: bundledSpec('wine'),
@@ -288,6 +293,11 @@ export function generate(set: DatasetName, n: number, noise: number, rng: Rng): 
   const rx = rng.fork('x');
   const rn = rng.fork('noise');
   const rows: Row[] = [];
+
+  // Delivery sets branch early: tinker-6t7.7 (categorical input) reshapes this function.
+  if (set === 'delivery_late' || set === 'delivery_time') {
+    return generateDelivery(set, n, noise, rng).map(({ x, y }) => ({ x, y }));
+  }
 
   if (spec.kind === 'regression') {
     const s = spread(set);
