@@ -27,6 +27,8 @@ export function stripCells(
   scale = 0,
 ): StripCell[] {
   const out: StripCell[] = [];
+  // No scale given: shade against the largest finite loss of this set.
+  const s = scale > 0 ? scale : maxFinite(losses);
   for (let i = 0; i < losses.length; i++) {
     const l = losses[i] ?? Number.NaN;
     const cls = classification ? Math.round(y[i] ?? 0) : -1;
@@ -34,7 +36,7 @@ export function stripCells(
       const p = Math.exp(-l);
       out.push({ value: p, frac: Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : 0, cls });
     } else {
-      const frac = !Number.isFinite(l) ? 1 : scale > 0 ? Math.min(1, l / scale) : 0;
+      const frac = !Number.isFinite(l) ? 1 : s > 0 ? Math.min(1, l / s) : 0;
       out.push({ value: l, frac, cls });
     }
   }
