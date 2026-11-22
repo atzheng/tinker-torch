@@ -1,0 +1,22 @@
+/* Per-category dials of the neuron view (tinker-4w2). */
+.tk-dial-value {
+  fill: var(--node-name);
+  font: 600 8.5px var(--font-mono);
+  pointer-events: none;
+}
+.tk-dial-label {
+  fill: var(--node-name);
+  font: 10.5px var(--font);
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--bg, var(--piece-fill));
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.tk-unit[data-kind='cat'][data-dial='true'] .tk-shape {
+  stroke: var(--weight-pos);
+  stroke-width: 2;
+}
+.tk-unit[data-kind='cat'][data-dial='true'] {
+  cursor: ns-resize;
+}

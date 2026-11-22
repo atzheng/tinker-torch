@@ -77,15 +77,20 @@ export function beginWeightEdit(t: WeightTarget): WeightEdit | null {
     name = t.kind === 'scalew' ? 'W' : 'b';
     start = layer[name]?.length === 1 ? layer[name]?.[0] : undefined;
   } else {
-    const inW = s.analysis.inWidth[t.node];
-    if (node.type !== 'linear' || inW === undefined || !layer['W']) return null;
+    // A Lookup (tinker-4w2) is a table [categories, width] edited as `W[i][j]` like a Linear.
     const shape = hostShape(host, t.node, s.dataInfo);
+    const inW = node.type === 'lookup' ? shape?.[0] : s.analysis.inWidth[t.node];
+    const out = node.type === 'lookup' ? node.width : node.type === 'linear' ? node.out : 0;
+    if ((node.type !== 'linear' && node.type !== 'lookup') || inW === undefined || !layer['W']) {
+      return null;
+    }
+    if (node.type === 'lookup' && t.kind !== 'W') return null;
     name = t.kind === 'W' ? 'W' : 'b';
-    index = t.kind === 'W' ? t.i * node.out + t.j : t.j;
+    index = t.kind === 'W' ? t.i * out + t.j : t.j;
     start =
       t.kind === 'W'
-        ? weightAt(host, t.node, t.i, t.j, inW, node.out, shape)
-        : shape && shape[1] === node.out
+        ? weightAt(host, t.node, t.i, t.j, inW, out, shape)
+        : shape && node.type === 'linear' && shape[1] === node.out
           ? biasAt(host, t.node, t.j)
           : undefined;
   }
