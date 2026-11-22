@@ -257,7 +257,7 @@ export function TargetHistogram() {
         <canvas ref={ref} aria-label="Target histogram" />
         <AxisLabels
           x={binary ? '$y$' : target ? axisLabel(target) : '$y$'}
-          y={squares ? 'length' : 'count'}
+          y={squares ? '' : 'count'}
         />
       </div>
     </div>
