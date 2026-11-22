@@ -1,4 +1,5 @@
 import { parseGraphWithMap, serializeGraph, type Graph, type NodeId } from './graph.js';
+import { parseChecks, type Check } from './checks.js';
 import type { JsonParams } from './params.js';
 import { PALETTE } from './registry.js';
 
@@ -23,6 +24,8 @@ export type Preset = SaveFile & {
   prompt?: string;
   /** Numbered exercise steps for the persistent instructions panel (TeX as in `prompt`). */
   instructions?: string[];
+  /** Success checks (CONTRACTS.md section 12); each may name an instructions step. */
+  checks?: Check[];
   locked?: NodeId[];
   show?: Show;
 };
@@ -77,6 +80,7 @@ export const UI_IDS = {
     'equivalence',
     'preset-prompt',
     'instructions',
+    'success-check',
   ],
   results: [
     'panel-fit',
@@ -84,6 +88,7 @@ export const UI_IDS = {
     'panel-surface',
     'panel-histogram',
     'panel-loss-1d',
+    'panel-examples',
     'panel-step-log',
   ],
   // Controls inside the results panels; they never make the results region itself visible.
@@ -164,6 +169,7 @@ export function parseFile(json: unknown): ParseFileResult {
     'title' in json ||
     'prompt' in json ||
     'instructions' in json ||
+    'checks' in json ||
     'locked' in json ||
     'show' in json
   ) {
@@ -190,12 +196,24 @@ export function parseFile(json: unknown): ParseFileResult {
         return fail('A step of the preset instructions is empty.');
       }
     }
+    let checks: Check[] | undefined;
+    if (json['checks'] !== undefined) {
+      const c = parseChecks(
+        json['checks'],
+        g.graph,
+        Array.isArray(instr) ? instr.length : 0,
+        g.idMap,
+      );
+      if (typeof c === 'string') return fail(c);
+      checks = c;
+    }
     const shown = parseShow(json['show']);
     if (typeof shown === 'string') return fail(shown);
     const preset: Preset = { ...file, title };
     if (shown) preset.show = shown;
     if (prompt !== undefined) preset.prompt = prompt;
     if (instr !== undefined) preset.instructions = instr as string[];
+    if (checks !== undefined) preset.checks = checks;
     if (locked !== undefined) {
       const ids = locked as string[];
       const map = g.idMap;
