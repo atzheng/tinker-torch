@@ -12,6 +12,7 @@ let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
   useStore.getState().loadGraph(initialGraph());
+  useStore.getState().setViewTab('model');
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -24,8 +25,11 @@ afterEach(() => {
 
 test('every piece is drawn by the one node shell: one body, same radius, ports on the edges', () => {
   const nodes = [...host.querySelectorAll('[data-testid^="node-"]')];
-  expect(nodes.length).toBe(8);
-  for (const n of nodes) {
+  expect(nodes.length).toBe(5); // the model tab: four model pieces and the stub of the Subtract
+  act(() => useStore.getState().setViewTab('loss'));
+  const lossNodes = [...host.querySelectorAll('[data-testid^="node-"]')];
+  expect(lossNodes.length).toBe(5); // the stub of the prediction and the four loss pieces
+  for (const n of [...nodes, ...lossNodes].filter((x) => x.getAttribute('data-stub') !== 'true')) {
     const bodies = n.querySelectorAll('.tk-body');
     expect(bodies, n.getAttribute('data-testid') ?? '').toHaveLength(1);
     expect(bodies[0]?.getAttribute('rx')).toBe('8');
@@ -39,12 +43,18 @@ test('every piece is drawn by the one node shell: one body, same radius, ports o
 test('inputs, parameter pieces and the node pinned as L carry a role; the node pinned as ŷ gets none', () => {
   const role = (id: string) =>
     host.querySelector(`[data-testid="node-${id}"]`)?.getAttribute('data-role') ?? null;
-  expect(['x', 'y', 'lin2', 'loss'].map(role)).toEqual(['input', 'input', 'param', 'loss']);
+  expect(['x', 'lin2'].map(role)).toEqual(['input', 'param']);
   expect(['lin1'].map(role)).toEqual(['param']);
-  expect(['act1', 'diff', 'err'].map(role)).toEqual([null, null, null]);
+  expect(['act1'].map(role)).toEqual([null]);
   // the pins are drawn as pins at the pinned node's output, not as pieces of their own
   expect(host.querySelector('[data-testid="pin-pred-lin2"]')).not.toBeNull();
+  expect(host.querySelectorAll('[data-testid^="pin-pred-"]')).toHaveLength(1);
+  act(() => useStore.getState().setViewTab('loss'));
+  expect(['y', 'loss'].map(role)).toEqual(['input', 'loss']);
+  expect(['diff', 'err'].map(role)).toEqual([null, null]);
   expect(host.querySelector('[data-testid="pin-loss-loss"]')).not.toBeNull();
+  // the prediction pin shows on the stub of its piece too
+  expect(host.querySelector('[data-testid="pin-pred-lin2"]')).not.toBeNull();
   expect(
     host.querySelectorAll('[data-testid^="pin-pred-"], [data-testid^="pin-loss-"]'),
   ).toHaveLength(2);
