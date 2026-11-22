@@ -100,3 +100,28 @@ test('lossCurve and lossSlope leave the live buffer count flat (also when they t
   expect(engine.liveArrays()).toBe(before);
   engine.dispose(params);
 }, 120_000);
+
+test('lossSlope on a Weights-tap-only layer leaves the live buffer count flat and matches the fixture', () => {
+  const { fx, graph, data } = loadFixture('prim_weights_tap_only');
+  const batch = toBatch(fx);
+  const entries: ParamAxis[] = [];
+  for (const [node, g] of Object.entries(fx.expect.grads))
+    for (const tensor of ['W', 'b'] as const)
+      (g[tensor] ?? []).forEach((_, index) => entries.push({ node, tensor, index }));
+  const cycle = () => {
+    const model = engine.compile(graph, data);
+    const params = engine.fromHost(model, toHostParams(fx.params));
+    for (const e of entries) {
+      const got = engine.lossSlope(model, params, batch, e);
+      const want = fx.expect.grads[e.node]?.[e.tensor]?.[e.index] ?? Number.NaN;
+      expect(Math.abs(got - want)).toBeLessThan(1e-4 + 1e-4 * Math.abs(want));
+      engine.lossCurve(model, params, batch, e, Float32Array.of(0, 1));
+    }
+    engine.dispose(params);
+    engine.disposeModel(model);
+  };
+  for (let i = 0; i < 5; i++) cycle();
+  const base = engine.liveArrays();
+  for (let i = 0; i < 50; i++) cycle();
+  expect(engine.liveArrays()).toBe(base);
+}, 120_000);

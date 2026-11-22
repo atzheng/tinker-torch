@@ -60,7 +60,7 @@ export interface Engine {
     axis: ParamAxis,
     values: Float32Array,
   ): Float32Array;
-  /** d(loss + penalty)/d(parameter `axis`) at the current params over `batch`, dropout off: what Step's gradient holds for it with full batch and no dropout. Borrows model and params. */
+  /** d(full-batch loss + penalty)/d(parameter `axis`) at the current params, dropout off. Equals the gradient a Step computes only for a full batch and no dropout; it is not the update (momentum, Adam, lr). 0 for a leaf the loss plan does not read. Borrows model and params. */
   lossSlope(model: Model, params: Params, batch: Batch, axis: ParamAxis): number;
   trainMany(model: Model, seeds: number[], data: Batch[], steps: number): ManyResult[];
   disposeModel(model: Model): void;

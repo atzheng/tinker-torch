@@ -13,7 +13,7 @@ import { checkAxis, oneHot, overwrite } from './surface.js';
 import type { Model, ParamAxis } from './types.js';
 
 type CurveFn = (params: ParamTree, x: JArray, y: JArray, oh: JArray, v: JArray) => JArray;
-type SlopeFn = (layer: Layer, rest: ParamTree, x: JArray, y: JArray) => Layer;
+type SlopeFn = (used: Layer, rest: ParamTree, x: JArray, y: JArray) => Layer;
 
 const CHUNK_ELEMENTS = 1 << 20;
 const curveCache = new WeakMap<Internals, Map<string, CurveFn>>();
@@ -74,38 +74,53 @@ export function lossCurve(
 }
 
 /**
- * Borrows `model` and `t`. The derivative of the loss (mean loss plus penalty over `batch`, dropout
- * off) with respect to entry `axis` at its current value: the entry of the gradient of the whole
- * tensor, taken the way a training step takes it (so convention at kinks, e.g. |w| at 0, agree).
+ * Borrows `model` and `t`. The derivative of the full-batch loss (mean loss plus penalty over
+ * `batch`, dropout off) with respect to entry `axis` at its current value. It is the entry of the
+ * gradient a training step computes, taken the same way (so conventions at kinks, e.g. |w| at 0,
+ * agree), and equals that gradient only for a full batch and no dropout. It is NOT the update:
+ * momentum, Adam and the learning rate change what a step does with it.
+ *
+ * Like `makeStep`, only the leaves the loss plan reads are differentiated (a Linear read only
+ * through a Weights tap: W; a layer only the predictions read: none, slope 0): differentiating an
+ * unread leaf leaves a constant buffer that jit never frees.
  */
 export function lossSlope(model: Model, t: ParamTree, batch: Batch, axis: ParamAxis): number {
   const m = internals(model);
   checkBatch(m, batch.x, batch.y, batch.n);
   checkTree(m, t);
   checkAxis(m, axis);
-  // a layer the loss does not read (a prediction-only head) has zero gradient; differentiating it
-  // would leave a constant buffer that jit never frees (see compile.ts makeStep)
-  if (!m.plans.loss.layerUses.has(axis.node)) return 0;
   const key = axis.node;
+  const layer = t[key];
+  if (!layer) throw new Error(`"${key}" has no parameters to vary.`);
+  const lossPlan = m.plans.loss;
+  const read = lossPlan.layerUses.has(key);
+  const wOnly = read && !lossPlan.steps.some((st) => st.node.id === key); // read through Weights taps only
+  const differentiated = (k: string) => read && (!wOnly || k === 'W');
+  if (!differentiated(axis.tensor)) return 0;
   const fn = cached(slopeCache, m, key, () => {
-    // valueAndGrad differentiates the first argument (the node's layer) and consumes the others.
-    const vg = valueAndGrad((layer: Layer, rest: ParamTree, x: JArray, y: JArray) =>
-      m.evalFn()({ ...rest, [key]: layer }, x, y),
+    // valueAndGrad differentiates the first argument (the leaves the loss reads) and consumes the others.
+    const vg = valueAndGrad((used: Layer, rest: ParamTree, x: JArray, y: JArray) =>
+      m.evalFn()({ ...rest, [key]: used }, x, y),
     );
-    return jit((layer: Layer, rest: ParamTree, x: JArray, y: JArray) => {
-      const [loss, g] = vg(layer, rest, x, y) as unknown as [JArray, Layer];
+    return jit((used: Layer, rest: ParamTree, x: JArray, y: JArray) => {
+      const [loss, g] = vg(used, rest, x, y) as unknown as [JArray, Layer];
       loss.dispose();
       return g;
     }) as unknown as SlopeFn;
   });
-  const layer = t[axis.node];
-  if (!layer) throw new Error(`"${axis.node}" has no parameters to vary.`);
+  const used: Layer = {};
+  for (const [k, a] of Object.entries(layer)) if (differentiated(k)) used[k] = a.ref;
+  // Leaves the loss plan never reads are left out of the tree: a jitted function that is handed
+  // an array it does not use leaves it alive (one buffer per call).
   const rest: ParamTree = {};
-  for (const [id, l] of Object.entries(t)) if (id !== key) rest[id] = l;
+  for (const [id, l] of Object.entries(t)) {
+    if (id === key || !lossPlan.layerUses.has(id)) continue;
+    const own = lossPlan.steps.some((st) => st.node.id === id);
+    rest[id] = own ? l : l.W ? { W: l.W } : {};
+  }
   const { x, y } = batchArrays(m, batch);
-  const lRef = tree.ref(layer);
   const rRef = tree.ref(rest);
-  const g = guarded([x, y, lRef, rRef], () => fn(lRef, rRef, x, y));
+  const g = guarded([x, y, used, rRef], () => fn(used, rRef, x, y));
   let out = 0;
   for (const [k, a] of Object.entries(g)) {
     if (k === axis.tensor)

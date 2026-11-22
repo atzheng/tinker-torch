@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  DEFAULT_ORDER,
   DEFAULT_WEIGHTS,
   MIN_SHARE,
   dropIndex,
@@ -8,9 +9,14 @@ import {
   type PanelId,
 } from '../src/results/panelLayout.js';
 
+const THREE: readonly PanelId[] = ['fit', 'loss', 'surface'];
 const all = new Set<PanelId>(['fit', 'loss', 'surface']);
-const THREE: PanelId[] = ['fit', 'loss', 'surface'];
 const two = new Set<PanelId>(['fit', 'loss']);
+
+test('the histogram panel is part of the default order', () => {
+  expect(DEFAULT_ORDER).toContain('histogram');
+  expect(DEFAULT_WEIGHTS.histogram).toBe(1);
+});
 
 describe('movePanel', () => {
   test('moves a panel to an index among the others', () => {

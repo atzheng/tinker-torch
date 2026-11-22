@@ -7,6 +7,7 @@ import { FitPlot } from './FitPlot.js';
 import { LossCurves } from './LossCurves.js';
 import { LossCurve1D } from './LossCurve1D.js';
 import { LossSurface } from './LossSurface.js';
+import { TargetHistogram, useHistogramApplies } from './TargetHistogram.js';
 import { dropIndex, movePanel, resizePair, type PanelId } from './panelLayout.js';
 import styles from './ResultsPanels.module.css';
 
@@ -15,12 +16,14 @@ const TITLES: Record<PanelId, string> = {
   loss: 'Loss',
   surface: 'Loss surface',
   'loss-1d': 'Loss vs parameter',
+  histogram: 'Target',
 };
 
 function Panel({ id }: { id: PanelId }) {
   if (id === 'fit') return <FitPlot />;
   if (id === 'loss') return <LossCurves />;
   if (id === 'loss-1d') return <LossCurve1D />;
+  if (id === 'histogram') return <TargetHistogram />;
   return <LossSurface />;
 }
 
@@ -43,6 +46,7 @@ export function ResultsPanels() {
   const hasSurface = useStore((s) =>
     s.host ? twoParams(s.host, s.analysis.order) !== null : false,
   );
+  const hasHistogram = useHistogramApplies();
   const columnRef = useRef<HTMLDivElement>(null);
   // The panel being dragged, how far it has moved, and its index among the other visible panels.
   const [lift, setLift] = useState<{ id: PanelId; dy: number; to: number } | null>(null);
@@ -52,7 +56,8 @@ export function ResultsPanels() {
     (p) =>
       isShown(allowed, `panel-${p}`) &&
       (p !== 'surface' || hasSurface) &&
-      (p !== 'loss-1d' || hasParams),
+      (p !== 'loss-1d' || hasParams) &&
+      (p !== 'histogram' || hasHistogram),
   );
   const visibleSet = new Set(visible);
 
