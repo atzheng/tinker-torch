@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, test, vi } from 'vitest';
-import { buildCsv, parseCsv, sample, type DataInfo } from '@tinker/core';
+import { SETS, buildCsv, parseCsv, sample, type DataInfo } from '@tinker/core';
 import { initialGraph } from '../src/state/graphSlice.js';
 import { useStore } from '../src/state/store.js';
 import { axisLabel, featureName, inputLine } from '../src/state/names.js';
 import { fetchCsvText } from '../src/topbar/csvSource.js';
 import { loadBundled } from '../src/topbar/PresetMenu.js';
+import { loadText, saveText } from '../src/topbar/FileMenu.js';
 
 const s = () => useStore.getState();
 
@@ -61,6 +62,58 @@ test('Open CSV makes the csv set; opening again re-samples', () => {
   s().openCsv(b, 'toy2.csv');
   expect(s().graph.data.seed).not.toBe(seed);
   expect(sample(s().graph.data).nTrain + sample(s().graph.data).nVal).toBe(20);
+});
+
+test('a saved file carries the opened CSV and reopens without it', () => {
+  const rows = Array.from({ length: 20 }, (_, i) => `${i},${(i * 7) % 5},${i % 2 ? 'a' : 'b'}`);
+  const p = parseCsv(['u,v,kind', ...rows].join('\n'));
+  if (!p.ok) throw new Error(p.error);
+  const b = buildCsv(p.csv, { target: 2, inputs: [0, 1], kind: 'binary' });
+  if (!b.ok) throw new Error(b.error);
+  s().openCsv(b, 'toy.csv');
+  const before = sample(s().graph.data);
+  const text = saveText(false);
+  expect(JSON.parse(text).csv.name).toBe('toy.csv');
+  // a fresh session: another CSV is open, and the file's own rows replace it
+  SETS.csv = { ...SETS.csv, featureNames: ['p', 'q'] };
+  useStore.setState({ csvName: null });
+  expect(loadText(text)).toEqual({ ok: true, message: null });
+  expect(s().graph.data.set).toBe('csv');
+  expect(s().csvName).toBe('toy.csv');
+  expect(s().dataInfo.featureNames).toEqual(['u', 'v']);
+  expect(s().dataInfo.classNames).toEqual(before.info.classNames);
+  expect(sample(s().graph.data).xTrain).toEqual(before.xTrain);
+});
+
+test('undo and redo bring back the CSV that went with the graph; no name gets a label', () => {
+  const make = (cols: string[]) => {
+    const rows = Array.from(
+      { length: 20 },
+      (_, i) => `${i},${(i * 7) % 5},${i % 3},${i % 2 ? 'a' : 'b'}`,
+    );
+    const p = parseCsv([[...cols, 'kind'].join(','), ...rows].join('\n'));
+    if (!p.ok) throw new Error(p.error);
+    const b = buildCsv(p.csv, { target: 3, inputs: cols.map((_, i) => i), kind: 'binary' });
+    if (!b.ok) throw new Error(b.error);
+    return b;
+  };
+  s().openCsv(make(['u', 'v', 'w']), 'A.csv');
+  const fileB = saveText(false);
+  s().openCsv(make(['p', 'q', 'r']), 'B.csv');
+  const textB = saveText(false);
+  s().openCsv(make(['u', 'v', 'w']), 'A.csv');
+  expect(fileB).not.toBe(textB);
+  const doc = JSON.parse(textB) as { csv: { name?: string } };
+  delete doc.csv.name;
+  expect(loadText(JSON.stringify(doc))).toEqual({ ok: true, message: null });
+  expect(s().dataInfo.featureNames).toEqual(['p', 'q', 'r']);
+  expect(s().csvName).toBe('your data');
+  s().undo();
+  expect(s().csvName).toBe('A.csv');
+  expect(s().dataInfo.featureNames).toEqual(['u', 'v', 'w']);
+  s().redo();
+  expect(s().csvName).toBe('your data');
+  expect(s().dataInfo.featureNames).toEqual(['p', 'q', 'r']);
 });
 
 test('fetchCsvText: fake fetch only, one-sentence errors', async () => {

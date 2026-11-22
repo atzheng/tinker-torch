@@ -76,6 +76,22 @@ path.tk-hit {
   font: 12px var(--font-mono);
   pointer-events: none;
 }
+/* Probability bar on a Link (tinker-6t7.17): a diagnostic, so flat, no outline, muted mono, never a control. */
+.tk-probbar {
+  pointer-events: none;
+}
+.tk-probbar-track {
+  fill: var(--diag-border);
+  fill-opacity: 0.6;
+  stroke: none;
+}
+.tk-probbar-fill {
+  fill: var(--diag-fg);
+}
+.tk-probbar-text {
+  fill: var(--diag-fg);
+  font: 10px var(--font-mono);
+}
 .tk-glyph {
   fill: var(--node-name);
   font: 500 19px var(--font);

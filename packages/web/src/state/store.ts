@@ -1,5 +1,16 @@
 import { create } from 'zustand';
-import { analyse, hasTable, isRealSet, loadRealSet, sample, type DataConfig } from '@tinker/core';
+import {
+  analyse,
+  embedCsv,
+  getTable,
+  hasTable,
+  isRealSet,
+  loadRealSet,
+  registerEmbeddedCsv,
+  sample,
+  type DataConfig,
+  type EmbeddedCsv,
+} from '@tinker/core';
 import { neuronSelectionLive } from '../canvas/pure.js';
 import { noteHost } from './hostShape.js';
 import { createDataSlice, type DataSlice } from './dataSlice.js';
@@ -47,8 +58,25 @@ function refreshDataset(data: DataConfig): void {
   useStore.setState({ dataset, dataInfo: dataset.info });
 }
 
+// The CSV is a session global outside the undo history, so each graph on the csv set remembers
+// the CSV it was made with, and undo, redo or any switch to that graph puts the same rows back.
+const csvOfGraph = new WeakMap<object, { csv: EmbeddedCsv; name: string | null }>();
+function syncCsv(s: Store, prev: Store): void {
+  if (s.graph === prev.graph || s.graph.data.set !== 'csv') return;
+  const known = csvOfGraph.get(s.graph);
+  if (!known) {
+    const csv = embedCsv(s.csvName);
+    if (csv) csvOfGraph.set(s.graph, { csv, name: s.csvName });
+    return;
+  }
+  if (getTable('csv')?.x === known.csv.x) return;
+  registerEmbeddedCsv(known.csv);
+  useStore.setState({ csvName: known.name });
+}
+
 useStore.subscribe((s, prev) => {
-  if (s.graph.data !== prev.graph.data) refreshDataset(s.graph.data);
+  syncCsv(s, prev);
+  if (s.graph.data !== prev.graph.data) refreshDataset(useStore.getState().graph.data);
 });
 
 // After the data subscription: the train loop re-compiles on graph or dataset changes.

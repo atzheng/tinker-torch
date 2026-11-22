@@ -24,6 +24,8 @@ import {
 } from './pure.js';
 import { PinMark } from './PinMark.js';
 import { lockedIds } from '../state/locks.js';
+import { useProbBars } from '../state/derived.js';
+import type { ProbBar } from './probBarPure.js';
 import {
   addPrediction,
   inputPortsOf,
@@ -116,6 +118,7 @@ export function layerProps(
   analysis: Analysis,
   weights: HostParams | undefined,
   scale?: number,
+  probBar?: ProbBar,
 ): LayerProps<typeof node.type> {
   const inWidth = analysis.inWidth[node.id];
   const outWidth = analysis.outWidth[node.id];
@@ -124,6 +127,7 @@ export function layerProps(
   if (scale !== undefined) props['scale'] = scale;
   if (inWidth !== undefined) props['inWidth'] = inWidth;
   if (outWidth !== undefined) props['outWidth'] = outWidth;
+  if (node.type === 'link' && probBar) props['probBar'] = probBar;
   if (node.type === 'linear' && inWidth !== undefined) {
     const entry = weights?.[node.id]; // undefined for a Linear off the loss path
     if (entry?.W && entry.W.length === inWidth * node.out) {
@@ -211,6 +215,7 @@ export function LayerView(p: LayerViewProps) {
   const target = p.drag?.target ?? null;
   const dropEdge = target?.kind === 'wire' ? target.edge : -1;
   const dropNode = target?.kind === 'node' ? target.id : target?.kind === 'port' ? target.node : '';
+  const probBars = useProbBars(analysis);
   const lockedList = useStore((s) => s.preset?.locked);
   const locked = new Set(lockedList ?? []);
   const cand = p.candidates;
@@ -407,7 +412,7 @@ export function LayerView(p: LayerViewProps) {
                 pred={graph.predictions.some((x) => parsePort(x).node === node.id)}
               />
             ) : (
-              <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
+              <Layer {...layerProps(node, box, analysis, p.weights, scale, probBars[node.id])} />
             )}
             {ghost === undefined && p.analysis.inert.includes(node.id) && (
               <>

@@ -3,12 +3,15 @@ import { parseChecks, type Check } from './checks.js';
 import type { JsonParams } from './params.js';
 import { PALETTE } from './registry.js';
 import { shownTabs } from './viewPartition.js';
+import { parseEmbeddedCsv, type EmbeddedCsv } from './data/csvEmbed.js';
 
 export type SaveFile = {
   kind: 'tinker';
   version: 2;
   graph: Graph;
   params?: JsonParams;
+  /** The CSV rows when the graph uses the `csv` set (CONTRACTS.md section 12); absent: the old behaviour. */
+  csv?: EmbeddedCsv;
 };
 /**
  * Progressive disclosure (CONTRACTS.md section 12): what a preset shows. Allow-lists; an absent list
@@ -221,6 +224,14 @@ export function parseFile(json: unknown): ParseFileResult {
   // A version 1 file is migrated by parseGraph; what we hold is always a version 2 file.
   const file: SaveFile = { kind: 'tinker', version: 2, graph: g.graph };
   if (params !== undefined) file.params = params as SaveFile['params'];
+  if (json['csv'] !== undefined) {
+    if (g.graph.data.set !== 'csv') {
+      return fail('This file carries a CSV table, but its graph does not use the csv data set.');
+    }
+    const e = parseEmbeddedCsv(json['csv']);
+    if (typeof e === 'string') return fail(e);
+    file.csv = e;
+  }
 
   if (
     'title' in json ||
@@ -418,12 +429,13 @@ export function parseFileText(text: string): ParseFileResult {
 }
 
 /** Two-space JSON with the graph in its stable key order; the same inputs always give the same text. */
-export function serializeFile(graph: Graph, params?: JsonParams): string {
+export function serializeFile(graph: Graph, params?: JsonParams, csv?: EmbeddedCsv | null): string {
   const doc: Record<string, unknown> = {
     kind: 'tinker',
     version: 2,
     graph: JSON.parse(serializeGraph(graph)) as unknown,
   };
   if (params) doc['params'] = params;
+  if (csv && graph.data.set === 'csv') doc['csv'] = csv;
   return JSON.stringify(doc, null, 2) + '\n';
 }
