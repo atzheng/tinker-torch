@@ -88,10 +88,10 @@ test('classBars: observed rows may exceed predicted rows', () => {
 
 test('a width-1 ŷ that is not a sigmoid Link gives the sentence, not P(class 1)', () => {
   expect(loadBundled('logistic')).toBe(true);
-  // replace the sigmoid Link by a plain Activation (tanh-free identity-like): outputs stay a width-1 pin
+  // replace the sigmoid Link by a plain relu Activation: outputs stay a width-1 pin
   const g = s().graph;
   const nodes = g.nodes.map((n) =>
-    n.type === 'link' ? ({ id: n.id, type: 'activation', fn: 'relu' } as typeof n) : n,
+    n.type === 'link' ? ({ id: n.id, type: 'activation', fn: 'relu' } as unknown as typeof n) : n,
   );
   act(() => s().loadGraph({ ...g, nodes } as typeof g));
   const m = mount();
