@@ -3,7 +3,7 @@
  * (resampleWorker.ts) and in Node tests. No jax array leaves this function: every model and Params
  * it makes is disposed before it returns, also when something throws.
  */
-import { grid1d, grid2d, makeRng, sample, type Graph } from '@tinker/core';
+import { grid1d, grid2dSlice, heldValues, makeRng, sample, type Graph } from '@tinker/core';
 import type { Engine } from '@tinker/engine';
 
 export type ResampleRequest = {
@@ -16,6 +16,8 @@ export type ResampleRequest = {
   seed: number;
   /** Grid points: 1-D data uses grid1d(domain, gridN), 2-D grid2d(domain, gridN). */
   gridN: number;
+  /** Raw value each column is held at in the 2-D slice (`heldValues` of the plotted dataset); default: of each copy. */
+  held?: number[];
   /** Which ŷ pin to predict (index into `graph.predictions`); default 0. */
   prediction?: number;
 };
@@ -66,7 +68,7 @@ export function runResample(engine: Engine, req: ResampleRequest): ResampleRespo
       const grid =
         d === 1
           ? grid1d(ds.domain, gridN, ds.standardization)
-          : grid2d(ds.domain, gridN, ds.standardization);
+          : grid2dSlice(ds.domain, req.held ?? heldValues(ds), 0, 1, gridN, ds.standardization);
       const params = engine.fromHost(model, r.params);
       let out: Float32Array | undefined;
       try {

@@ -102,3 +102,36 @@ test('a graph the engine cannot train comes back as a sentence, with nothing lef
   expect(r.ok).toBe(false);
   expect(engine.liveArrays()).toBe(before);
 });
+
+test('a model reading the categorical x4 of delivery_late gets full-width grid rows', () => {
+  const g = parseGraph({
+    version: 2,
+    nodes: [
+      { id: 'zone', type: 'input', columns: ['x4'] },
+      { id: 'look', type: 'lookup', width: 1 },
+      { id: 'p', type: 'link', fn: 'sigmoid' },
+      { id: 'y', type: 'target' },
+      { id: 'err', type: 'log_loss' },
+      { id: 'loss', type: 'mean' },
+    ],
+    edges: [
+      ['zone', 'look'],
+      ['look', 'p'],
+      ['p', 'err.pred'],
+      ['y', 'err.target'],
+      ['err', 'loss'],
+    ],
+    predictions: ['p'],
+    loss: 'loss',
+    data: { set: 'delivery_late', n: 200, noise: 0.3, val: 0, seed: 1, standardize: false },
+    train: { optimizer: 'adam', lr: 0.1, batch: 'full', seed: 1 },
+  });
+  if (!g.ok) throw new Error(g.error);
+  const r = runResample(engine, { graph: g.graph, steps: 20, k: 2, seed: 3, gridN: 8 });
+  expect(r.ok).toBe(true);
+  if (!r.ok) return;
+  expect(r.diverged).toBe(0);
+  expect(r.curves).toHaveLength(2);
+  expect(r.curves[0]).toHaveLength(8 * 8);
+  expect([...(r.curves[0] ?? [])].every((v) => v > 0 && v < 1)).toBe(true);
+});

@@ -188,6 +188,14 @@ const csvText = [
 ].join('\n');
 
 describe('CSV text input columns', () => {
+  it('a single-value text column gets its own note', () => {
+    const rows = Array.from({ length: 12 }, (_, i) => `${i},same,${i % 2}`);
+    const p = parseCsv(['a,flag,y', ...rows].join('\n'));
+    if (!p.ok) throw new Error(p.error);
+    const b = buildCsv(p.csv, { target: 2, inputs: [0, 1], kind: 'binary' });
+    expect(b.ok && b.notes).toEqual(['Left out 1 text column with only one value: flag.']);
+  });
+
   it('keeps a text column with few values as a category, sorted over the whole file', () => {
     const p = parseCsv(csvText);
     if (!p.ok) throw new Error(p.error);

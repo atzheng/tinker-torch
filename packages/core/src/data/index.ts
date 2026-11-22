@@ -12,7 +12,7 @@ export {
 export type { Dataset, Standardization } from './sample.js';
 export { SETS, spread } from './sets.js';
 export type { SetSpec, SetKind } from './sets.js';
-export { grid1d, grid2d, grid2dSlice } from './grid.js';
+export { grid1d, grid2d, grid2dSlice, heldValues } from './grid.js';
 export type { Grid } from './grid.js';
 export { batchSchedule, gatherBatch, stepsPerEpoch } from './batches.js';
 export type { Batch } from './batches.js';

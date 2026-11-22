@@ -221,13 +221,22 @@ export function buildCsv(
   const notes: string[] = [];
   const left = inputs.filter((i) => inputKind(csv, i) === null);
   const used = inputs.filter((i) => inputKind(csv, i) !== null);
-  if (left.length > 0) {
+  const note = (cols: number[], why: string): void => {
+    if (cols.length === 0) return;
     notes.push(
-      `Left out ${left.length} text column${left.length === 1 ? '' : 's'} with too many distinct values: ${left
+      `Left out ${cols.length} text column${cols.length === 1 ? '' : 's'} ${why}: ${cols
         .map((i) => csv.header[i])
         .join(', ')}.`,
     );
-  }
+  };
+  note(
+    left.filter((i) => (csv.columns[i]?.distinct ?? 0) <= 1),
+    'with only one value',
+  );
+  note(
+    left.filter((i) => (csv.columns[i]?.distinct ?? 0) > 1),
+    'with too many distinct values',
+  );
   if (used.length === 0) return { ok: false, error: 'Choose at least one input column.' };
   if (kind === 'regression' && !tcol.numeric) {
     return { ok: false, error: 'A regression target must be a numeric column.' };

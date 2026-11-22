@@ -9,8 +9,11 @@ import type { EnginePiece } from './types.js';
  */
 function oneHotOf(x: JArray, k: number): JArray {
   const n = x.shape[0] ?? 0;
-  // The indices are exact integers stored as floats; round guards against a stray 2.9999.
-  return nn.oneHot(np.round(x).reshape([n]).astype(np.int32), k).astype(np.float32);
+  // The indices are exact integers stored as floats; round guards against a stray 2.9999. An index
+  // outside 0..K-1 (never produced by the datasets) is clamped to the nearest category, NaN to 0.
+  const r = np.round(x).reshape([n]);
+  const idx = np.clip(np.where(np.isnan(r.ref), 0, r), 0, k - 1);
+  return nn.oneHot(idx.astype(np.int32), k).astype(np.float32);
 }
 
 /** `[n, 1]` category indices -> `[n, K]` one-hot columns, K = the dataset's category count. Consumes `inputs.in`. */

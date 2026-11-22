@@ -71,6 +71,21 @@ test('a width-1 Lookup trained by log loss converges to each zone sample late ra
   engine.disposeModel(model);
 });
 
+test('an out-of-range or NaN category index gives a defined one-hot (clamped, NaN to 0)', () => {
+  const ds = sample(lookupGraph.data);
+  const model = engine.compile(lookupGraph, ds.info);
+  const params = engine.fromHost(model, { look: { W: Float32Array.of(-2, -1, 1, 2) } });
+  const sig = (v: number) => 1 / (1 + Math.exp(-v));
+  const zones = [0, 3, -5, 9, NaN, 2, 1.4];
+  const x = new Float32Array(zones.length * 4);
+  zones.forEach((z, i) => (x[i * 4 + 3] = z));
+  const out = engine.predict(model, params, x, zones.length)[0];
+  const want = [-2, 2, -2, 2, -2, 1, -1].map(sig);
+  want.forEach((w, i) => expect(out?.[i]).toBeCloseTo(w, 5));
+  engine.dispose(params);
+  engine.disposeModel(model);
+});
+
 test('trainMany (vmap) works on a Lookup model', () => {
   const ds = sample(lookupGraph.data);
   const model = engine.compile(lookupGraph, ds.info);
