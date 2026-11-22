@@ -9,6 +9,7 @@
   --text: #1b1f27;
   --text-muted: #5b6472;
 
+  --success: #1a7f37;
   --accent: #2557d6;
   --accent-text: #ffffff;
   --focus-ring: #1a73e8;
@@ -113,6 +114,7 @@
     --text: #e7eaf0;
     --text-muted: #9aa3b2;
 
+    --success: #3fb950;
     --accent: #6f9bff;
     --accent-text: #0e1116;
     --focus-ring: #8ab4ff;

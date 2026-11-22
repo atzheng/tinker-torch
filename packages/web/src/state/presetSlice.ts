@@ -1,11 +1,12 @@
 import type { StateCreator } from 'zustand';
-import type { HostParams, NodeId, Show } from '@tinker/core';
+import type { Check, HostParams, NodeId, Show } from '@tinker/core';
 
 /** What a loaded preset leaves in the store (CONTRACTS.md section 12). */
 export type ActivePreset = {
   title: string;
   prompt?: string;
   instructions?: string[];
+  checks?: Check[];
   /** Locked piece ids that exist in the loaded graph (unknown ids in the file are ignored). */
   locked: NodeId[];
 };

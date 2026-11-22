@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { TexText } from '../tex/Tex.js';
+import { Tick, useCheckResults } from './SuccessTick.js';
 import styles from './InstructionsPanel.module.css';
 
 /**
@@ -20,6 +21,7 @@ export function InstructionsPanel() {
 
 function Panel({ title, steps }: { title: string | undefined; steps: string[] }) {
   const [open, setOpen] = useState(true);
+  const { steps: done, general } = useCheckResults();
   return (
     <section className={styles.panel} data-testid="instructions" aria-label="Instructions">
       <button
@@ -33,6 +35,7 @@ function Panel({ title, steps }: { title: string | undefined; steps: string[] })
           {open ? '▾' : '▸'}
         </span>
         <span className={styles.title}>{title ? <TexText>{title}</TexText> : 'Instructions'}</span>
+        {general && <Tick testId="success-check" />}
         <span className={styles.count}>
           {steps.length} {steps.length === 1 ? 'step' : 'steps'}
         </span>
@@ -40,11 +43,12 @@ function Panel({ title, steps }: { title: string | undefined; steps: string[] })
       {open && (
         <ol className={styles.steps} data-testid="instructions-steps">
           {steps.map((step, i) => (
-            // One slot per step: a later success-check bead can add a tick beside the text.
+            // One slot per step; a check naming this step puts its tick here.
             <li key={i} className={styles.step} data-step={i}>
               <span className={styles.stepText}>
                 <TexText>{step}</TexText>
               </span>
+              {done.get(i) && <Tick testId="success-check-step" />}
             </li>
           ))}
         </ol>

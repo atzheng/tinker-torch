@@ -8,6 +8,7 @@ import { initialGraph as defaultGraph } from '../src/state/graphSlice.js';
 import { PRESET_NAMES, bundledPreset } from '../src/presets/index.js';
 import { PromptLine } from '../src/presets/PromptLine.js';
 import { InstructionsPanel } from '../src/presets/InstructionsPanel.js';
+import { SuccessTick } from '../src/presets/SuccessTick.js';
 import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { lockedIds } from '../src/state/locks.js';
 import { useStore } from '../src/state/store.js';
@@ -217,6 +218,58 @@ test('instructions: shown as steps, collapsible, replace the prompt line, saved 
   });
   expect(q('instructions')).toBeNull();
   expect(q('preset-prompt')).not.toBeNull();
+  act(() => root.unmount());
+});
+
+test('success checks: ticks follow the live loss and parameters, are saved back and can be hidden', () => {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+  act(() =>
+    root.render(
+      <>
+        <InstructionsPanel />
+        <SuccessTick />
+      </>,
+    ),
+  );
+  const checks = [
+    { kind: 'lossBelow', value: 0.3, step: 0 },
+    { kind: 'paramNear', node: 'lin2', tensor: 'b', value: 0.25, tol: 0.01 },
+  ];
+  act(() => {
+    loadText(presetText({ title: 'T', instructions: ['Lower the loss.'], checks }));
+  });
+  const live = (train: number | null, b: number) =>
+    act(() =>
+      useStore.setState({
+        liveLoss: { train, val: null },
+        host: { lin2: { W: Float32Array.of(0), b: Float32Array.of(b) } },
+      }),
+    );
+  live(0.5, 0);
+  expect(q('success-check-step')).toBeNull();
+  expect(q('success-check')).toBeNull();
+  live(0.2, 0);
+  expect(q('success-check-step')).not.toBeNull();
+  expect(q('success-check')).toBeNull();
+  live(0.2, 0.251);
+  expect(q('success-check')).not.toBeNull();
+  live(0.9, 0.251);
+  expect(q('success-check-step')).toBeNull();
+  expect(JSON.parse(saveText(false))).toMatchObject({ checks });
+  // No instructions: the preset-level tick stands alone.
+  act(() => {
+    loadText(presetText({ title: 'U', checks: [checks[1]] }));
+  });
+  live(0.9, 0.25);
+  expect(q('success-check')).not.toBeNull();
+  act(() => {
+    loadText(presetText({ title: 'V', checks: [checks[1]], show: { ui: ['btn-step'] } }));
+  });
+  live(0.9, 0.25);
+  expect(q('success-check')).toBeNull();
   act(() => root.unmount());
 });
 
