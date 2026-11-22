@@ -1,11 +1,13 @@
 import { useRef, useState } from 'react';
 import {
+  embedCsv,
   hasTable,
   isRealSet,
   loadRealSet,
   paramsFromJson,
   paramsToJson,
   parseFileText,
+  registerEmbeddedCsv,
   serializeFile,
   type LossMode,
   type Preset,
@@ -20,8 +22,10 @@ export const SAVE_FILE_NAME = 'tinker-model.tinker.json';
 
 /** Text of the file Save would write; weights only when asked for and available. */
 export function saveText(withWeights: boolean): string {
-  const { graph, host, preset } = useStore.getState();
-  const text = serializeFile(graph, withWeights && host ? paramsToJson(host) : undefined);
+  const { graph, host, preset, csvName } = useStore.getState();
+  // The rows of an opened CSV travel with the file, so a student's session needs no CSV of its own.
+  const csv = graph.data.set === 'csv' ? embedCsv(csvName) : null;
+  const text = serializeFile(graph, withWeights && host ? paramsToJson(host) : undefined, csv);
   if (!preset) return text;
   // A preset that is being edited stays a preset: title, prompt, locked ids and the disclosure lists are written back.
   const doc = JSON.parse(text) as Record<string, unknown>;
@@ -53,6 +57,11 @@ export function loadText(text: string): { ok: boolean; message: string | null } 
  */
 export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: string | null } {
   const set = file.graph.data.set;
+  if (file.csv && set === 'csv') {
+    // The file carries its rows: they replace any CSV open in this session (as opening one does).
+    registerEmbeddedCsv(file.csv);
+    useStore.setState({ csvName: file.csv.name ?? null });
+  }
   if (isRealSet(set) && !hasTable(set)) {
     if (set === 'csv') {
       return {

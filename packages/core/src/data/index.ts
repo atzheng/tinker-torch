@@ -39,3 +39,10 @@ export {
   usableInputs,
 } from './csv.js';
 export type { Csv, CsvBuild, CsvColumn } from './csv.js';
+export {
+  embedCsv,
+  embeddedToBuild,
+  parseEmbeddedCsv,
+  registerEmbeddedCsv,
+} from './csvEmbed.js';
+export type { EmbeddedCsv } from './csvEmbed.js';
