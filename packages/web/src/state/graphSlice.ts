@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import { parseFile, parseGraph, type EditResult, type Graph } from '@tinker/core';
+import { parseFile, parseGraph, type EditResult, type Graph, type Show } from '@tinker/core';
 import scalarPreset from '../presets/scalar.json';
 import type { ActivePreset, PresetSlice } from './presetSlice.js';
 
@@ -33,7 +33,7 @@ export type GraphSlice = {
    * `preset` (a file load): the preset that goes with the new graph (null for none); left out,
    * the current preset stays. Either way it is saved in the history with the graph.
    */
-  apply: (edit: EditResult, preset?: ActivePreset | null) => EditResult;
+  apply: (edit: EditResult, preset?: ActivePreset | null, show?: Show | null) => EditResult;
   undo: () => void;
   redo: () => void;
   /** Replace the graph and clear the history and the preset (a new graph). */
@@ -61,7 +61,7 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
   canUndo: false,
   canRedo: false,
   error: null,
-  apply: (edit, preset) => {
+  apply: (edit, preset, show) => {
     if (!edit.ok) {
       set({ error: edit.error });
       return edit;
@@ -75,7 +75,7 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       future: [],
       futurePresets: [],
       ...(preset !== undefined
-        ? { preset, promptDismissed: false, loadEpoch: get().loadEpoch + 1 }
+        ? { preset, show: show ?? null, promptDismissed: false, loadEpoch: get().loadEpoch + 1 }
         : {}),
       canUndo: true,
       canRedo: false,
@@ -135,6 +135,7 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       pastPresets: [],
       futurePresets: [],
       preset: null,
+      show: null,
       promptDismissed: false,
       canUndo: false,
       canRedo: false,
