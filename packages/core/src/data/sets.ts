@@ -16,6 +16,11 @@ export type SetSpec = {
   numClasses?: number;
   /** Display names of the features (`DataInfo.featureNames`); default none (x1, x2, ... are shown). */
   featureNames?: string[];
+  /**
+   * Categorical columns: column index -> category names. Such a column holds the category's index
+   * (0..K-1) as a float; Standardise skips it and it never feeds a numeric piece directly.
+   */
+  categories?: Record<number, string[]>;
   /** A real dataset: fixed rows, `n` and `noise` do not apply (`f` is unused). */
   real?: boolean;
   /** A generated set whose labels or targets do not use `noise` (the top bar hides Noise). */
@@ -294,9 +299,9 @@ export function generate(set: DatasetName, n: number, noise: number, rng: Rng): 
   const rn = rng.fork('noise');
   const rows: Row[] = [];
 
-  // Delivery sets branch early: tinker-6t7.7 (categorical input) reshapes this function.
+  // The delivery sets (a categorical zone column among the inputs) have their own generator.
   if (set === 'delivery_late' || set === 'delivery_time') {
-    return generateDelivery(set, n, noise, rng).map(({ x, y }) => ({ x, y }));
+    return generateDelivery(set, n, noise, rng);
   }
 
   if (spec.kind === 'regression') {

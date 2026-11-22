@@ -1,5 +1,13 @@
 import { useMemo, useState } from 'react';
-import { buildCsv, inferKind, parseCsv, type Csv, type SetKind } from '@tinker/core';
+import {
+  buildCsv,
+  inferKind,
+  inputKind,
+  parseCsv,
+  usableInputs,
+  type Csv,
+  type SetKind,
+} from '@tinker/core';
 import { useStore } from '../state/store.js';
 import { Modal } from './Modal.js';
 import { fetchCsvText, readCsvFile, type Loaded } from './csvSource.js';
@@ -48,7 +56,7 @@ export function CsvDialog({ onClose }: { onClose: () => void }) {
     setSource({ csv: p.csv, name: l.name });
     const t = defaultTarget(p.csv);
     setTarget(t);
-    setInputs(p.csv.columns.flatMap((c, i) => (i !== t && c.numeric ? [i] : [])));
+    setInputs(usableInputs(p.csv, t));
     setKind(inferKind(p.csv, t) ?? 'multiclass');
   };
 
@@ -60,7 +68,7 @@ export function CsvDialog({ onClose }: { onClose: () => void }) {
   const pickTarget = (t: number) => {
     if (!source) return;
     setTarget(t);
-    setInputs(source.csv.columns.flatMap((c, i) => (i !== t && c.numeric ? [i] : [])));
+    setInputs(usableInputs(source.csv, t));
     setKind(inferKind(source.csv, t) ?? 'multiclass');
   };
 
@@ -153,8 +161,8 @@ export function CsvDialog({ onClose }: { onClose: () => void }) {
                   <input
                     type="checkbox"
                     data-testid={`csv-input-${i}`}
-                    disabled={!source.csv.columns[i]?.numeric}
-                    checked={inputs.includes(i) && !!source.csv.columns[i]?.numeric}
+                    disabled={inputKind(source.csv, i) === null}
+                    checked={inputs.includes(i) && inputKind(source.csv, i) !== null}
                     onChange={(e) =>
                       setInputs(
                         e.target.checked
@@ -165,7 +173,11 @@ export function CsvDialog({ onClose }: { onClose: () => void }) {
                   />
                   <span>
                     {h}
-                    {source.csv.columns[i]?.numeric ? '' : ' (text, left out)'}
+                    {inputKind(source.csv, i) === 'categorical'
+                      ? ' (categories)'
+                      : inputKind(source.csv, i) === null
+                        ? ' (text, left out)'
+                        : ''}
                   </span>
                 </label>
               ),

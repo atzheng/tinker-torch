@@ -79,17 +79,25 @@ for (const file of files) {
     const parsed = parseGraph(fx.graph); // version 1 fixtures are migrated
     expect(parsed.ok ? 'ok' : parsed.error).toBe('ok');
     const { n } = fx.batch;
-    const input = fx.graph.nodes.find((x) => x.type === 'input') as unknown as
-      { columns: string[] } | undefined;
+    const inputs = fx.graph.nodes.filter((x) => x.type === 'input') as unknown as {
+      columns: string[];
+    }[];
+    const input = inputs[0];
     // scalar graphs have no Input: their columns are the Column nodes' names; a graph with neither
     // (an unwired Bias) reads the dataset's single column
+    // (a categorical fixture has several Inputs of one column each: d is the highest column number)
     const d = input
-      ? input.columns.length
+      ? Math.max(
+          input.columns.length,
+          ...inputs.flatMap((i) => i.columns.map((c) => Number(c.slice(1)))),
+        )
       : Math.max(1, fx.graph.nodes.filter((x) => x.type === 'column').length);
     expect(fx.batch.x).toHaveLength(n * d);
     expect(fx.batch.y).toHaveLength(n);
     const linears = fx.graph.nodes.filter((x) => x.type === 'linear');
-    const owners = fx.graph.nodes.filter((x) => ['linear', 'scalew', 'bias'].includes(x.type));
+    const owners = fx.graph.nodes.filter((x) =>
+      ['linear', 'scalew', 'bias', 'lookup'].includes(x.type),
+    );
     expect(Object.keys(fx.params).sort()).toEqual(owners.map((l) => l.id).sort());
     for (const l of linears) {
       const p = need(fx.params[l.id]);

@@ -9,6 +9,8 @@ export type JsonParams = Record<string, { W?: number[]; b?: number[] }>;
 export type Fixture = {
   name: string;
   graph: unknown;
+  /** Categorical columns: column id -> number of categories (tinker-6t7.7). */
+  categories?: Record<string, number>;
   params: JsonParams;
   batch: { x: number[]; y: number[]; n: number };
   expect: {
@@ -46,6 +48,19 @@ export function loadFixture(name: string): { fx: Fixture; graph: Graph; data: Da
     columns,
     kind: spec.kind,
     numClasses: classCount(parsed.graph.data.set),
+    ...(fx.categories
+      ? {
+          columnKinds: columns.map((c) =>
+            fx.categories?.[c] ? ('categorical' as const) : ('numeric' as const),
+          ),
+          categories: Object.fromEntries(
+            Object.entries(fx.categories).map(([c, k]) => [
+              c,
+              Array.from({ length: k }, (_, i) => `c${i}`),
+            ]),
+          ),
+        }
+      : {}),
   };
   return { fx, graph: parsed.graph, data };
 }

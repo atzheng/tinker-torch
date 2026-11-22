@@ -82,7 +82,14 @@ type ShapeFn = (
   inShapes: Record<string, Shape>,
   ctx: ShapeCtx,
 ) => Shape | { error: string };
-type ParamFn = (node: Node, inW: number) => ParamShapes;
+/** Category count by column id, for the categorical columns of `data`. */
+function categoryCounts(data: DataInfo): Record<string, number> {
+  const out = Object.create(null) as Record<string, number>;
+  for (const [c, names] of Object.entries(data.categories ?? {})) out[c] = names.length;
+  return out;
+}
+
+type ParamFn = (node: Node, inW: number, inShape?: Shape) => ParamShapes;
 type InitFn = (node: Node, inW: number, data: DataInfo) => ParamInit;
 
 const record = <T>() => Object.create(null) as Record<NodeId, T>; // no prototype: ids like "constructor" are safe
@@ -187,6 +194,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
   // which may come later in topological order (there is no data wire between them).
   const ctx: ShapeCtx = {
     dataColumns: data.columns.length,
+    ...(data.categories ? { categories: categoryCounts(data) } : {}),
     numClasses: data.numClasses,
     weightShape: (linearId) => {
       const lin = byId.get(linearId);
@@ -236,6 +244,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     let unknownUpstream = false;
     let missing = false;
     let mismatch: { edge: number; message: string } | undefined;
+    let wrongKind: { edge: number; message: string } | undefined;
     for (const port of ports) {
       const wires = inEdges.get(id)?.get(port) ?? [];
       if (wires.length === 0) {
@@ -247,6 +256,15 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
       if (shapes.some((x) => x === undefined) || s === undefined) unknownUpstream = true;
       else {
         inS[port] = s;
+        // A category column goes to One-hot or Lookup only (their `categoryPorts`).
+        const cat = shapes.findIndex((x) => x?.kind === 'example' && x.category !== undefined);
+        const catShape = shapes[cat];
+        if (cat >= 0 && catShape && !piece.categoryPorts?.includes(port)) {
+          wrongKind ??= {
+            edge: (wires[cat] as Used).index,
+            message: `"${id}" needs numbers, but ${describeShape(catShape)} is a category; send it through One-hot or Lookup first.`,
+          };
+        }
         if (isVariadicPort(node.type, port)) {
           shapes.forEach((x, k) => {
             if (k > 0 && x !== undefined && !sameShape(s, x)) {
@@ -309,6 +327,10 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
         return;
       }
     }
+    if (wrongKind && !missing) {
+      nodeIssue({ at: { node: id, edge: wrongKind.edge }, message: wrongKind.message });
+      return;
+    }
     const r = (piece.outShape as ShapeFn)(node, inS, ctx);
     if (missing) {
       // The piece's own sentence ("Linear needs an input.") from the registry.
@@ -349,7 +371,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
           ? 0
           : undefined;
     if (w !== undefined) {
-      const ps = (piece.paramShapes as ParamFn)(node, w);
+      const ps = (piece.paramShapes as ParamFn)(node, w, firstIn);
       let count = 0;
       for (const k of Object.keys(ps)) count += (ps[k] ?? []).reduce((a, d) => a * d, 1);
       params[id] = count;
@@ -518,6 +540,11 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
         at: { node, pin },
         message: `A prediction must be one row per example, but "${node}" is ${describeShape(s)}.`,
       });
+    } else if (s.category) {
+      issues.push({
+        at: { node, pin },
+        message: `A prediction must be a number, but "${node}" is a category; send it through One-hot or Lookup first.`,
+      });
     } else if (s.width !== want) {
       issues.push({
         at: { node, pin },
@@ -636,4 +663,22 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     issues,
     trainable: issues.length === 0,
   };
+}
+
+/**
+ * The category column a node reads or carries, with its category names, for the drawings and the
+ * inspector: an Input or Column of one categorical column carries it; One-hot and Lookup read it
+ * from their `in` wire. Undefined for every other node (and while the wire is unknown).
+ */
+export function categoryOf(
+  analysis: Analysis,
+  data: DataInfo,
+  id: NodeId,
+): { column: string; names: string[] } | undefined {
+  const own = analysis.shape[id];
+  const from = analysis.inputs[id]?.['in']?.[0]?.from;
+  const s = own?.kind === 'example' && own.category ? own : from ? analysis.shape[from] : undefined;
+  const column = s?.kind === 'example' ? s.category?.column : undefined;
+  const names = column === undefined ? undefined : data.categories?.[column];
+  return column !== undefined && names ? { column, names } : undefined;
 }
