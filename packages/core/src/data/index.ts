@@ -14,6 +14,17 @@ export { SETS, spread } from './sets.js';
 export type { SetSpec, SetKind } from './sets.js';
 export { grid1d, grid2d, grid2dSlice, heldValues } from './grid.js';
 export type { Grid } from './grid.js';
+export {
+  axisCategoryCount,
+  categoryJitter,
+  categoryNames,
+  categorySeries,
+  continuousCols,
+  fitView,
+  grid1dSlice,
+  gridCategories,
+} from './fitAxes.js';
+export type { FitView } from './fitAxes.js';
 export { batchSchedule, gatherBatch, stepsPerEpoch } from './batches.js';
 export type { Batch } from './batches.js';
 export {
