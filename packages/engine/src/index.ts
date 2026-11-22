@@ -27,6 +27,7 @@ import {
 } from './convert.js';
 import { trainMany } from './many.js';
 import { probeLiveArrays } from './probe.js';
+import { lossCurve, lossSlope } from './curve.js';
 import { lossGrid } from './surface.js';
 import type { Engine, Model, Params, StepResult, TrainState } from './types.js';
 
@@ -247,6 +248,16 @@ function makeEngine(): Engine {
     /** Borrows `model` and `params`. [a.length, b.length] row-major; dropout off. */
     lossGrid(model, params, batch, axes, a, b) {
       return lossGrid(model, peekParams(params), batch, axes, a, b);
+    },
+
+    /** Borrows `model` and `params`. One loss per entry of `values`; dropout off. */
+    lossCurve(model, params, batch, axis, values) {
+      return lossCurve(model, peekParams(params), batch, axis, values);
+    },
+
+    /** Borrows `model` and `params`. Gradient of the loss with respect to one parameter entry; dropout off. */
+    lossSlope(model, params, batch, axis) {
+      return lossSlope(model, peekParams(params), batch, axis);
     },
 
     trainMany(model, seeds, data, steps) {
