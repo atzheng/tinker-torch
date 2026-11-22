@@ -15,6 +15,8 @@ import {
 } from '@tinker/core';
 import type { ActivePreset } from '../state/presetSlice.js';
 import { useStore } from '../state/store.js';
+import { useUiShown } from '../state/disclosure.js';
+import { encodeShare, SHARE_TOO_LARGE } from '../share/shareLink.js';
 import { Popover } from './Popover.js';
 import styles from './FileMenu.module.css';
 
@@ -151,6 +153,22 @@ export function FileMenu() {
   const [withWeights, setWithWeights] = useState(true);
   const [note, setNote] = useState<{ ok: boolean; message: string } | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const showCopy = useUiShown('file-copy-link');
+
+  async function copyLink(): Promise<void> {
+    try {
+      const base = window.location.href.replace(/#.*$/, '');
+      const value = await encodeShare(saveText(withWeights), base.length);
+      if (value === null) {
+        setNote({ ok: false, message: SHARE_TOO_LARGE });
+        return;
+      }
+      await navigator.clipboard.writeText(`${base}#${value}`);
+      setNote({ ok: true, message: 'Link copied.' });
+    } catch {
+      setNote({ ok: false, message: 'The link could not be copied.' });
+    }
+  }
 
   async function onFile(file: File | undefined): Promise<void> {
     if (!file) return;
@@ -190,6 +208,11 @@ export function FileMenu() {
               />
               <span>Weights</span>
             </label>
+            {showCopy && (
+              <button type="button" data-testid="file-copy-link" onClick={() => void copyLink()}>
+                Copy link
+              </button>
+            )}
             <button
               type="button"
               data-testid="file-load"
