@@ -5,6 +5,7 @@ import type { HostParams, NodeId, Show } from '@tinker/core';
 export type ActivePreset = {
   title: string;
   prompt?: string;
+  instructions?: string[];
   /** Locked piece ids that exist in the loaded graph (unknown ids in the file are ignored). */
   locked: NodeId[];
 };
