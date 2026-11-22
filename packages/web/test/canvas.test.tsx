@@ -78,14 +78,18 @@ const fillOpacities = (id: string) =>
 test('the SPEC example draws every piece and width labels 1, 4, 4, 1', () => {
   for (const id of ['x', 'lin1', 'act1', 'lin2']) expect(q(`node-${id}`)).not.toBeNull();
   const label = (i: number) => must(`wire-label-${i}`).textContent;
-  expect([0, 1, 2, 3].map(label)).toEqual(['1', '4', '4', '1']);
-  // the model tab ends in a stub for the Subtract; the loss tab has the loss pieces and a stub for the prediction
-  expect(q('ghost-diff')).not.toBeNull();
+  expect([0, 1, 2].map(label)).toEqual(['1', '4', '4']);
+  // the model tab has no stub and no wire into the loss pieces; the loss tab has the loss pieces and a stub for the prediction
+  expect(q('ghost-diff')).toBeNull();
   expect(q('node-y')).toBeNull();
+  expect(q('wire-label-3')).toBeNull();
   act(() => s().setViewTab('loss'));
   for (const id of ['lin2', 'y', 'diff', 'err', 'loss']) expect(q(`node-${id}`)).not.toBeNull();
   expect(q('ghost-lin2')).not.toBeNull();
   expect(q('node-lin1')).toBeNull();
+  act(() => s().setViewTab('full'));
+  expect([0, 1, 2, 3].map(label)).toEqual(['1', '4', '4', '1']);
+  expect(q('node-y')).not.toBeNull();
   act(() => s().setViewTab('model'));
   expect(host.querySelectorAll('[data-error="true"]')).toHaveLength(0);
   expect(must('node-lin1').textContent).toContain('1 to 4');

@@ -41,6 +41,7 @@ const press = (el: Element | null) => {
 
 test('regions are drawn behind the pieces: model and objective, none for dangling pieces', () => {
   act(() => root.render(<Canvas />));
+  act(() => useStore.getState().setViewTab('full'));
   expect(q('region-model')).not.toBeNull();
   expect(q('region-objective')).not.toBeNull();
   // taking the L pin away leaves the model region only
@@ -52,7 +53,7 @@ test('regions are drawn behind the pieces: model and objective, none for danglin
 test('the pins are the role pins; a selected piece offers add pins for the roles it lacks', () => {
   act(() => root.render(<Canvas />));
   expect(q('pin-pred-lin2')?.getAttribute('data-role')).toBe('pred');
-  expect(host.querySelectorAll('[data-stub="true"]')).toHaveLength(1); // the stub of the Subtract
+  expect(host.querySelectorAll('[data-stub="true"]')).toHaveLength(0); // no loss stubs on the model tab
   expect(q('pin-loss-loss')).toBeNull(); // the L pin is on the loss tab
   act(() => useStore.getState().setViewTab('loss'));
   expect(q('pin-loss-loss')?.getAttribute('data-role')).toBe('loss');
@@ -60,8 +61,19 @@ test('the pins are the role pins; a selected piece offers add pins for the roles
   act(() => useStore.getState().setViewTab('model'));
   act(() => useStore.getState().selectNode('act1'));
   expect(q('pin-add-pred-act1')).not.toBeNull();
+  expect(q('pin-add-loss-act1')).toBeNull(); // the model tab only sets ŷ
+  act(() => useStore.getState().setViewTab('loss'));
+  act(() => useStore.getState().selectNode('err'));
+  expect(q('pin-add-loss-err')).not.toBeNull();
+  expect(q('pin-add-pred-err')).toBeNull(); // the loss tab only sets L
+  // a stub is not a place for L
+  act(() => useStore.getState().selectNode('lin2'));
+  expect(q('pin-add-loss-lin2')).toBeNull();
+  // the full tab offers both; a node that already carries ŷ only offers L
+  act(() => useStore.getState().setViewTab('full'));
+  act(() => useStore.getState().selectNode('act1'));
+  expect(q('pin-add-pred-act1')).not.toBeNull();
   expect(q('pin-add-loss-act1')).not.toBeNull();
-  // a node that already carries ŷ only offers L
   act(() => useStore.getState().selectNode('lin2'));
   expect(q('pin-add-pred-lin2')).toBeNull();
   expect(q('pin-add-loss-lin2')).not.toBeNull();
@@ -89,6 +101,10 @@ test('Delete removes a selected ŷ pin, never the L pin', () => {
   act(() => useStore.getState().select({ kind: 'pin', role: 'loss', node: 'loss' }));
   deleteSelection();
   expect(useStore.getState().graph.loss).toBe('loss');
+  // a ŷ pin is not removed from the loss tab
+  act(() => useStore.getState().select({ kind: 'pin', role: 'pred', node: 'lin2' }));
+  act(() => deleteSelection());
+  expect(useStore.getState().graph.predictions).toEqual(['lin2']);
   act(() => useStore.getState().setViewTab('model'));
   act(() => useStore.getState().select({ kind: 'pin', role: 'pred', node: 'lin2' }));
   act(() => deleteSelection());
@@ -105,7 +121,7 @@ test('a pin issue is drawn at the pin, with the pin in the error state and not t
   expect(q('issue-node-act1')).toBeNull();
 });
 
-test('the selected pin gets an inspector; the node inspector offers Pin as ŷ and Pin as L', () => {
+test('the selected pin gets an inspector; the node inspector offers the pin buttons of the tab', () => {
   act(() => root.render(<Canvas />));
   act(() => useStore.getState().select({ kind: 'pin', role: 'pred', node: 'lin2' }));
   expect(q('inspector')?.textContent).toMatch(/Prediction/);
@@ -116,6 +132,15 @@ test('the selected pin gets an inspector; the node inspector offers Pin as ŷ an
   expect(q('inspector-delete')).toBeNull();
   act(() => useStore.getState().setViewTab('model'));
   act(() => useStore.getState().selectNode('act1'));
+  expect(q('inspector-pin-loss')).toBeNull();
+  expect(q('inspector-pin-pred')?.textContent).toBe('Make this the prediction \u0177');
+  act(() => useStore.getState().setViewTab('loss'));
+  act(() => useStore.getState().selectNode('err'));
+  expect(q('inspector-pin-pred')).toBeNull();
+  expect(q('inspector-pin-loss')?.textContent).toBe('Make this the loss L');
+  act(() => useStore.getState().setViewTab('full'));
+  act(() => useStore.getState().selectNode('act1'));
+  expect(q('inspector-pin-pred')).not.toBeNull();
   act(() => (q('inspector-pin-loss') as HTMLElement).click());
   expect(useStore.getState().graph.loss).toBe('act1');
 });

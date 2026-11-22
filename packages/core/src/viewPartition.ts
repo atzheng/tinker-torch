@@ -9,14 +9,22 @@ import type { Graph, Node, NodeId, PieceType } from './graph.js';
 import { resolveEdge } from './graph.js';
 import type { PaletteEntry } from './registry.js';
 
-export type ViewTab = 'model' | 'loss';
-export const VIEW_TABS: readonly ViewTab[] = ['model', 'loss'];
+/** The two halves a node can live on. */
+export type SplitTab = 'model' | 'loss';
+/** The tabs, in tab order: the model half, the loss half, and the whole graph ("Full graph"). */
+export type ViewTab = SplitTab | 'full';
+export const VIEW_TABS: readonly ViewTab[] = ['model', 'loss', 'full'];
 /** The `UI_IDS` id of each tab. */
-export const TAB_UI_IDS: Record<ViewTab, string> = { model: 'tab-model', loss: 'tab-loss' };
+export const TAB_UI_IDS: Record<ViewTab, string> = {
+  model: 'tab-model',
+  loss: 'tab-loss',
+  full: 'tab-full',
+};
 
 /**
- * The tabs a preset leaves visible. `show.ui` lists neither tab id: both are shown (presets written
- * before tabs, and presets that say nothing about them). Otherwise exactly the listed tabs.
+ * The tabs a preset leaves visible. `show.ui` lists no tab id: all three are shown (presets written
+ * before tabs, and presets that say nothing about them). Otherwise exactly the listed tabs, so a
+ * preset that lists `tab-model` and `tab-loss` stays a two-tab preset.
  */
 export function shownTabs(ui: readonly string[] | undefined): ViewTab[] {
   if (ui === undefined) return [...VIEW_TABS];
@@ -50,7 +58,7 @@ const LOSS_TYPES: ReadonlySet<PieceType> = new Set<PieceType>([
 ]);
 
 /** The tab a piece of this type belongs to when nothing else decides. */
-export function pieceTab(type: PieceType): ViewTab {
+export function pieceTab(type: PieceType): SplitTab {
   return LOSS_TYPES.has(type) ? 'loss' : 'model';
 }
 
@@ -59,8 +67,8 @@ export function pieceTab(type: PieceType): ViewTab {
  * rest of what the L pin needs is the loss tab, and a piece no pin reaches goes by its kind. With
  * no resolving ŷ pin everything goes by kind.
  */
-export function partitionNodes(graph: Graph, analysis: Analysis): Record<NodeId, ViewTab> {
-  const out = Object.create(null) as Record<NodeId, ViewTab>;
+export function partitionNodes(graph: Graph, analysis: Analysis): Record<NodeId, SplitTab> {
+  const out = Object.create(null) as Record<NodeId, SplitTab>;
   const byRegion = analysis.predictions.length > 0;
   for (const n of graph.nodes) {
     if (out[n.id] !== undefined) continue;
@@ -70,9 +78,24 @@ export function partitionNodes(graph: Graph, analysis: Analysis): Record<NodeId,
   return out;
 }
 
-/** Whether the preset leaves both tabs (a split view) or one (that tab then draws the whole graph). */
+/** Whether the preset leaves more than one tab (with one, that tab draws the whole graph). */
 export function tabsSplit(ui: readonly string[] | undefined): boolean {
-  return shownTabs(ui).length === 2;
+  return shownTabs(ui).length >= 2;
+}
+
+/** Whether `tab` draws the whole graph: the full tab, or the only tab the preset leaves. */
+export function tabIsWhole(tab: ViewTab, ui: readonly string[] | undefined): boolean {
+  return tab === 'full' || !tabsSplit(ui);
+}
+
+/**
+ * The pin roles that may be set, moved or dropped on `tab` (CONTRACTS.md section 10, "Role pins"):
+ * only ŷ on the model tab, only L on the loss tab, both on the full tab and on a whole-graph tab.
+ * An existing pin of the other role is still drawn; it just cannot be moved or removed there.
+ */
+export function pinRolesOf(tab: ViewTab, whole: boolean): ('pred' | 'loss')[] {
+  if (whole || tab === 'full') return ['pred', 'loss'];
+  return tab === 'model' ? ['pred'] : ['loss'];
 }
 
 /**
@@ -97,14 +120,16 @@ export type TabView = {
    * and hit-test with this; compute every edit from the real graph.
    */
   graph: Graph;
-  /** The stubs: node id to the tab the piece really lives on. */
-  ghosts: Record<NodeId, ViewTab>;
+  /** The stubs: node id to the tab the piece really lives on. Only the loss tab has any. */
+  ghosts: Record<NodeId, SplitTab>;
 };
 
 /**
- * What `tab` draws. A piece on the other tab is a ghost when a wire joins it to a piece here, or
- * (loss tab) when it is the Linear a Weights tap here reads. A wire is drawn when at least one end
- * is a piece of this tab and both ends are on screen.
+ * What `tab` draws. The full tab (and `whole`) draws everything, no stubs. The model tab draws only
+ * its own pieces and the wires between them: no stubs of loss pieces, no wires into them. The loss
+ * tab also draws a stub for each model piece a wire joins to a piece here, or the Linear a Weights
+ * tap here reads. A wire is drawn when at least one end is a piece of this tab and both ends are on
+ * screen.
  */
 export function viewOfTab(
   graph: Graph,
@@ -113,13 +138,16 @@ export function viewOfTab(
   /** One tab shown (`!tabsSplit(show.ui)`): that tab draws the whole graph, no stubs. */
   whole = false,
 ): TabView {
-  if (whole) return { graph, ghosts: Object.create(null) as Record<NodeId, ViewTab> };
+  if (whole || tab === 'full') {
+    return { graph, ghosts: Object.create(null) as Record<NodeId, SplitTab> };
+  }
   const part = partitionNodes(graph, analysis);
   const both = onBothTabs(graph, analysis);
-  const ghosts = Object.create(null) as Record<NodeId, ViewTab>;
+  const ghosts = Object.create(null) as Record<NodeId, SplitTab>;
   const resolved = graph.edges.map((e) => resolveEdge(graph.nodes, e));
   const mine = (id: NodeId) => part[id] === tab || both.has(id);
-  for (const r of resolved) {
+  // The model tab has no stubs: loss pieces are edited on the loss or full tab.
+  for (const r of tab === 'model' ? [] : resolved) {
     if (!r.ok) continue;
     const a = r.from.node;
     const b = r.to.node;
@@ -129,7 +157,7 @@ export function viewOfTab(
     if (mine(b) && pa !== undefined && !mine(a)) ghosts[a] = pa;
   }
   for (const n of graph.nodes) {
-    if (n.type !== 'weights' || !mine(n.id)) continue;
+    if (tab === 'model' || n.type !== 'weights' || !mine(n.id)) continue;
     const of = part[n.of];
     if (of !== undefined && !mine(n.of)) ghosts[n.of] = of;
   }
@@ -151,9 +179,9 @@ export function viewOfTab(
   return { graph: view, ghosts };
 }
 
-/** The tabs whose palette offers this entry: pieces by kind, every ready-made group on the loss tab, and Add on both (it joins a loss and its penalty). */
+/** The tabs whose palette offers this entry: pieces by kind, every ready-made group on the loss tab, Add on both (it joins a loss and its penalty), and everything on the full tab. */
 export function paletteTabs(entry: PaletteEntry): ViewTab[] {
-  if (entry.kind === 'macro') return ['loss'];
+  if (entry.kind === 'macro') return ['loss', 'full'];
   const type = entry.make().type;
-  return type === 'add' ? ['model', 'loss'] : [pieceTab(type)];
+  return type === 'add' ? ['model', 'loss', 'full'] : [pieceTab(type), 'full'];
 }

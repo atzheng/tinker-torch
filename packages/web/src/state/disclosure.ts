@@ -6,7 +6,9 @@ import { PANEL_IDS, panelListed, panelOnTab } from '../results/panelLayout.js';
 import {
   effectiveTab,
   isShown,
+  pinRolesOf,
   shownTabs,
+  tabIsWhole,
   tabsSplit,
   UI_IDS,
   type UiRegion,
@@ -23,9 +25,30 @@ export function useViewTab(): ViewTab {
   return useStore((s) => effectiveTab(s.viewTab, s.show?.ui));
 }
 
-/** True when both tabs are shown; with one, that tab draws the whole graph and every panel and piece. */
+/** True when more than one tab is shown; with one, that tab draws the whole graph and every panel and piece. */
 export function useSplitTabs(): boolean {
   return useStore((s) => tabsSplit(s.show?.ui));
+}
+
+/** True when the tab being drawn shows the whole graph: the full tab, or the only tab shown. */
+export function useWholeTab(): boolean {
+  return useStore((s) => tabIsWhole(effectiveTab(s.viewTab, s.show?.ui), s.show?.ui));
+}
+
+/** The pin roles the tab being drawn may set, move or remove (`pinRolesOf`), as a string key for stable selection. */
+export function pinRolesNow(): ('pred' | 'loss')[] {
+  const s = useStore.getState();
+  const tab = effectiveTab(s.viewTab, s.show?.ui);
+  return pinRolesOf(tab, tabIsWhole(tab, s.show?.ui));
+}
+
+/** Hook form of `pinRolesNow`: a new array each call when the roles change. */
+export function usePinRoles(): ('pred' | 'loss')[] {
+  const key = useStore((s) => {
+    const tab = effectiveTab(s.viewTab, s.show?.ui);
+    return pinRolesOf(tab, tabIsWhole(tab, s.show?.ui)).join(',');
+  });
+  return key.split(',') as ('pred' | 'loss')[];
 }
 
 /** The tabs the preset leaves visible, in tab order (a new array each call: compare by `join`). */

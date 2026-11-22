@@ -1,4 +1,5 @@
 /** Pure helpers for the results panels (tinker-ong): order, drop position, resize. No DOM, no React. */
+import type { ViewTab } from '@tinker/core';
 
 export const PANEL_IDS = [
   'fit',
@@ -25,9 +26,9 @@ export const PANEL_TAB: Record<PanelId, 'model' | 'loss'> = {
   'class-bars': 'model',
 };
 
-/** Whether a panel is on screen with `tab` showing; with one tab shown (`split` false) every panel the preset lists is. */
-export function panelOnTab(id: PanelId, tab: 'model' | 'loss', split: boolean): boolean {
-  return !split || PANEL_TAB[id] === tab;
+/** Whether a panel is on screen with `tab` showing; with one tab shown (`split` false), or on the full tab, every panel the preset lists is. */
+export function panelOnTab(id: PanelId, tab: ViewTab, split: boolean): boolean {
+  return !split || tab === 'full' || PANEL_TAB[id] === tab;
 }
 
 /**

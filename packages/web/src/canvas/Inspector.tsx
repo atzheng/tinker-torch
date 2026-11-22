@@ -13,6 +13,7 @@ import { WEB_PIECES } from './drawings/index.js';
 import { deleteSelection } from './actions.js';
 import { lockedIds } from '../state/locks.js';
 import { pinLive } from './pure.js';
+import { usePinRoles } from '../state/disclosure.js';
 import { biasAt, weightAt } from './neuronPure.js';
 import { edgeIndexOf } from './pure.js';
 import { ValueField } from './ValueField.js';
@@ -70,6 +71,9 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
   const apply = useStore((s) => s.apply);
   const select = useStore((s) => s.select);
   const openWeights = useStore((s) => s.openWeights);
+  const roles = usePinRoles();
+  const canPred = roles.includes('pred') && !pinLive(graph, 'pred', node.id);
+  const canLoss = roles.includes('loss') && !pinLive(graph, 'loss', node.id);
   const pin = (role: 'pred' | 'loss') => {
     const opts = { locked: lockedIds() };
     const r = role === 'pred' ? addPrediction(graph, node.id, opts) : setLoss(graph, node.id, opts);
@@ -105,16 +109,16 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
           Inspect weights
         </button>
       )}
-      {(!pinLive(graph, 'pred', node.id) || !pinLive(graph, 'loss', node.id)) && (
+      {(canPred || canLoss) && (
         <div className="tk-pin-actions">
-          {!pinLive(graph, 'pred', node.id) && (
+          {canPred && (
             <button type="button" data-testid="inspector-pin-pred" onClick={() => pin('pred')}>
-              Pin as <TexText>{'$\\hat{y}$'}</TexText>
+              Make this the prediction {'\u0177'}
             </button>
           )}
-          {!pinLive(graph, 'loss', node.id) && (
+          {canLoss && (
             <button type="button" data-testid="inspector-pin-loss" onClick={() => pin('loss')}>
-              Pin as <TexText>{'$L$'}</TexText>
+              Make this the loss L
             </button>
           )}
         </div>
@@ -125,7 +129,7 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
 }
 
 /**
- * A selected role pin. The L pin is moved (drag it, or Pin as L on another piece), never removed;
+ * A selected role pin. The L pin is moved (drag it, or "Make this the loss L" on another piece), never removed;
  * a ŷ pin can also be removed here, or with Delete. Shows the pin's own issues.
  */
 function PinInspector({
@@ -295,6 +299,7 @@ export function Inspector({
 }) {
   const graph = useStore((s) => s.graph);
   const select = useStore((s) => s.select);
+  const roles = usePinRoles();
   const node =
     selection.kind === 'node' ? graph.nodes.find((n) => n.id === selection.id) : undefined;
   return (
@@ -310,7 +315,7 @@ export function Inspector({
       </button>
       {(selection.kind === 'node' ||
         selection.kind === 'wire' ||
-        (selection.kind === 'pin' && selection.role === 'pred')) && (
+        (selection.kind === 'pin' && selection.role === 'pred' && roles.includes('pred'))) && (
         <button
           type="button"
           className="tk-inspector-delete"

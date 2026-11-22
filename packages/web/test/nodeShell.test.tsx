@@ -25,7 +25,7 @@ afterEach(() => {
 
 test('every piece is drawn by the one node shell: one body, same radius, ports on the edges', () => {
   const nodes = [...host.querySelectorAll('[data-testid^="node-"]')];
-  expect(nodes.length).toBe(5); // the model tab: four model pieces and the stub of the Subtract
+  expect(nodes.length).toBe(4); // the model tab: the four model pieces, no stubs
   act(() => useStore.getState().setViewTab('loss'));
   const lossNodes = [...host.querySelectorAll('[data-testid^="node-"]')];
   expect(lossNodes.length).toBe(5); // the stub of the prediction and the four loss pieces
