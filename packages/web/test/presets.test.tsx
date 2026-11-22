@@ -38,6 +38,8 @@ test('every bundled preset parses, is titled, has no prompt and analyses as trai
     'scalar',
     'mlp',
     'iris',
+    'intercept-prob',
+    'intercept-mean',
   ]);
   for (const name of PRESET_NAMES) {
     const f = bundledPreset(name);
