@@ -137,7 +137,7 @@ describe('CSV to dataset', () => {
 
     const b = buildCsv(csv, { target: 2, inputs: [0, 1, 4], kind: 'multiclass' });
     if (!b.ok) throw new Error(b.error);
-    expect(b.notes[0]).toMatch(/Left out 1 text column: note/);
+    expect(b.notes[0]).toMatch(/Left out 1 text column with too many distinct values: note/);
     registerCsv(b);
     const ds = sample(cfg('csv'));
     expect(ds.info.featureNames).toEqual(['len', 'wid']);

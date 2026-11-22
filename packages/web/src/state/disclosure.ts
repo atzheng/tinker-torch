@@ -29,13 +29,15 @@ export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'can
           'panel-histogram',
           'panel-loss-1d',
           'panel-examples',
+          'panel-step-log',
         ] as const
       ).some(
         (id) =>
           isShown(s.show?.ui, id) &&
           (id !== 'panel-surface' || surface) &&
           (id !== 'panel-histogram' || histogram) &&
-          (id !== 'panel-loss-1d' || (params && s.show?.ui?.includes(id) === true)) &&
+          ((id !== 'panel-loss-1d' && id !== 'panel-step-log') ||
+            (params && s.show?.ui?.includes(id) === true)) &&
           (id !== 'panel-examples' || s.show?.ui?.includes(id) === true),
       );
     }

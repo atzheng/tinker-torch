@@ -2,6 +2,7 @@ import type { NodeOf, PieceType } from '@tinker/core';
 import { abs } from './abs.js';
 import { activation } from './activation.js';
 import { add } from './add.js';
+import { lookup, onehot } from './category.js';
 import { cross_entropy } from './cross_entropy.js';
 import { dropout } from './dropout.js';
 import { feature } from './feature.js';
@@ -46,4 +47,6 @@ export const ENGINE_PIECES: { [T in PieceType]: EnginePiece<NodeOf<T>> } = {
   scalew,
   bias,
   sum,
+  onehot,
+  lookup,
 };

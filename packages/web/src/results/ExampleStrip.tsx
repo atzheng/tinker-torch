@@ -1,7 +1,7 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { exampleSource } from '@tinker/core';
 import { useStore } from '../state/store.js';
-import { formatCell, NUMBERS_MAX, stripCells } from './exampleStripModel.js';
+import { formatCell, maxFinite, NUMBERS_MAX, stripCells } from './exampleStripModel.js';
 import styles from './Results.module.css';
 import own from './ExampleStrip.module.css';
 
@@ -18,17 +18,33 @@ export function ExampleStrip() {
   const analysis = useStore((s) => s.analysis);
   const dataset = useStore((s) => s.dataset);
   const exampleLosses = useStore((s) => s.exampleLosses);
+  const step = useStore((s) => s.step);
   const [active, setActive] = useState<number | null>(null);
+  // The loss that gets the darkest shade only grows, until the graph, the data or the run changes.
+  const scale = useRef({ graph: graph as object, dataset: dataset as object, step, max: 0 });
+  useEffect(() => setActive(null), [graph, dataset]);
 
   const data = useMemo(() => {
     const src = exampleSource(graph, analysis);
     const losses = src ? exampleLosses('train') : null;
     if (!src || !losses) return null;
     const mode = src.type === 'log_loss' || src.type === 'cross_entropy' ? 'prob' : 'loss';
-    const cells = stripCells(losses, dataset.yTrain, mode, dataset.info.kind !== 'regression');
+    const sc = scale.current;
+    if (sc.graph !== graph || sc.dataset !== dataset || step < sc.step) sc.max = 0;
+    sc.graph = graph;
+    sc.dataset = dataset;
+    sc.step = step;
+    sc.max = Math.max(sc.max, maxFinite(losses));
+    const cells = stripCells(
+      losses,
+      dataset.yTrain,
+      mode,
+      dataset.info.kind !== 'regression',
+      sc.max,
+    );
     return { mode, cells };
     // `host` stands for every change of the parameters
-  }, [host, graph, analysis, dataset, exampleLosses]);
+  }, [host, graph, analysis, dataset, exampleLosses, step]);
 
   const n = data?.cells.length ?? 0;
   const numbers = n <= NUMBERS_MAX;
@@ -62,6 +78,12 @@ export function ExampleStrip() {
             onPointerLeave={(e) => {
               if (e.pointerType === 'mouse') setActive(null); // a tap keeps its value shown
             }}
+            onPointerMove={(e) => {
+              // Sliding a finger (or the mouse) across the cells reads each in turn.
+              const el = document.elementFromPoint(e.clientX, e.clientY);
+              const i = el?.closest('[data-i]')?.getAttribute('data-i');
+              if (i != null) setActive(Number(i));
+            }}
           >
             {data.cells.map((c, i) => {
               const color = c.cls >= 0 ? `var(--class-${c.cls % 6})` : 'var(--accent)';
@@ -70,10 +92,14 @@ export function ExampleStrip() {
                   key={i}
                   className={own.cell}
                   data-testid="example-cell"
+                  data-i={i}
                   data-value={c.value}
                   title={formatCell(c.value)}
                   onPointerEnter={() => setActive(i)}
-                  onPointerDown={() => setActive(i)}
+                  onPointerDown={(e) => {
+                    (e.target as Element).releasePointerCapture?.(e.pointerId); // touch captures
+                    setActive(i);
+                  }}
                 >
                   <div
                     className={own.fill}

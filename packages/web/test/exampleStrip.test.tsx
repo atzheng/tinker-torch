@@ -6,7 +6,7 @@ import { beforeAll, expect, test, vi } from 'vitest';
 import { beginWeightEdit } from '../src/canvas/weightEdit.js';
 import { loadEngine } from '../src/engine.js';
 import { ExampleStrip } from '../src/results/ExampleStrip.js';
-import { stripCells } from '../src/results/exampleStripModel.js';
+import { formatCell, stripCells } from '../src/results/exampleStripModel.js';
 import { useStore } from '../src/state/store.js';
 import { loadBundled } from '../src/topbar/PresetMenu.js';
 
@@ -72,4 +72,25 @@ test('stripCells: probability mode and fractions', () => {
   const l = stripCells(Float32Array.of(1, 4), [0, 0], 'loss', false);
   expect(l[1]?.frac).toBe(1);
   expect(l[0]?.frac).toBeCloseTo(0.25);
+});
+
+test('non-finite loss gets the worst shade; the scale argument fixes the shade', () => {
+  const l = stripCells(Float32Array.of(Number.NaN, Infinity, 1), [0, 0, 0], 'loss', false, 4);
+  expect(l[0]?.frac).toBe(1);
+  expect(l[1]?.frac).toBe(1);
+  expect(l[2]?.frac).toBeCloseTo(0.25);
+});
+
+test('formatCell fits a small cell', () => {
+  for (const [v, t] of [
+    [0, '0'],
+    [0.0004, '<.01'],
+    [0.492, '0.49'],
+    [1, '1.00'],
+    [12.34, '12.3'],
+    [1234.5, '1235'],
+    [123456, '1e5'],
+    [Infinity, 'inf'],
+  ] as const)
+    expect(formatCell(v)).toBe(t);
 });
