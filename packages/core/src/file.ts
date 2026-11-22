@@ -74,7 +74,7 @@ export const UI_IDS = {
     'equivalence',
     'preset-prompt',
   ],
-  results: ['panel-fit', 'panel-loss', 'panel-surface'],
+  results: ['panel-fit', 'panel-loss', 'panel-surface', 'panel-histogram'],
   // Controls inside the results panels; they never make the results region itself visible.
   'panel-controls': [
     'truth-toggle',
@@ -87,6 +87,7 @@ export const UI_IDS = {
     'loss-log-toggle',
     'loss-restore-best',
     'pins',
+    'histogram-squares',
   ],
   'training-bar': [
     'btn-step',
