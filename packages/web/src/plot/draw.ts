@@ -20,6 +20,8 @@ export function drawAxes(
   ys: Scale,
   xTicks: number[],
   yTicks: number[],
+  /** Text for an x tick (default: the number); a categorical axis passes the category name. */
+  xLabel: (t: number) => string = formatTick,
 ): void {
   const x0 = m.l;
   const x1 = w - m.r;
@@ -47,7 +49,7 @@ export function drawAxes(
   ctx.strokeRect(x0 + 0.5, y1 + 0.5, x1 - x0, y0 - y1);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  for (const t of xTicks) ctx.fillText(formatTick(t), xs.px(t), y0 + 4);
+  for (const t of xTicks) ctx.fillText(xLabel(t), xs.px(t), y0 + 4);
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (const t of yTicks) ctx.fillText(formatTick(t), x0 - 4, ys.px(t));
