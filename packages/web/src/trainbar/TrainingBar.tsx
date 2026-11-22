@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Graph } from '@tinker/core';
 import { getEngine, useEngine } from '../engine.js';
 import { SPEEDS, isMiniBatch } from '../state/trainSlice.js';
+import { useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import styles from './TrainingBar.module.css';
 
@@ -80,6 +81,22 @@ export function TrainingBar() {
     setOptimizer: useStore((x) => x.setOptimizer),
     setBatch: useStore((x) => x.setBatch),
   };
+  const sh = {
+    step: useUiShown('btn-step'),
+    run: useUiShown('btn-run'),
+    reset: useUiShown('btn-reset'),
+    best: useUiShown('btn-restore-best'),
+    lr: useUiShown('lr-slider'),
+    speed: useUiShown('speed'),
+    optimizer: useUiShown('optimizer'),
+    batch: useUiShown('batch'),
+    count: useUiShown('step-count'),
+    params: useUiShown('param-count'),
+  };
+  // A group whose controls are all hidden is not drawn.
+  const g1 = sh.step || sh.run || sh.reset || sh.best;
+  const g2 = sh.lr || sh.speed || sh.optimizer || sh.batch;
+  const g3 = sh.count || sh.params;
   // The component re-renders on every step change, so the dev live-array readout below is fresh.
 
   const sinceReset = s.step;
@@ -87,107 +104,135 @@ export function TrainingBar() {
   const runnable = s.canTrain && !s.diverged;
   return (
     <div className={styles.bar} data-testid="training-bar">
-      <div className={styles.group}>
-        <button
-          type="button"
-          onClick={s.stepOnce}
-          disabled={!runnable || s.running}
-          data-testid="btn-step"
-        >
-          Step
-        </button>
-        {s.running ? (
-          <button type="button" className={styles.primary} onClick={s.pause} data-testid="btn-run">
-            Pause
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={s.run}
-            disabled={!runnable}
-            data-testid="btn-run"
-          >
-            Run
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={s.reset}
-          disabled={!s.analysis.trainable}
-          data-testid="btn-reset"
-        >
-          Reset
-        </button>
-        <button
-          type="button"
-          onClick={s.restoreBest}
-          disabled={!s.best || !s.canTrain}
-          title={s.best ? `Step ${s.best.step}` : undefined}
-          data-testid="btn-restore-best"
-        >
-          Restore best
-        </button>
-      </div>
-      <div className={styles.group}>
-        <LearningRate />
-        <label className={styles.field}>
-          <select
-            value={s.speed}
-            onChange={(e) => s.setSpeed(Number(e.target.value))}
-            aria-label="Steps per frame"
-            data-testid="speed"
-          >
-            {SPEEDS.map((n) => (
-              <option key={n} value={n}>
-                {n}/frame
-              </option>
+      {g1 && (
+        <div className={styles.group}>
+          {sh.step && (
+            <button
+              type="button"
+              onClick={s.stepOnce}
+              disabled={!runnable || s.running}
+              data-testid="btn-step"
+            >
+              Step
+            </button>
+          )}
+          {sh.run &&
+            (s.running ? (
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={s.pause}
+                data-testid="btn-run"
+              >
+                Pause
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.primary}
+                onClick={s.run}
+                disabled={!runnable}
+                data-testid="btn-run"
+              >
+                Run
+              </button>
             ))}
-          </select>
-        </label>
-        <label className={styles.field}>
-          <select
-            value={s.optimizer}
-            onChange={(e) => s.setOptimizer(e.target.value as Graph['train']['optimizer'])}
-            aria-label="Optimizer"
-            data-testid="optimizer"
-          >
-            <option value="sgd">SGD</option>
-            <option value="momentum">Momentum</option>
-            <option value="adam">Adam</option>
-          </select>
-        </label>
-        <label className={styles.field}>
-          <select
-            value={String(s.batch)}
-            onChange={(e) =>
-              s.setBatch(e.target.value === 'full' ? 'full' : Number(e.target.value))
-            }
-            aria-label="Batch size"
-            data-testid="batch"
-          >
-            <option value="full">Full batch</option>
-            {batchOptions(s.nTrain, s.batch).map((n) => (
-              <option key={n} value={n}>
-                Batch {n}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className={styles.group}>
-        <span className={`${styles.stat} tk-diag`}>
-          Step <b data-testid="step-count">{sinceReset}</b>
-        </span>
-        <span className={`${styles.stat} tk-diag`}>
-          Parameters <b data-testid="param-count">{s.analysis.totalParams}</b>
-        </span>
-        {import.meta.env.DEV && (
-          <span className={`${styles.stat} tk-diag`} data-testid="live-arrays">
-            live {getEngine()?.liveArrays() ?? 0}
-          </span>
-        )}
-      </div>
+          {sh.reset && (
+            <button
+              type="button"
+              onClick={s.reset}
+              disabled={!s.analysis.trainable}
+              data-testid="btn-reset"
+            >
+              Reset
+            </button>
+          )}
+          {sh.best && (
+            <button
+              type="button"
+              onClick={s.restoreBest}
+              disabled={!s.best || !s.canTrain}
+              title={s.best ? `Step ${s.best.step}` : undefined}
+              data-testid="btn-restore-best"
+            >
+              Restore best
+            </button>
+          )}
+        </div>
+      )}
+      {g2 && (
+        <div className={styles.group}>
+          {sh.lr && <LearningRate />}
+          {sh.speed && (
+            <label className={styles.field}>
+              <select
+                value={s.speed}
+                onChange={(e) => s.setSpeed(Number(e.target.value))}
+                aria-label="Steps per frame"
+                data-testid="speed"
+              >
+                {SPEEDS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}/frame
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {sh.optimizer && (
+            <label className={styles.field}>
+              <select
+                value={s.optimizer}
+                onChange={(e) => s.setOptimizer(e.target.value as Graph['train']['optimizer'])}
+                aria-label="Optimizer"
+                data-testid="optimizer"
+              >
+                <option value="sgd">SGD</option>
+                <option value="momentum">Momentum</option>
+                <option value="adam">Adam</option>
+              </select>
+            </label>
+          )}
+          {sh.batch && (
+            <label className={styles.field}>
+              <select
+                value={String(s.batch)}
+                onChange={(e) =>
+                  s.setBatch(e.target.value === 'full' ? 'full' : Number(e.target.value))
+                }
+                aria-label="Batch size"
+                data-testid="batch"
+              >
+                <option value="full">Full batch</option>
+                {batchOptions(s.nTrain, s.batch).map((n) => (
+                  <option key={n} value={n}>
+                    Batch {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
+      {g3 && (
+        <div className={styles.group}>
+          {sh.count && (
+            <span className={`${styles.stat} tk-diag`}>
+              Step <b data-testid="step-count">{sinceReset}</b>
+            </span>
+          )}
+          {sh.params && (
+            <span className={`${styles.stat} tk-diag`}>
+              Parameters <b data-testid="param-count">{s.analysis.totalParams}</b>
+            </span>
+          )}
+          {import.meta.env.DEV && (
+            <span className={`${styles.stat} tk-diag`} data-testid="live-arrays">
+              live {getEngine()?.liveArrays() ?? 0}
+            </span>
+          )}
+        </div>
+      )}
       {s.diverged && (
         <span
           className={`${styles.diverged} tk-issue`}

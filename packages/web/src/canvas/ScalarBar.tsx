@@ -1,3 +1,4 @@
+import { useUiShown } from '../state/disclosure.js';
 import type { Analysis, Graph } from '@tinker/core';
 
 import {
@@ -27,41 +28,50 @@ export function ScalarBar(p: {
   const { graph, analysis, selection } = p;
   const groups = linearGroups(graph, analysis);
   const canExpand = expandTarget(graph, selection) !== null;
-  if (!hasScalarForm(graph, analysis)) return null;
+  const showGroup = useUiShown('group-linear');
+  const showExpand = useUiShown('expand-scalars');
+  const showEquiv = useUiShown('equivalence');
+  if (!hasScalarForm(graph, analysis) || !(showGroup || showExpand || showEquiv)) return null;
   return (
     <div className="tk-scalarbar" data-testid="scalar-bar">
       <div className="tk-scalarbtns">
-        <button
-          type="button"
-          className="tk-scalarbtn"
-          data-testid="group-linear"
-          disabled={groups.length === 0}
-          title="Replace these Columns, Weights and Sum by one Linear with the same values"
-          onClick={() => {
-            groupSelected();
-            p.onPreview(false);
-          }}
-          onPointerEnter={() => p.onPreview(true)}
-          onPointerLeave={() => p.onPreview(false)}
-          onFocus={() => p.onPreview(true)}
-          onBlur={() => p.onPreview(false)}
-        >
-          Group into Linear
-        </button>
-        <button
-          type="button"
-          className="tk-scalarbtn"
-          data-testid="expand-scalars"
-          disabled={!canExpand}
-          title="Replace the selected Linear (one output) by its Columns, Weights and Sum"
-          onClick={() => expandSelected()}
-        >
-          Expand to scalars
-        </button>
+        {showGroup && (
+          <button
+            type="button"
+            className="tk-scalarbtn"
+            data-testid="group-linear"
+            disabled={groups.length === 0}
+            title="Replace these Columns, Weights and Sum by one Linear with the same values"
+            onClick={() => {
+              groupSelected();
+              p.onPreview(false);
+            }}
+            onPointerEnter={() => p.onPreview(true)}
+            onPointerLeave={() => p.onPreview(false)}
+            onFocus={() => p.onPreview(true)}
+            onBlur={() => p.onPreview(false)}
+          >
+            Group into Linear
+          </button>
+        )}
+        {showExpand && (
+          <button
+            type="button"
+            className="tk-scalarbtn"
+            data-testid="expand-scalars"
+            disabled={!canExpand}
+            title="Replace the selected Linear (one output) by its Columns, Weights and Sum"
+            onClick={() => expandSelected()}
+          >
+            Expand to scalars
+          </button>
+        )}
       </div>
-      <div className="tk-equiv" data-testid="equivalence">
-        <Tex src={EQUIVALENCE} />
-      </div>
+      {showEquiv && (
+        <div className="tk-equiv" data-testid="equivalence">
+          <Tex src={EQUIVALENCE} />
+        </div>
+      )}
     </div>
   );
 }

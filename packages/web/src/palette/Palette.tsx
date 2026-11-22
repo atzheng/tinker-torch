@@ -1,8 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { PALETTE, type PaletteEntry } from '@tinker/core';
+import { PALETTE, isShown, type PaletteEntry } from '@tinker/core';
 import { dnd } from '../canvas/dnd.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
+import { useStore } from '../state/store.js';
 import { Tex } from '../tex/Tex.js';
 import './palette.css';
 
@@ -111,9 +112,13 @@ export function Palette() {
   const drag = useSyncExternalStore(dnd.subscribe, dnd.get, () => null);
   const dragging = drag?.payload.kind === 'palette' ? drag.payload.entry : null;
   const armed = useSyncExternalStore(dnd.subscribe, dnd.armed, () => null);
-  const [open, setOpen] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(GROUPS.map((g) => [g.id, g.open])),
-  );
+  // A preset's palette allow-list (CONTRACTS.md section 12): listed entries, or every entry of a listed group.
+  const allowed = useStore((s) => s.show?.palette);
+  // Toggles the person made; a group not toggled is open at its default, or open when the preset narrows the palette.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const isOpen = (g: Group) => toggled[g.id] ?? (allowed !== undefined || g.open);
+  const visibleIn = (g: Group) =>
+    PALETTE.filter(g.has).filter((e) => isShown(allowed, g.id) || isShown(allowed, e.key));
   useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no ghost
   // Tap-to-add ends on Escape, or on a press that is neither on the palette nor on the drawing.
   useEffect(() => {
@@ -141,27 +146,22 @@ export function Palette() {
           {HINTS.palette}
         </p>
       </div>
-      {GROUPS.map((g) => (
-        <section
-          key={g.id}
-          className="tk-palette-group"
-          aria-label={g.label}
-          data-open={open[g.id]}
-        >
+      {GROUPS.filter((g) => visibleIn(g).length > 0).map((g) => (
+        <section key={g.id} className="tk-palette-group" aria-label={g.label} data-open={isOpen(g)}>
           <h3>
             <button
               type="button"
               className="tk-palette-toggle"
               data-testid={`palette-group-${g.id}`}
-              aria-expanded={open[g.id]}
-              onClick={() => setOpen((o) => ({ ...o, [g.id]: !o[g.id] }))}
+              aria-expanded={isOpen(g)}
+              onClick={() => setToggled((o) => ({ ...o, [g.id]: !isOpen(g) }))}
             >
               <span aria-hidden="true" className="tk-palette-caret" />
               {g.label}
             </button>
           </h3>
-          <div hidden={!open[g.id]}>
-            {PALETTE.filter(g.has).map((entry) => (
+          <div hidden={!isOpen(g)}>
+            {visibleIn(g).map((entry) => (
               <button
                 key={entry.key}
                 type="button"

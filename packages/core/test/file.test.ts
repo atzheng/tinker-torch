@@ -118,3 +118,33 @@ test('a preset keeps its title, prompt and locked list', () => {
   expect(r.ok && 'title' in r.file && r.file.title).toBe('T');
   expect(r.ok && 'locked' in r.file && r.file.locked).toEqual(['lin1']);
 });
+
+describe('preset show (progressive disclosure)', () => {
+  const base = () => ({ ...JSON.parse(serializeFile(graph())), title: 'T' });
+  test('lists are kept, absent lists stay absent', () => {
+    const r = parseFile({ ...base(), show: { palette: ['sigmoid', 'losses'], ui: ['btn-step'] } });
+    expect(r.ok && 'show' in r.file && r.file.show).toEqual({
+      palette: ['sigmoid', 'losses'],
+      ui: ['btn-step'],
+    });
+    const r2 = parseFile({ ...base(), show: { palette: [] } });
+    expect(r2.ok && 'show' in r2.file && r2.file.show).toEqual({ palette: [] });
+    const r3 = parseFile(base());
+    expect(r3.ok && 'show' in r3.file).toBe(false);
+  });
+  test.each([
+    ['unknown palette id', { palette: ['sigmod'] }, /"sigmod"/],
+    ['unknown ui id', { ui: ['btn-stepp'] }, /"btn-stepp"/],
+    ['palette not a list', { palette: 'sigmoid' }, /list of ids/],
+    ['unknown key', { hide: [] }, /"hide"/],
+  ])('%s gives one sentence', (_n, show, re) => {
+    const r = parseFile({ ...base(), show });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(re);
+    expect(r.error).toMatch(/^[A-Z].*\.$/);
+  });
+  test('show must be an object', () => {
+    expect(parseFile({ ...base(), show: [] }).ok).toBe(false);
+  });
+});

@@ -283,6 +283,7 @@ function reconcileParams(old: HostParams, oldAnalysis: Analysis, analysis: Analy
 function countParams(host: HostParams): number;
 function paramsToJson(host: HostParams): Record<NodeId, Record<string, number[]>>; // prototype-free object
 function paramsFromJson(json: unknown, analysis: Analysis): { params: HostParams; dropped: NodeId[] };
+function withStartParams(base: HostParams, start: HostParams | null, analysis: Analysis): HostParams; // tinker-6t7.9
 ```
 
 Initialisation follows each piece's `paramInit` (plain data, carried in `analysis.paramInit`): Linear follows `nn.Linear`, W and b both uniform on ±1/√in; `{ kind: 'const', value }` fills a tensor. Different seeds give different values; the same seed always gives the same values. Note the layout: torch stores `weight` as [out, in]; HostParams stores [in, out] so that the forward pass is `x @ W + b`. Fixtures (section 11) are written in HostParams layout.
@@ -616,11 +617,45 @@ function serializeFile(graph: Graph, params?: Record<NodeId, { W: number[]; b?: 
 
 `parseFile` opens file versions 1 and 2 (a version 1 file's graph is migrated; `params` keys are unchanged because Linear ids are kept, and a preset's `locked` ids are remapped through the migration's id map: a locked Loss covers its whole group, a spliced identity Output covers nothing) and `serializeFile` writes version 2. The web app has no other file reader: bundled presets (`web/src/presets/*.json`, native version 2 since tinker-8xw.5: Linear ids unchanged so seeded weights are identical, the squared-error group is `diff` (Subtract) -> `err` (Square) -> `loss` (Mean, the L pin), ŷ pinned on the last Linear, or on the `yhat` Link for sigmoid and softmax presets (the `softmax` preset: Linear(3) -> softmax `yhat` -> cross-entropy `err` -> Mean on `blobs3`); no preset has `locked` or `prompt`), Load and `?preset=` all go through `parseFile`.
 
-A file with `title`, `prompt` or `locked` is a Preset. Save writes `tinker-model.tinker.json`; "Weights" saves the live parameters (`host`), not the best snapshot. Load sets the run seed to the file's `train.seed`, then replaces the graph as one undo step (`graphSlice.apply`); undo returns the previous graph with its weights reconciled as for any edit. The preset (title, prompt, locked; null for a plain file) travels with the graph in the undo history (`pastPresets`/`futurePresets` parallel to `past`/`future`; `apply(edit, preset?)` sets it with the graph): undo and redo restore the preset together with the graph, and `loadGraph` (a new graph) clears it. A locked list names ids of that graph only; ids it lacks are dropped on load. Loaded weights are installed with `loadHost` (new run: history and best cleared).
+A file with `title`, `prompt`, `locked` or `show` is a Preset. Save writes `tinker-model.tinker.json`; "Weights" saves the live parameters (`host`), not the best snapshot. Load sets the run seed to the file's `train.seed`, then replaces the graph as one undo step (`graphSlice.apply`); undo returns the previous graph with its weights reconciled as for any edit. The preset (title, prompt, locked; null for a plain file) travels with the graph in the undo history (`pastPresets`/`futurePresets` parallel to `past`/`future`; `apply(edit, preset?)` sets it with the graph): undo and redo restore the preset together with the graph, and `loadGraph` (a new graph) clears it. A locked list names ids of that graph only; ids it lacks are dropped on load. Loaded weights are installed with `loadHost` (new run: history and best cleared).
 
 Saved params whose shapes do not match the graph are dropped with a notice, not an error. Bundled presets live in `web/src/presets/*.json` (`linear`, `logistic`, `sine`, `xor`, `skip`, `softmax`, `scalar`, `mlp`, `iris`, `intercept-prob`, `intercept-mean`; a preset that names a real set loads the set's rows first, see section 6); `?preset=<name>` loads a bundled preset on start, and a preset file can also be opened through Load.
 
 Default start (tinker-9io.8): `initialGraph()` (web `state/graphSlice.ts`) is the bundled `scalar` preset (`presets/scalar.json`): Columns `x1`, `x2` -> Weights `w1`, `w2` (drawn as weight wires) -> `sum` -> `bias` (ŷ) -> squared-error group `diff`/`err`/`loss` (L) on the `plane` dataset. Its loss row is placed by hand with `positions` (a second row under the Sum and Bias) so the whole drawing fits at names >= 8 px on the narrowest s10 viewport (1024x768 touch); keep it that way when editing the preset. The former default is the bundled `mlp` preset (small ReLU network on `sine`). Saved params whose shapes do not match the graph are dropped with a notice, not an error. Bundled presets live in `web/src/presets/*.json`; `?preset=<name>` loads a bundled preset on start, and a preset file can also be opened through Load.
+
+**Authoring `params` by hand.** `params` maps node id to its tensors: `{ "lin1": { "W": [...], "b": [...] } }` (W row-major [in, out]). A Weight (`scalew`) or a Bias (`bias`) also takes a plain number, which `parseFile` turns into the list form (`"w1": 0.5` is `{ "W": [0.5] }`, `"b": 0` is `{ "b": [0] }`); Save keeps writing the list form. `parseFile` fails with one sentence for a number on an unknown node, on a piece other than Weight or Bias, or a non-finite number. List-form entries that do not fit the graph are still dropped with a notice. Example (every learner starts at w1 = 0, w2 = 0, b = 0.5; Reset returns there):
+
+```json
+{
+  "kind": "tinker", "version": 2, "title": "Start at zero",
+  "graph": { "...": "as in presets/scalar.json" },
+  "params": { "w1": 0, "w2": 0, "bias": 0.5 }
+}
+```
+
+### Start values and Reset (tinker-6t7.9)
+
+The `params` of a loaded file or preset are the run's start values. The store keeps them as `startParams: HostParams | null` (`presetSlice`), set by the file loader after `apply` from what `paramsFromJson` accepted. Reset (and the fresh start after a divergence) draws a new seed, initialises every node from it, then `withStartParams` overlays the start values: a node with a start entry whose tensors fit its current shapes exactly gets those values, every other node keeps its seeded values. So `params` may be partial, and a file or preset without `params` behaves as before (random, Reset reseeds). Plain saved files with weights work the same way: Reset returns to what was loaded. Training does not change `startParams`; the Weights save still writes the live parameters.
+
+When they are cleared or ignored: loading a file replaces them (a file without `params` clears them); `loadGraph` (a new graph) clears them; they travel with the graph in the undo history (`pastStarts`/`futureStarts`, parallel to `pastPresets`), so undoing a load restores the previous start values. A graph edit never edits them, but an entry applies only while its node exists with exactly the same tensor shapes (a Linear whose size changed is drawn from the seed on Reset; if the size is changed back, the start values apply again). Edits that keep the weights (`reconcileParams`) do not use them; only Reset does.
+
+### Progressive disclosure (`show`, tinker-6t7.1)
+
+```ts
+type Show = { palette?: string[]; ui?: string[] };   // Preset gains: show?: Show
+const PALETTE_GROUP_IDS: readonly string[];            // core/file.ts, palette order; web Palette GROUPS uses the same ids
+const UI_IDS: Record<'top-bar' | 'canvas' | 'results' | 'training-bar', readonly string[]>; // core/file.ts
+const ALL_UI_IDS: readonly string[];                   // every id in UI_IDS
+function isShown(list: readonly string[] | undefined, id: string): boolean; // absent list: true
+```
+
+A preset's `show` says what is visible; both lists are allow-lists, and an absent list (or no `show`) shows everything in its category exactly as before. `palette` takes palette entry keys (`PALETTE`, e.g. `sigmoid`, `loss_log_loss`) and group ids (a group id shows all its entries); `[]` removes the palette region. `ui` takes control and panel ids from `UI_IDS`, which are the controls' `data-testid` where one exists (`panel-fit`, `panel-loss`, `panel-surface` name the results panels). A region is on screen only while at least one of its ids is shown: with no `top-bar`, `results` or `training-bar` id listed that region is removed, and the others grow into its room (App grid, no gaps, no page scroll). `canvas` ids (`grain-toggle`, `fit-view`, `tidy-layout`, `reset-view`, `equation-strip`, `group-linear`, `expand-scalars`, `equivalence` (the scalar bar's two buttons and its equivalence line), `preset-prompt`) hide single canvas controls; the canvas itself is always there. `panel-controls` ids (`truth-toggle`, `resample-run` (the Resample button, its Clear and readout), `prediction-picker`, `loss-readout`, `loss-log-toggle`, `loss-restore-best`, `pins`) hide controls inside a results panel and never make the results region appear by themselves. The results region counts only panels that actually render: `panel-surface` alone on a model without a 2-parameter loss surface leaves no results region. The Data popover button shows only while one of its controls (`data-noise`, `data-val`, `data-seed`, `data-standardize`, `data-open-csv`, `data-sources`) is shown.
+
+Hidden controls are not rendered (so not focusable) and their keyboard shortcuts are off (`btn-undo`/`btn-redo` for Ctrl/Cmd+Z, Shift+Z, Y). Hiding changes visibility only: a hidden optimizer still applies the preset's. `parseFile` rejects an unknown id, a non-list, or an unknown key in `show` with one sentence naming it. `show` makes a file a preset (it needs a `title`). The store keeps it as `show: Show | null` (`presetSlice`), `apply(edit, preset, show)` sets it with a file load, `loadGraph` clears it, and it travels with the preset in the undo history (`pastShows`/`futureShows`, parallel to `pastPresets`/`futurePresets`), so undoing a load restores the previous disclosure. Save writes it back with the other preset fields.
+
+Later beads that add a panel, readout or control add its id to `UI_IDS` (and gate it with `useUiShown(id)` from `web/src/state/disclosure.ts`; `useRegionShown(region)` and `uiShown(id)` are the region and event-handler forms).
+
+Adding an id to `UI_IDS` changes nothing for a preset without `ui` (everything shows). A preset that has a `ui` list shows only what it lists, so a newly added panel or control starts hidden in such presets until the preset adds its id (confirmed: this is the allow-list behaviour; presets are widened deliberately).
 
 ## 13. Commands
 

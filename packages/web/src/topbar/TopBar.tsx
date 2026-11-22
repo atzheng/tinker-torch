@@ -1,3 +1,4 @@
+import { useUiShown } from '../state/disclosure.js';
 import { DataControls } from './DataControls.js';
 import { FileMenu } from './FileMenu.js';
 import { PresetMenu } from './PresetMenu.js';
@@ -5,6 +6,8 @@ import { UndoRedo } from './UndoRedo.js';
 
 /** Top bar: the dataset controls; the file and preset menus join them in later beads. */
 export function TopBar() {
+  const file = useUiShown('file-menu');
+  const presets = useUiShown('preset-menu');
   return (
     <div
       style={{
@@ -17,8 +20,8 @@ export function TopBar() {
       }}
     >
       <DataControls />
-      <FileMenu />
-      <PresetMenu />
+      {file && <FileMenu />}
+      {presets && <PresetMenu />}
       <UndoRedo />
     </div>
   );

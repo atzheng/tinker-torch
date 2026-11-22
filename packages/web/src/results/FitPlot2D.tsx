@@ -1,3 +1,4 @@
+import { useUiShown } from '../state/disclosure.js';
 import { useMemo, useState } from 'react';
 import { grid2dSlice, hasTruth, truth, truthMargin, unstandardizeRows } from '@tinker/core';
 import { CLASS_COUNT, classColor, type PlotColors } from '../plot/color.js';
@@ -365,6 +366,9 @@ export function FitPlot2D() {
     margins,
     truthRegions,
   ]);
+  const showTruthToggle = useUiShown('truth-toggle');
+  const showResample = useUiShown('resample-run');
+  const showPicker = useUiShown('prediction-picker');
   return (
     <div className={styles.panel} data-testid="fit-plot">
       <div className={`${styles.head} ${styles.headWrap}`} data-panel-head="">
@@ -409,7 +413,7 @@ export function FitPlot2D() {
             </span>
           </span>
         )}
-        {canTruth && (
+        {showTruthToggle && canTruth && (
           <label className={styles.toggle}>
             <input
               type="checkbox"
@@ -467,10 +471,10 @@ export function FitPlot2D() {
             </label>
           </span>
         )}
-        <PredictionPicker />
-        <ResampleButton />
+        {showPicker && <PredictionPicker />}
+        {showResample && <ResampleButton />}
       </div>
-      <ResampleReadout />
+      {showResample && <ResampleReadout />}
       {noPrediction && (
         <p className={`${styles.readout} tk-diag-label`} data-testid="no-prediction">
           No prediction selected.

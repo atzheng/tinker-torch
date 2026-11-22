@@ -1,3 +1,4 @@
+import { useUiShown } from '../state/disclosure.js';
 import { useState } from 'react';
 import { decimatePath, linearScale, logScale, logTicks, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
@@ -102,30 +103,38 @@ export function LossCurves() {
   };
 
   const ref = usePlotCanvas(draw, [history, best, log, miniBatch, pins]);
+  const showLog = useUiShown('loss-log-toggle');
+  const showRestore = useUiShown('loss-restore-best');
+  const showReadout = useUiShown('loss-readout');
+  const showPins = useUiShown('pins');
   return (
     <div className={`${styles.panel} ${styles.lossPanel}`} data-testid="loss-curves">
       <div className={styles.head} data-panel-head="">
         <span className={styles.title}>Loss</span>
-        <label className={styles.toggle}>
-          <input
-            type="checkbox"
-            checked={log}
-            onChange={(e) => setLog(e.target.checked)}
-            data-testid="loss-log-toggle"
-          />
-          Log scale
-        </label>
-        <button
-          type="button"
-          onClick={restoreBest}
-          disabled={!best || !canRestore}
-          data-testid="loss-restore-best"
-        >
-          Restore best
-        </button>
+        {showLog && (
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={log}
+              onChange={(e) => setLog(e.target.checked)}
+              data-testid="loss-log-toggle"
+            />
+            Log scale
+          </label>
+        )}
+        {showRestore && (
+          <button
+            type="button"
+            onClick={restoreBest}
+            disabled={!best || !canRestore}
+            data-testid="loss-restore-best"
+          >
+            Restore best
+          </button>
+        )}
       </div>
-      <LossReadout />
-      <Pins />
+      {showReadout && <LossReadout />}
+      {showPins && <Pins />}
       <div className={styles.plot}>
         <canvas ref={ref} aria-label="Loss curves" />
         <AxisLabels x="step" y="loss" />

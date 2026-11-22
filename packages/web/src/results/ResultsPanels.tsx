@@ -1,4 +1,5 @@
 import { Fragment, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { isShown } from '@tinker/core';
 import { startDrag } from '../gestures/drag.js';
 import { twoParams } from '../plot/lossSurface.js';
 import { useStore } from '../state/store.js';
@@ -38,7 +39,10 @@ export function ResultsPanels() {
   // The panel being dragged, how far it has moved, and its index among the other visible panels.
   const [lift, setLift] = useState<{ id: PanelId; dy: number; to: number } | null>(null);
 
-  const visible = order.filter((p) => p !== 'surface' || hasSurface);
+  const allowed = useStore((s) => s.show?.ui);
+  const visible = order.filter(
+    (p) => isShown(allowed, `panel-${p}`) && (p !== 'surface' || hasSurface),
+  );
   const visibleSet = new Set(visible);
 
   const slotOf = (id: PanelId): HTMLElement | null =>
