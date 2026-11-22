@@ -1,0 +1,25 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "One probability, by maximum likelihood",
+  "graph": {
+    "version": 2,
+    "nodes": [
+      { "id": "bias", "type": "bias" },
+      { "id": "yhat", "type": "link", "fn": "sigmoid" },
+      { "id": "y", "type": "target" },
+      { "id": "err", "type": "log_loss" },
+      { "id": "loss", "type": "mean" }
+    ],
+    "edges": [
+      ["bias", "yhat"],
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
+    ],
+    "predictions": ["yhat"],
+    "loss": "loss",
+    "data": { "set": "circle", "n": 60, "noise": 0.1, "val": 0.3, "seed": 7, "standardize": false },
+    "train": { "optimizer": "sgd", "lr": 0.5, "batch": "full", "seed": 11 }
+  }
+}
