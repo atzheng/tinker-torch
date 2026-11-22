@@ -90,6 +90,7 @@ export const UI_IDS = {
     'data-sources',
     'data-resample',
     'file-menu',
+    'file-copy-link',
     'preset-menu',
     'btn-undo',
     'btn-redo',
