@@ -11,7 +11,7 @@ const num = (v: number | null): string => (v === null || !Number.isFinite(v) ? '
  * Step log (tinker-6t7.10): one row per press of Step. Columns: step, each parameter AFTER the
  * step, the prediction (first prediction pin at those parameters; first training example when the
  * model has inputs), the slope of the loss per parameter at the parameters BEFORE the step (the
- * gradient the update used; left out for a mini-batch or dropout run, where the full-batch slope is
+ * gradient the update used; left out unless plain SGD, full batch, no dropout, where the full-batch slope is
  * not what the step applied) and the loss the step measured BEFORE the update. Opt-in
  * (`panel-step-log`); small models only.
  */
@@ -46,6 +46,7 @@ export function StepLog() {
         <div className={own.wrap}>
           <p className={own.caption}>
             Parameters and ŷ are after the step; slope and loss are before it.
+            {hasSlope ? ' New value = old value - learning rate x slope.' : ''}
           </p>
           <table className={own.table}>
             <thead>

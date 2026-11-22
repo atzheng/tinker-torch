@@ -61,7 +61,7 @@ export type HistoryPoint = {
  * One Step of the step log (tinker-6t7.10). `values` are the parameters AFTER the step (in
  * `listParams` order), `prediction` the first prediction pin at those parameters (first training
  * example when the model has inputs), `slopes` the derivative of the full-batch loss at the
- * parameters BEFORE the step (null for a mini-batch or dropout run, where it is not the step's
+ * parameters BEFORE the step (null unless plain SGD, full batch and no dropout, where it is not the step's
  * gradient) and `loss` the loss the step measured before the update.
  */
 export type StepLogRow = {
@@ -511,10 +511,11 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
 
   /**
    * Derivative of the full-batch loss per parameter entry at the current parameters, or null when
-   * it is not what the step applies (mini-batch, or dropout in the graph).
+   * it is not what the step applies (not plain SGD, mini-batch, or dropout in the graph).
    */
   function slopesBefore(n: number): number[] | null {
     const { graph, dataset, host, analysis } = get();
+    if (graph.train.optimizer !== 'sgd') return null; // momentum / Adam: the update is not lr x slope
     if (isMiniBatch(graph.train.batch, dataset.nTrain)) return null;
     if (graph.nodes.some((nd) => nd.type === 'dropout') || !host) return null;
     const out: number[] = [];
@@ -721,6 +722,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
         rt.batches = batchSchedule(get().dataset.nTrain, get().graph.train.batch, rt.seed);
         rt.valLoss = best.val;
         rt.trainLoss = null; // no loss was computed for the restored parameters yet
+        rt.stepLog = []; // the rows no longer lead to these weights
         publish({ running: false, diverged: false, probIssue: probSentence() });
       } catch (e) {
         if (params) engine.dispose(params); // not consumed by startTraining

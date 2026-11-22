@@ -19,6 +19,7 @@
 .table {
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs);
   width: 100%;
 }
 

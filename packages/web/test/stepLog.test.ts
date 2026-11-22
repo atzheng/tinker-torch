@@ -2,6 +2,7 @@
 import { beforeAll, beforeEach, expect, test } from 'vitest';
 import { parseFile } from '@tinker/core';
 import interceptMean from '../src/presets/intercept-mean.json';
+import { listParams } from '../src/plot/lossCurve1d.js';
 import { loadEngine } from '../src/engine.js';
 import { useStore } from '../src/state/store.js';
 import { loadParsed } from '../src/topbar/FileMenu.js';
@@ -58,6 +59,31 @@ test('Reset clears; the log keeps the last 50 rows', () => {
 
 test('without panel-step-log in show.ui nothing is logged', () => {
   load({});
+  s().stepOnce();
+  expect(s().stepLog).toHaveLength(0);
+});
+
+test('Adam logs no slope (the update is not lr x slope)', () => {
+  load(SHOW);
+  s().setOptimizer('adam');
+  s().stepOnce();
+  expect(s().stepLog).toHaveLength(1);
+  expect(s().stepLog[0]?.slopes).toBeNull();
+});
+
+test('Restore best clears the log', () => {
+  load(SHOW);
+  for (let i = 0; i < 3; i++) s().stepOnce();
+  expect(s().stepLog).toHaveLength(3);
+  s().restoreBest();
+  expect(s().stepLog).toHaveLength(0);
+});
+
+test('more than 4 parameter entries log nothing', () => {
+  s().loadGraph(mlpGraph());
+  useStore.setState({ show: { ui: ['panel-step-log'] } });
+  const host = s().host;
+  expect(host ? listParams(host, s().analysis.order).length : 0).toBeGreaterThan(4);
   s().stepOnce();
   expect(s().stepLog).toHaveLength(0);
 });
