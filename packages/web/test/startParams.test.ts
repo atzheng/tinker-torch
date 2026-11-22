@@ -93,3 +93,26 @@ test('values whose shape no longer fits are ignored by Reset, the others stay', 
   expect(s().host?.lin1?.W?.length).toBe(4);
   expect(Array.from(s().host?.lin1?.W ?? []).every((v) => v === 0.25)).toBe(false);
 });
+
+test('New random start ignores the start values; Reset still returns to them', () => {
+  loadParsed(preset({ w1: 0, w2: 2, bias: 0.5 }));
+  for (let i = 0; i < 5; i++) s().stepOnce();
+  s().randomStart();
+  expect(s().step).toBe(0);
+  expect([w('w1'), w('w2'), b()]).not.toEqual([[0], [2], [0.5]]);
+  expect(s().startParams).not.toBeNull();
+  const first = w('w1');
+  s().randomStart();
+  expect(w('w1')).not.toEqual(first); // a new seed each time
+  s().reset();
+  expect([w('w1'), w('w2'), b()]).toEqual([[0], [2], [0.5]]);
+});
+
+test('New random start keeps the start values of locked pieces', () => {
+  const r = parseFile({ ...scalar, params: { w1: 0, w2: 2, bias: 0.5 }, locked: ['w2'] });
+  if (!r.ok) throw new Error(r.error);
+  loadParsed(r.file);
+  s().randomStart();
+  expect(w('w2')).toEqual([2]);
+  expect(w('w1')).not.toEqual([0]);
+});

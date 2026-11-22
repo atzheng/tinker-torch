@@ -1,4 +1,10 @@
-import { analyse, type Graph, type HostParams, type DataInfo } from '@tinker/core';
+import {
+  analyse,
+  lookupCategories,
+  type Graph,
+  type HostParams,
+  type DataInfo,
+} from '@tinker/core';
 
 /**
  * `HostParams` carries flat arrays only, so [2, 3] and [3, 2] look the same. The train slice
@@ -14,7 +20,7 @@ export function noteHost(host: HostParams | null | undefined, graph: Graph): voi
   if (host && !graphOf.has(host)) graphOf.set(host, graph);
 }
 
-/** [in, out] of a Linear in the graph a snapshot was published with; undefined when unknown. */
+/** [in, out] of a Linear ([categories, width] of a Lookup) in the graph a snapshot was published with; undefined when unknown. */
 export function hostShape(
   host: HostParams | undefined,
   node: string,
@@ -30,6 +36,10 @@ export function hostShape(
       const inW = a.inWidth[n.id];
       if (n.type === 'linear' && inW !== undefined && shapes[n.id] === undefined) {
         shapes[n.id] = [inW, n.out];
+      }
+      if (n.type === 'lookup' && shapes[n.id] === undefined) {
+        const k = lookupCategories(a, n.id);
+        if (k !== undefined) shapes[n.id] = [k, n.width];
       }
     }
     shapesOf.set(g, shapes);

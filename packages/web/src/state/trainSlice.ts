@@ -137,6 +137,8 @@ export type TrainSlice = {
   run: () => void;
   pause: () => void;
   reset: () => void;
+  /** Like Reset, but ignores the start values (except for locked pieces): a new seed and fresh initialisation. */
+  randomStart: () => void;
   restoreBest: () => void;
   /**
    * Install saved weights after `loadGraph` (tinker-ysl.1). `host` belongs to the current graph
@@ -359,6 +361,15 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     return { train: one(trainBatch), val: one(valBatch) };
   }
 
+  /** The start values of locked pieces only: a random start never changes what a preset locks. */
+  function lockedStart(start: HostParams | null): HostParams | null {
+    if (!start) return null;
+    const out = Object.create(null) as HostParams;
+    for (const id of get().preset?.locked ?? [])
+      if (Object.hasOwn(start, id)) out[id] = start[id] as HostParams[string];
+    return out;
+  }
+
   function clearRun(): void {
     rt.history = [];
     rt.best = null;
@@ -383,7 +394,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
    * Brings model, TrainState and params in line with the current graph and dataset. `fresh`
    * discards the parameters (Reset).
    */
-  function resync(freshArg = false, carried: ScalarCarry | null = null): void {
+  function resync(freshArg = false, carried: ScalarCarry | null = null, randomStart = false): void {
     const { graph, dataset, dataInfo } = get();
     // A diverged run leaves huge (finite) weights behind, so no lr, optimizer, batch or data
     // change could recover from them: the edit that follows a divergence starts from fresh weights.
@@ -441,7 +452,11 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       ? carry.host
       : rt.host && rt.hostGraph && rt.hostAnalysis
         ? reconcileParams(rt.host, rt.hostAnalysis, analysis, rt.seed)
-        : withStartParams(initParams(analysis, rt.seed), get().startParams, analysis); // Reset: the loaded values, the rest from the seed
+        : withStartParams(
+            initParams(analysis, rt.seed),
+            randomStart ? lockedStart(get().startParams) : get().startParams,
+            analysis,
+          ); // Reset: the loaded values, the rest from the seed; New random start: the seed only (locked pieces keep theirs)
     rt.hostGraph = graph;
     rt.hostAnalysis = analysis;
     if (structural || carry) {
@@ -709,6 +724,13 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
         .fork('reset')
         .int(2 ** 31);
       resync(true);
+    },
+    randomStart: () => {
+      if (!get().analysis.trainable) return;
+      rt.seed = makeRng(rt.seed)
+        .fork('random-start')
+        .int(2 ** 31);
+      resync(true, null, true);
     },
     restoreBest: () => {
       const { engine, model, best } = rt;
