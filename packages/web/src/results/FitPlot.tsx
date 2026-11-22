@@ -1,3 +1,4 @@
+import { useUiShown } from '../state/disclosure.js';
 import { useMemo, useState } from 'react';
 import { grid1d, hasTruth, truth, unstandardizeRows } from '@tinker/core';
 import { fitYRange, linearScale, niceTicks } from '../plot/axes.js';
@@ -221,11 +222,14 @@ function FitPlot1D() {
   };
 
   const ref = usePlotCanvas(draw, [dataset, fixed, curve, classCurves, showTruth, overlay, pins]);
+  const showTruthToggle = useUiShown('truth-toggle');
+  const showResample = useUiShown('resample-run');
+  const showPicker = useUiShown('prediction-picker');
   return (
     <div className={styles.panel} data-testid="fit-plot">
       <div className={styles.head} data-panel-head="">
         <span className={styles.title}>Fit</span>
-        {hasTruth(set) && (
+        {showTruthToggle && hasTruth(set) && (
           <label className={styles.toggle}>
             <input
               type="checkbox"
@@ -236,10 +240,10 @@ function FitPlot1D() {
             True function
           </label>
         )}
-        <PredictionPicker />
-        <ResampleButton />
+        {showPicker && <PredictionPicker />}
+        {showResample && <ResampleButton />}
       </div>
-      <ResampleReadout />
+      {showResample && <ResampleReadout />}
       {noPrediction && (
         <p className={`${styles.readout} tk-diag-label`} data-testid="no-prediction">
           No prediction selected.

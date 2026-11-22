@@ -54,6 +54,7 @@ import {
   type Transform,
 } from './pure.js';
 import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
+import { useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 
 /** Pieces snap to this grid (layout units): the `--sp-2` spacing token. */
@@ -139,6 +140,11 @@ export function Canvas() {
   const graph = useStore((s) => s.graph);
   const select = useStore((s) => s.select);
   const analysis = useAnalysis();
+  const showGrain = useUiShown('grain-toggle');
+  const showFit = useUiShown('fit-view');
+  const showTidy = useUiShown('tidy-layout');
+  const showResetView = useUiShown('reset-view');
+  const showEquations = useUiShown('equation-strip');
   const grain = useStore((s) => s.grain);
   const setGrain = useStore((s) => s.setGrain);
   // Neuron view repaints its edges from `host` itself, so the canvas does not follow it per frame.
@@ -518,17 +524,20 @@ export function Canvas() {
         if (e.key === 'Escape') select(null);
       }}
     >
-      <button
-        type="button"
-        className="tk-grain"
-        data-testid="grain-toggle"
-        aria-pressed={grain === 'neuron'}
-        title="Switch between layer view and neuron view"
-        onClick={() => setGrain(grain === 'neuron' ? 'layer' : 'neuron')}
-      >
-        Neurons
-      </button>
-      {!isNeuron &&
+      {showGrain && (
+        <button
+          type="button"
+          className="tk-grain"
+          data-testid="grain-toggle"
+          aria-pressed={grain === 'neuron'}
+          title="Switch between layer view and neuron view"
+          onClick={() => setGrain(grain === 'neuron' ? 'layer' : 'neuron')}
+        >
+          Neurons
+        </button>
+      )}
+      {showFit &&
+        !isNeuron &&
         Math.abs(t.scale - fit.scale) + Math.abs(t.tx - fit.tx) + Math.abs(t.ty - fit.ty) > 1 && (
           <button
             type="button"
@@ -540,7 +549,7 @@ export function Canvas() {
             Fit
           </button>
         )}
-      {!isNeuron && graph.positions && (
+      {showTidy && !isNeuron && graph.positions && (
         <button
           type="button"
           className="tk-grain tk-resetview tk-tidy"
@@ -562,7 +571,7 @@ export function Canvas() {
           onPreview={setPreviewGroup}
         />
       )}
-      {isNeuron && userView && (
+      {showResetView && isNeuron && userView && (
         <button
           type="button"
           className="tk-grain tk-resetview"
@@ -686,7 +695,7 @@ export function Canvas() {
             : `Tap empty canvas to place ${armed.label}.`}
         </div>
       )}
-      <EquationStrip graph={graph} analysis={analysis} />
+      {showEquations && <EquationStrip graph={graph} analysis={analysis} />}
       {graph.nodes.length === 0 ? (
         <div className="tk-empty" data-testid="empty-hint">
           {HINTS.empty}

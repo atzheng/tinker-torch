@@ -22,11 +22,13 @@ export function saveText(withWeights: boolean): string {
   const { graph, host, preset } = useStore.getState();
   const text = serializeFile(graph, withWeights && host ? paramsToJson(host) : undefined);
   if (!preset) return text;
-  // A preset that is being edited stays a preset: title, prompt and locked ids are written back.
+  // A preset that is being edited stays a preset: title, prompt, locked ids and the disclosure lists are written back.
   const doc = JSON.parse(text) as Record<string, unknown>;
   doc['title'] = preset.title;
   if (preset.prompt !== undefined) doc['prompt'] = preset.prompt;
   if (preset.locked.length > 0) doc['locked'] = preset.locked;
+  const { show } = useStore.getState();
+  if (show) doc['show'] = show;
   return JSON.stringify(doc, null, 2) + '\n';
 }
 
@@ -75,7 +77,7 @@ export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: str
   }
   // The file's seed drives init of unsaved layers, batch order and dropout; one undo step.
   s.setRunSeed(file.graph.train.seed);
-  s.apply({ ok: true, graph: file.graph }, active);
+  s.apply({ ok: true, graph: file.graph }, active, 'show' in file ? (file.show ?? null) : null);
   if (!file.params) return { ok: true, message: null };
   const after = useStore.getState();
   if (!after.analysis.trainable) {

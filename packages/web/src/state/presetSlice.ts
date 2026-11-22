@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { NodeId } from '@tinker/core';
+import type { NodeId, Show } from '@tinker/core';
 
 /** What a loaded preset leaves in the store (CONTRACTS.md section 12). */
 export type ActivePreset = {
@@ -17,6 +17,12 @@ export type PresetSlice = {
    * `loadGraph` (new graph) clears it.
    */
   preset: ActivePreset | null;
+  /**
+   * What the loaded preset shows (CONTRACTS.md section 12), or null: everything. Preset-level
+   * state, not part of the undo history: only a file load (`apply(edit, preset, show)`) or a new
+   * graph (`loadGraph`) changes it.
+   */
+  show: Show | null;
   /** True once the person dismissed the prompt line of the current preset. */
   promptDismissed: boolean;
   setPreset: (preset: ActivePreset | null) => void;
@@ -25,6 +31,7 @@ export type PresetSlice = {
 
 export const createPresetSlice: StateCreator<PresetSlice, [], [], PresetSlice> = (set) => ({
   preset: null,
+  show: null,
   promptDismissed: false,
   setPreset: (preset) => set({ preset, promptDismissed: false }),
   dismissPrompt: () => set({ promptDismissed: true }),

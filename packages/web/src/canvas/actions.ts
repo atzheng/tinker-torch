@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { deleteEdge, deleteNode, parsePort, removePrediction } from '@tinker/core';
+import { uiShown } from '../state/disclosure.js';
 import { lockedIds } from '../state/locks.js';
 import { useStore } from '../state/store.js';
 import { edgeIndexOf } from './pure.js';
@@ -38,13 +39,15 @@ export function useEditShortcuts(): void {
       if (isEditable(e.target)) return;
       const s = useStore.getState();
       const mod = e.ctrlKey || e.metaKey;
+      // A hidden undo or redo control disables its shortcut too (preset disclosure).
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault();
-        if (e.shiftKey) s.redo();
-        else s.undo();
+        if (e.shiftKey) {
+          if (uiShown('btn-redo')) s.redo();
+        } else if (uiShown('btn-undo')) s.undo();
       } else if (mod && e.key.toLowerCase() === 'y') {
         e.preventDefault();
-        s.redo();
+        if (uiShown('btn-redo')) s.redo();
       } else if (!mod && (e.key === 'Delete' || e.key === 'Backspace')) {
         if (!s.selection) return;
         e.preventDefault();

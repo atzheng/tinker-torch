@@ -1,3 +1,4 @@
+import { useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import styles from './DataControls.module.css';
 
@@ -7,28 +8,35 @@ export function UndoRedo() {
   const canRedo = useStore((s) => s.canRedo);
   const undo = useStore((s) => s.undo);
   const redo = useStore((s) => s.redo);
+  const showUndo = useUiShown('btn-undo');
+  const showRedo = useUiShown('btn-redo');
+  if (!showUndo && !showRedo) return null;
   return (
     <div className={styles.row} role="group" aria-label="History">
-      <button
-        type="button"
-        data-testid="btn-undo"
-        aria-label="Undo"
-        title="Undo"
-        disabled={!canUndo}
-        onClick={undo}
-      >
-        ↶
-      </button>
-      <button
-        type="button"
-        data-testid="btn-redo"
-        aria-label="Redo"
-        title="Redo"
-        disabled={!canRedo}
-        onClick={redo}
-      >
-        ↷
-      </button>
+      {showUndo && (
+        <button
+          type="button"
+          data-testid="btn-undo"
+          aria-label="Undo"
+          title="Undo"
+          disabled={!canUndo}
+          onClick={undo}
+        >
+          ↶
+        </button>
+      )}
+      {showRedo && (
+        <button
+          type="button"
+          data-testid="btn-redo"
+          aria-label="Redo"
+          title="Redo"
+          disabled={!canRedo}
+          onClick={redo}
+        >
+          ↷
+        </button>
+      )}
     </div>
   );
 }
