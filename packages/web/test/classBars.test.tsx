@@ -71,6 +71,33 @@ test('intercept-prob: predicted follows a hand edit, observed is the label share
   expect(m.obs()[0]).toBeCloseTo(1 - ones, 4);
 });
 
+test('no-input model: observed uses all training rows, not the one predicted row', () => {
+  expect(loadBundled('intercept-prob')).toBe(true);
+  const m = mount();
+  const y = s().dataset.yTrain;
+  const ones = y.reduce((a, v) => a + (v === 1 ? 1 : 0), 0) / y.length;
+  expect(m.obs()[1]).toBeCloseTo(ones, 6);
+  expect(ones).toBeGreaterThan(0);
+  expect(ones).toBeLessThan(1);
+});
+
+test('classBars: observed rows may exceed predicted rows', () => {
+  const b = classBars(Float32Array.of(0.5), 1, 1, [1, 0, 0, 0], 2, undefined, 4);
+  expect(b?.[1]?.observed).toBeCloseTo(0.25);
+});
+
+test('a width-1 ŷ that is not a sigmoid Link gives the sentence, not P(class 1)', () => {
+  expect(loadBundled('logistic')).toBe(true);
+  // replace the sigmoid Link by a plain Activation (tanh-free identity-like): outputs stay a width-1 pin
+  const g = s().graph;
+  const nodes = g.nodes.map((n) =>
+    n.type === 'link' ? ({ id: n.id, type: 'activation', fn: 'relu' } as typeof n) : n,
+  );
+  act(() => s().loadGraph({ ...g, nodes } as typeof g));
+  const m = mount();
+  expect(m.el.querySelector('[data-testid="class-bars-none"]')).not.toBeNull();
+});
+
 test('softmax preset: one bar pair per class, each side sums to 1', () => {
   expect(loadBundled('softmax')).toBe(true);
   const m = mount();

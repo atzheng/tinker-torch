@@ -15,7 +15,7 @@ export const CLASS_BARS_MAX_ROWS = 2000;
 
 /**
  * The bars for one prediction readback `out` (`n` rows of `width` columns) and the labels `y`
- * (first `n` used). Width 1 is a sigmoid: P(class 1) = value, P(class 0) = 1 - value (two
+ * (first `nObs` used for the observed shares; `n` rows of predictions, which is 1 for a model with no input). Width 1 is a sigmoid: P(class 1) = value, P(class 0) = 1 - value (two
  * classes). Width k is a softmax: one bar per column. Null when the shape does not fit the
  * kind, or a value is not a probability.
  */
@@ -26,8 +26,9 @@ export function classBars(
   y: ArrayLike<number>,
   numClasses: number,
   classNames?: readonly string[],
+  nObs: number = n,
 ): ClassBar[] | null {
-  if (n < 1 || y.length < n) return null;
+  if (n < 1 || nObs < 1 || y.length < nObs) return null;
   const bar = probBarOf(out, n, width);
   if (!bar) return null;
   let pred: number[];
@@ -37,13 +38,13 @@ export function classBars(
   } else if (width === numClasses && width >= 2) pred = bar.values;
   else return null;
   const counts = new Array<number>(numClasses).fill(0);
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < nObs; i++) {
     const c = Math.round(y[i] as number);
     if (c >= 0 && c < numClasses) counts[c] = (counts[c] as number) + 1;
   }
   return pred.map((predicted, k) => ({
     name: classNames?.[k] ?? `class ${k}`,
     predicted,
-    observed: (counts[k] as number) / n,
+    observed: (counts[k] as number) / nObs,
   }));
 }

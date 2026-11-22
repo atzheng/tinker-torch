@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { parsePort } from '@tinker/core';
-import { PROB_BAR_EVERY_MS, probBarDue } from '../canvas/probBarPure.js';
+import { PROB_BAR_EVERY_MS, probBarDue, probBarTargets } from '../canvas/probBarPure.js';
 import { useUiLabel } from '../state/disclosure.js';
 import { plotIndex } from '../state/plotPrediction.js';
 import { useStore } from '../state/store.js';
@@ -41,10 +41,15 @@ export function ClassBars() {
     const idx = plotIndex(graph, pick);
     const pin = graph.predictions[idx];
     const d = dataset.info.columns.length;
-    const n = d === 0 ? 1 : Math.min(dataset.nTrain, CLASS_BARS_MAX_ROWS);
+    const nObs = Math.min(dataset.nTrain, CLASS_BARS_MAX_ROWS);
+    // a model with no input predicts the same for every row: one row is enough
+    const n = d === 0 ? 1 : nObs;
     if (pin !== undefined && dataset.info.kind !== 'regression' && n >= 1) {
-      const width = analysis.outWidth[parsePort(pin).node];
-      const outs = width === undefined ? null : predictPins(dataset.xTrain.slice(0, n * d), n);
+      const node = parsePort(pin).node;
+      const width = analysis.outWidth[node];
+      const isLink = probBarTargets(graph, analysis.outWidth).some((t) => t.id === node);
+      const outs =
+        width === undefined || !isLink ? null : predictPins(dataset.xTrain.slice(0, n * d), n);
       if (outs && width !== undefined) {
         bars = classBars(
           outs[idx],
@@ -53,6 +58,7 @@ export function ClassBars() {
           dataset.yTrain,
           dataset.info.numClasses,
           dataset.info.classNames,
+          nObs,
         );
       }
     }
@@ -73,8 +79,8 @@ export function ClassBars() {
       </div>
       {!bars ? (
         <div className={own.note} data-testid="class-bars-none">
-          No class probabilities to show yet: the plotted prediction must be a sigmoid or softmax of
-          a valid model.
+          No class probabilities to show: the plotted prediction must be a sigmoid or softmax of a
+          valid, trained-or-initialised model (not diverged).
         </div>
       ) : (
         <div className={own.body}>
