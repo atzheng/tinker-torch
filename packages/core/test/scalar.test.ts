@@ -80,7 +80,8 @@ describe('scalar regression', () => {
     const a = analyse(scalarGraph(d), { columns: cols, kind: 'regression', numClasses: 2 });
     expect(a.totalParams).toBe(d + 1);
     expect(a.issues.some((i) => /10,?000/.test(i.message))).toBe(true);
-  });
+    // Builds and analyses a 20k-node graph (about 3 s alone), so allow for a loaded machine.
+  }, 30_000);
 
   test('a column that is not in the dataset is an issue', () => {
     const a = analyse(scalarGraph(2), info(1));
