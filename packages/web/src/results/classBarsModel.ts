@@ -1,5 +1,6 @@
 // Predicted-versus-observed class bars (tinker-6t7.16): pure model. Nothing engine-side is kept.
-import { probBarOf } from '../canvas/probBarPure.js';
+import { parsePort, type Graph } from '@tinker/core';
+import { probBarOf, probBarTargets } from '../canvas/probBarPure.js';
 
 export type ClassBar = {
   /** Class name (the data's `classNames`, else "class k"). */
@@ -47,4 +48,24 @@ export function classBars(
     predicted,
     observed: (counts[k] as number) / nObs,
   }));
+}
+
+/**
+ * Whether the node's output can be read as class probabilities: a sigmoid/softmax Link, or (tinker-ss1)
+ * a width-1 output of any other piece that feeds a Log loss `pred` input, whose values are
+ * probabilities by construction (a Bias wired straight into Log loss). A width-1 output that feeds
+ * only an MSE-style loss is refused.
+ */
+export function isClassProbNode(
+  graph: Pick<Graph, 'nodes' | 'edges' | 'predictions'>,
+  outWidth: Readonly<Record<string, number | undefined>>,
+  node: string,
+): boolean {
+  if (probBarTargets(graph, outWidth).some((t) => t.id === node)) return true;
+  if (outWidth[node] !== 1) return false;
+  const logLoss = new Set(graph.nodes.filter((n) => n.type === 'log_loss').map((n) => n.id));
+  return graph.edges.some(([from, to]) => {
+    const t = parsePort(to);
+    return parsePort(from).node === node && t.port === 'pred' && logLoss.has(t.node);
+  });
 }
