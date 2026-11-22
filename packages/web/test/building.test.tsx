@@ -111,10 +111,15 @@ const EMPTY: [number, number] = [780, 470];
 const newNodes = (before: { nodes: { id: string }[] }) =>
   s().graph.nodes.filter((n) => !before.nodes.some((m) => m.id === n.id));
 
-test.each(['mouse', 'touch'])(
-  'every palette entry dragged onto empty canvas (%s) is placed there, inert, in one undo step',
-  (kind) => {
-    for (const entry of PALETTE) {
+// One test per entry and pointer kind, so each stays far under the timeout under load.
+const ENTRY_KINDS = PALETTE.flatMap((entry) =>
+  ['mouse', 'touch'].map((kind) => [entry, kind] as const),
+);
+
+test.each(ENTRY_KINDS)(
+  'palette entry %o dragged onto empty canvas (%s) is placed there, inert, in one undo step',
+  (entry, kind) => {
+    {
       const before = s().graph;
       dragEntry(entry.key, EMPTY, kind)();
       const added = newNodes(before);
@@ -131,10 +136,10 @@ test.each(['mouse', 'touch'])(
   },
 );
 
-test.each(['mouse', 'touch'])(
-  'tap-to-add (%s): arm any palette entry, tap empty canvas, it lands there',
-  (kind) => {
-    for (const entry of PALETTE) {
+test.each(ENTRY_KINDS)(
+  'tap-to-add: arm palette entry %o (%s), tap empty canvas, it lands there',
+  (entry, kind) => {
+    {
       const before = s().graph;
       const el = must(`palette-${entry.key}`);
       ptr(el, 'pointerdown', 20, 20, kind);
