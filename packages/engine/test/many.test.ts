@@ -100,7 +100,7 @@ describe('trainMany divergence and arguments', () => {
     expect(maxDiff(withBad[0]?.params ?? {}, clean[0]?.params ?? {})).toBe(0);
     expect(maxDiff(withBad[2]?.params ?? {}, clean[2]?.params ?? {})).toBe(0);
     // frozen at its initialisation (the first step was already non-finite), and finite
-    const init = engine.toHost(engine.init(model, 2));
+    const init = engine.toHost(engine.init(model, seeds[1] as number));
     expect(maxDiff(withBad[1]?.params ?? {}, init)).toBe(0);
   });
 
@@ -128,6 +128,83 @@ describe('trainMany divergence and arguments', () => {
     const short = { ...(d[1] as Batch), n: 3, x: new Float32Array(3), y: new Float32Array(3) };
     expect(() => engine.trainMany(model, [1, 2], [d[0] as Batch, short], 5)).toThrow('same size');
     expect(engine.trainMany(model, [1, 2], d, 0)).toHaveLength(2);
+  });
+});
+
+describe('trainMany range-checks unfused probability losses', () => {
+  // Linear -> sigmoid -> Scale(1.25) -> cross_entropy (unfused). The scale lets p[class] exceed 1
+  // while the loss stays finite and negative, so only the range check can catch it. Copy 1 gets a
+  // constant x that puts every pre-activation in (2, 6); the others get small x and stay below 1.
+  const setup = () => {
+    const { fx, graph: g0, data: info } = loadFixture('prob_direct_cross_entropy');
+    const graph = {
+      ...g0,
+      nodes: [...g0.nodes, { id: 's', type: 'scale' as const, c: 1.25 }],
+      edges: g0.edges
+        .map((e) => (e[0] === 'a1' ? (['a1', 's'] as typeof e) : e))
+        .concat([['s', 'err.pred'] as (typeof g0.edges)[number]]),
+      train: { ...g0.train, lr: 0.05 },
+    };
+    const model = engine.compile(graph, info);
+    const good = datasets(fx, 3).map((b) => ({ ...b, x: Float32Array.from(b.x, (v) => v * 0.01) }));
+    // find a seed (for copy 1) and a direction whose pre-activations are all in (2, 6)
+    for (let seed = 2; seed < 400; seed += 3) {
+      const lin = engine.toHost(engine.init(model, seed))['lin1'];
+      const W = lin?.W ?? new Float32Array(0);
+      for (let deg = 0; deg < 360; deg += 5) {
+        const x = [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)];
+        for (const r of [2, 4, 8]) {
+          const z = [0, 1, 2].map(
+            (j) =>
+              (lin?.b?.[j] ?? 0) + r * ((x[0] ?? 0) * (W[j] ?? 0) + (x[1] ?? 0) * (W[3 + j] ?? 0)),
+          );
+          if (z.every((v) => v > 2 && v < 6)) {
+            const d = good[1] as Batch;
+            const xs = new Float32Array(d.x.length);
+            for (let i = 0; i < d.n; i++) {
+              xs[2 * i] = r * (x[0] ?? 0);
+              xs[2 * i + 1] = r * (x[1] ?? 0);
+            }
+            const bad = good.map((b, i) => (i === 1 ? { ...b, x: xs } : b));
+            return { model, good, bad, seeds: [1, seed, 3] };
+          }
+        }
+      }
+    }
+    throw new Error('no seed found for the test');
+  };
+
+  test('a copy whose pred leaves (0, 1) is frozen and flagged; the others are bit-identical to a clean run', () => {
+    const { model, good, bad, seeds } = setup();
+    const withBad = engine.trainMany(model, seeds, bad, 8);
+    const alone = [0, 2].map(
+      (i) => engine.trainMany(model, [seeds[i] as number], [good[i] as Batch], 8)[0],
+    );
+    expect(withBad.map((r) => r.diverged)).toEqual([false, true, false]);
+    expect(alone.map((r) => r?.diverged)).toEqual([false, false]);
+    expect(maxDiff(withBad[0]?.params ?? {}, alone[0]?.params ?? {})).toBe(0);
+    expect(maxDiff(withBad[2]?.params ?? {}, alone[1]?.params ?? {})).toBe(0);
+    // frozen at its initialisation: the very first step already saw the range violation
+    expect(
+      maxDiff(withBad[1]?.params ?? {}, engine.toHost(engine.init(model, seeds[1] as number))),
+    ).toBe(0);
+  });
+
+  test('unfused log loss out of range still diverges the copy (NaN loss)', () => {
+    const { fx, graph, data: info } = loadFixture('prob_direct_log_loss');
+    const model = engine.compile(graph, info);
+    const good = datasets(fx, 2);
+    const out = engine.trainMany(model, [1, 2], good, 3);
+    // the bias starts at 0 in the model init, so p = 0 is out of range: both copies diverge
+    expect(out.every((r) => r.diverged)).toBe(true);
+  });
+
+  test('leaks nothing when a copy is frozen by the range check', () => {
+    const { model, bad, seeds } = setup();
+    engine.trainMany(model, seeds, bad, 3);
+    const baseline = engine.liveArrays();
+    for (let i = 0; i < 20; i++) engine.trainMany(model, seeds, bad, 3);
+    expect(engine.liveArrays()).toBe(baseline);
   });
 });
 
