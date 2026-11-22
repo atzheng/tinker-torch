@@ -196,3 +196,52 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent);
 }
+
+/* Portrait strip (tinker-2xj): the same groups in one scrolling row above the canvas. A drag
+   starts with a vertical move toward the canvas; a horizontal swipe scrolls the strip. */
+.tk-palette[data-strip='true'] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: auto;
+  padding: 6px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+.tk-palette[data-strip='true'] .tk-palette-head {
+  display: none;
+}
+.tk-palette[data-strip='true'] .tk-palette-group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+.tk-palette[data-strip='true'] .tk-palette-group:first-of-type {
+  border-left: 0;
+  padding-left: 0;
+}
+.tk-palette[data-strip='true'] .tk-palette-group h3 {
+  margin: 0;
+  flex: none;
+}
+.tk-palette[data-strip='true'] .tk-palette-group > div {
+  display: flex;
+  gap: 8px;
+  padding: 0 6px;
+}
+.tk-palette[data-strip='true'] .tk-palette-group > div[hidden] {
+  display: none;
+}
+.tk-palette[data-strip='true'] .tk-palette-toggle {
+  width: auto;
+}
+.tk-palette[data-strip='true'] .tk-palette-entry {
+  width: auto;
+  flex: none;
+  margin: 0;
+  touch-action: pan-x;
+}

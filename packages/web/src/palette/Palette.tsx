@@ -1,8 +1,9 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { PALETTE, isShown, ownsParams, type Node, type PaletteEntry } from '@tinker/core';
 import { dnd } from '../canvas/dnd.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
+import { useLayoutMode } from '../layout/useLayoutMode.js';
 import { useStore } from '../state/store.js';
 import { Tex } from '../tex/Tex.js';
 import './palette.css';
@@ -117,6 +118,8 @@ export const GROUPS: Group[] = [
  * decides what is under the pointer (`canvas/dnd.ts`).
  */
 export function Palette() {
+  // Portrait: a horizontally scrolling strip above the canvas (CONTRACTS.md section 10).
+  const strip = useLayoutMode() === 'portrait';
   const drag = useSyncExternalStore(dnd.subscribe, dnd.get, () => null);
   const dragging = drag?.payload.kind === 'palette' ? drag.payload.entry : null;
   const armed = useSyncExternalStore(dnd.subscribe, dnd.armed, () => null);
@@ -127,6 +130,19 @@ export function Palette() {
   const isOpen = (g: Group) => toggled[g.id] ?? (allowed !== undefined || g.open);
   const visibleIn = (g: Group) =>
     PALETTE.filter(g.has).filter((e) => isShown(allowed, g.id) || isShown(allowed, e.key));
+  // Strip: a mouse wheel (vertical delta) scrolls it sideways; a trackpad's horizontal delta already does.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!strip || !el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [strip]);
   useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no ghost
   // Tap-to-add ends on Escape, or on a press that is neither on the palette nor on the drawing.
   useEffect(() => {
@@ -147,7 +163,7 @@ export function Palette() {
     };
   }, []);
   return (
-    <div className="tk-palette" data-testid="palette">
+    <div className="tk-palette" data-testid="palette" data-strip={strip} ref={ref}>
       <div className="tk-palette-head">
         <h2 className="tk-region-title">Pieces</h2>
         <p className="tk-palette-hint" data-testid="palette-hint">
@@ -186,14 +202,20 @@ export function Palette() {
                 }}
                 onPointerDown={(e) => {
                   if (e.pointerType === 'mouse' && e.button !== 0) return;
-                  // Touch: the palette scrolls vertically (`touch-action: pan-y`), so a drag begins
-                  // only once the movement is mostly horizontal; a vertical swipe is left to scroll.
+                  // Touch: the palette scrolls along its long axis (`touch-action: pan-y`, or `pan-x`
+                  // in the strip), so a drag begins only once the movement is mostly across it.
                   const touch = e.pointerType !== 'mouse';
                   let begun = false;
                   startDrag(e, {
                     onMove: (p) => {
                       if (!begun) {
-                        if (touch && Math.abs(p.dx) < Math.abs(p.dy)) return;
+                        if (
+                          touch &&
+                          (strip
+                            ? Math.abs(p.dy) < Math.abs(p.dx)
+                            : Math.abs(p.dx) < Math.abs(p.dy))
+                        )
+                          return;
                         begun = true;
                         dnd.begin({ kind: 'palette', entry }, p.x, p.y);
                       }

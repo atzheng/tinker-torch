@@ -76,3 +76,33 @@ export function resizePair(
   const na = Math.min(Math.max(want, min), pair - min);
   return { ...start, [a]: na, [b]: pair - na };
 }
+
+/**
+ * The panels lie in a column (landscape: stacked, split bars horizontal) or in a row (portrait:
+ * side by side, split bars vertical). The reorder and resize maths above is one-dimensional: these
+ * pick the coordinate along the panels' axis, so the same code serves both.
+ */
+export type Orientation = 'column' | 'row';
+
+/** A rectangle's midpoint along the axis (y for a column, x for a row). */
+export function midAlong(
+  o: Orientation,
+  r: { left: number; right: number; top: number; bottom: number },
+): number {
+  return o === 'row' ? (r.left + r.right) / 2 : (r.top + r.bottom) / 2;
+}
+
+/** A pointer position along the axis. */
+export function posAlong(o: Orientation, p: { x: number; y: number }): number {
+  return o === 'row' ? p.x : p.y;
+}
+
+/** A pointer movement along the axis. */
+export function deltaAlong(o: Orientation, p: { dx: number; dy: number }): number {
+  return o === 'row' ? p.dx : p.dy;
+}
+
+/** The container's extent along the axis (height for a column, width for a row). */
+export function extentAlong(o: Orientation, r: { width: number; height: number }): number {
+  return o === 'row' ? r.width : r.height;
+}
