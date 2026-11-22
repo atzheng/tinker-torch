@@ -136,3 +136,43 @@ test('a two-parameter model is unchanged: no pickers', () => {
   expect(m.host.querySelector('[data-testid="surface-axis-y"]')).toBeNull();
   m.done();
 });
+
+test('stage 4: the grid is re-evaluated when training moves the held parameters', () => {
+  expect(loadBundled('lecture1-stage4')).toBe(true);
+  const real = s().lossSurface;
+  const calls: Float32Array[] = [];
+  useStore.setState({
+    lossSurface: (axes, a, b) => {
+      const g = real(axes, a, b);
+      if (g) calls.push(g);
+      return g;
+    },
+  });
+  const m = mount(<LossSurface />);
+  const n0 = calls.length;
+  expect(n0).toBeGreaterThan(0);
+  const zone = Object.keys(s().host ?? {}).find((k) => s().host?.[k]?.W?.length === 4) ?? '';
+  const before = s().host?.[zone]?.W?.[0];
+  act(() => {
+    for (let i = 0; i < 5; i++) s().stepOnce();
+  });
+  expect(s().host?.[zone]?.W?.[0]).not.toBe(before); // a held parameter moved
+  expect(calls.length).toBeGreaterThan(n0);
+  expect(calls[calls.length - 1]).not.toEqual(calls[0]);
+  m.done();
+  useStore.setState({ lossSurface: real });
+});
+
+test('more than two parameters: the panel is opt-in through show.ui; two parameters always show', () => {
+  loadBundled('mlp');
+  const m = mount(<LossSurface />);
+  expect(s().analysis.totalParams).toBeGreaterThan(2);
+  expect(s().show?.ui).toBeUndefined();
+  expect(m.host.querySelector('[data-testid="loss-surface"]')).toBeNull();
+  act(() => {
+    useStore.setState({ show: { ui: ['panel-surface'] } });
+  });
+  expect(m.host.querySelector('[data-testid="loss-surface"]')).not.toBeNull();
+  m.done();
+  useStore.setState({ show: null });
+});

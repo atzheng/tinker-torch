@@ -262,3 +262,36 @@ export function resolvePair(
 export function pairLabels(pair: readonly [CurveParam, CurveParam]): [string, string] {
   return [pair[0].label, pair[1].label];
 }
+
+/** While running, a surface over a larger model is re-evaluated at most this often (ms). */
+export const SURFACE_EVERY_MS = 500;
+
+/** Whether the held parameters' change should be evaluated now: always when not running. */
+export function surfaceDue(now: number, last: number, running: boolean): boolean {
+  return !running || now - last >= SURFACE_EVERY_MS;
+}
+
+/** A key of the values of every parameter off the pair (what the surface holds fixed). */
+export function heldKey(
+  params: readonly CurveParam[],
+  pairKeys: readonly [string, string],
+): string {
+  return params
+    .filter((p) => p.key !== pairKeys[0] && p.key !== pairKeys[1])
+    .map((p) => p.value)
+    .join(',');
+}
+
+/**
+ * Whether the panel is shown: exactly two parameters as ever; more only when the preset's `ui`
+ * list names `panel-surface` (opt-in, like the 1-D curve panel). Returns the parameter list or null.
+ */
+export function shownSurfaceParams(
+  host: HostParams,
+  order: readonly NodeId[],
+  ui: readonly string[] | undefined,
+): CurveParam[] | null {
+  const ps = surfaceParams(host, order);
+  if (!ps) return null;
+  return ps.length === 2 || ui?.includes('panel-surface') === true ? ps : null;
+}

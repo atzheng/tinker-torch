@@ -1,7 +1,7 @@
 import { Fragment, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { isShown } from '@tinker/core';
 import { startDrag } from '../gestures/drag.js';
-import { surfaceParams } from '../plot/lossSurface.js';
+import { shownSurfaceParams } from '../plot/lossSurface.js';
 import { useStore } from '../state/store.js';
 import { FitPlot } from './FitPlot.js';
 import { LossCurves } from './LossCurves.js';
@@ -68,7 +68,7 @@ export function ResultsPanels() {
   const setWeights = useStore((s) => s.setPanelWeights);
   const hasParams = useStore((s) => s.host !== null && s.analysis.paramNodes.length > 0);
   const hasSurface = useStore((s) =>
-    s.host ? surfaceParams(s.host, s.analysis.order) !== null : false,
+    s.host ? shownSurfaceParams(s.host, s.analysis.order, s.show?.ui) !== null : false,
   );
   const hasHistogram = useHistogramApplies();
   const classification = useStore((s) => s.dataset.info.kind !== 'regression');

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { linearScale, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { AxisLabels } from '../plot/AxisLabels.js';
@@ -15,7 +15,10 @@ import {
   nextRange,
   pairLabels,
   resolvePair,
-  surfaceParams,
+  heldKey,
+  shownSurfaceParams,
+  surfaceDue,
+  SURFACE_EVERY_MS,
   type Pt,
   type SurfaceAxis,
   type SurfaceRange,
@@ -33,7 +36,11 @@ import styles from './Results.module.css';
 export function LossSurface() {
   const host = useStore((s) => s.host);
   const order = useStore((s) => s.analysis.order);
-  const params = useMemo(() => (host ? surfaceParams(host, order) : null), [host, order]);
+  const ui = useStore((s) => s.show?.ui);
+  const params = useMemo(
+    () => (host ? shownSurfaceParams(host, order, ui) : null),
+    [host, order, ui],
+  );
   if (!host || !params) return null;
   return <Surface params={params} hostKey={host} />;
 }
@@ -68,6 +75,35 @@ function Surface({ params, hostKey }: { params: CurveParam[]; hostKey: object })
   const canTrain = useStore((s) => s.canTrain);
   const diverged = useStore((s) => s.diverged);
   const lossSurface = useStore((s) => s.lossSurface);
+  const running = useStore((s) => s.running);
+
+  // The held parameters (all but the pair) move while training or when edited by hand: the grid
+  // is re-evaluated when they change, at once when not running and at most every
+  // SURFACE_EVERY_MS while running (with a trailing update so it settles).
+  const held = showPickers ? heldKey(params, [pair[0].key, pair[1].key]) : '';
+  const ev = useRef({ key: '', time: 0 });
+  const [, setTick] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  if (ev.current.key !== held) {
+    const now = performance.now();
+    if (ev.current.time === 0 || surfaceDue(now, ev.current.time, running)) {
+      ev.current = { key: held, time: now };
+    }
+  }
+  const evalKey = ev.current.key;
+  useEffect(() => {
+    if (evalKey === held || timer.current) return;
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setTick((t) => t + 1);
+    }, SURFACE_EVERY_MS);
+  });
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   // The path and the range live in a ref; they change once per published host (not per redraw).
   // A new run (step 0: Reset, structural edit, hand-set weights) starts a new path and range.
@@ -101,7 +137,7 @@ function Surface({ params, hostKey }: { params: CurveParam[]; hostKey: object })
     );
     return { grid, scale, contours };
     // `axes` only changes with the graph; the array is rebuilt on every host, so it is not a dep
-  }, [range, pairKey, dataset, graph, canTrain, lossSurface]);
+  }, [range, pairKey, evalKey, dataset, graph, canTrain, lossSurface]);
 
   const [labelA, labelB] = showPickers ? pairLabels(pair) : axisLabels(axes);
 
