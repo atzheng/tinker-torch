@@ -119,6 +119,27 @@ test('a preset keeps its title, prompt and locked list', () => {
   expect(r.ok && 'locked' in r.file && r.file.locked).toEqual(['lin1']);
 });
 
+describe('preset instructions', () => {
+  const base = () => ({ ...JSON.parse(serializeFile(graph())), title: 'T' });
+  test('steps are kept; absent stays absent', () => {
+    const r = parseFile({ ...base(), instructions: ['one', 'two $x$'] });
+    expect(r.ok && 'instructions' in r.file && r.file.instructions).toEqual(['one', 'two $x$']);
+    const r2 = parseFile(base());
+    expect(r2.ok && 'instructions' in r2.file).toBe(false);
+    const r3 = parseFile({ ...JSON.parse(serializeFile(graph())), instructions: ['a'] });
+    expect(r3.ok && 'title' in r3.file).toBe(false);
+  });
+  test.each([
+    ['not a list', 'do this'],
+    ['a non-text step', ['ok', 3]],
+    ['an empty step', ['ok', '  ']],
+  ])('%s is refused with a sentence', (_n, instructions) => {
+    const r = parseFile({ ...base(), instructions });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/instructions/);
+  });
+});
+
 describe('preset show (progressive disclosure)', () => {
   const base = () => ({ ...JSON.parse(serializeFile(graph())), title: 'T' });
   test('lists are kept, absent lists stay absent', () => {
