@@ -119,9 +119,16 @@ export function makePin(
   };
 }
 
-/** Whether a pin stores a 1-D curve: one column that is numeric (a categorical axis draws none). */
-export function shouldSnapshotFit(info: Parameters<typeof fitView>[0]): boolean {
-  return info.columns.length === 1 && fitView(info).type === 'curve';
+/**
+ * The column a pin stores a 1-D curve over: the one continuous column the model reads (the others
+ * held), or null (a surface or a categorical axis draws no curve). `used` as for `fitView`.
+ */
+export function snapshotFitCol(
+  info: Parameters<typeof fitView>[0],
+  used?: readonly number[],
+): number | null {
+  const v = fitView(info, used);
+  return v.type === 'curve' ? v.col : null;
 }
 
 /**

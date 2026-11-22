@@ -8,6 +8,7 @@ import {
   grid1d,
   grid1dSlice,
   gridCategories,
+  usedColumns,
 } from '../src/index.js';
 
 const num = { columns: ['x1'], columnKinds: ['numeric' as const] };
@@ -69,4 +70,27 @@ test('axisCategoryCount and jitter bounds', () => {
   expect(axisCategoryCount({ columns: ['x1'], columnKinds: ['categorical'] }, 0, 4)).toBe(5);
   for (let i = 0; i < 500; i++) expect(Math.abs(categoryJitter(i))).toBeLessThanOrEqual(0.3);
   expect(categoryJitter(7)).toBe(categoryJitter(7));
+});
+
+test('fitView and usedColumns use only the columns the model reads', () => {
+  const delivery = {
+    columns: ['distance', 'rain', 'queue', 'zone'],
+    columnKinds: ['numeric', 'numeric', 'numeric', 'categorical'] as ('numeric' | 'categorical')[],
+    categories: { zone: ['a', 'b'] },
+  };
+  const g = (cols: string[]) => ({ nodes: [{ type: 'input', columns: cols }, { type: 'target' }] });
+  const view = (cols: string[]) => fitView(delivery, usedColumns(g(cols), delivery));
+  expect(usedColumns(g(['zone', 'distance']), delivery)).toEqual([0, 3]);
+  expect(view(['distance', 'zone'])).toEqual({ type: 'curve', col: 0 });
+  expect(view(['distance', 'rain'])).toEqual({ type: 'surface' });
+  expect(view(['zone'])).toEqual({ type: 'categories', col: 3 });
+  // a Column piece counts as a read
+  expect(usedColumns({ nodes: [{ type: 'column', name: 'rain' }] }, delivery)).toEqual([1]);
+  // no column read: every column, as before
+  expect(usedColumns({ nodes: [{ type: 'target' }] }, delivery)).toEqual([]);
+  expect(fitView(delivery, [])).toEqual({ type: 'surface' });
+  expect(fitView(delivery)).toEqual({ type: 'surface' });
+  // reading every column of a set changes nothing
+  expect(fitView(mixed, [0, 1])).toEqual(fitView(mixed));
+  expect(fitView(num, [0])).toEqual(fitView(num));
 });

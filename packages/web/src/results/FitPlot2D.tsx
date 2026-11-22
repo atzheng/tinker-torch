@@ -85,7 +85,7 @@ function modeOf(x: Float32Array, d: number, c: number, n: number): number {
 }
 
 /** Fit plot for 2-D data: decision surface (classification) or prediction heat map (regression). */
-export function FitPlot2D() {
+export function FitPlot2D({ used = [] }: { used?: readonly number[] }) {
   const dataset = useStore((s) => s.dataset);
   const set = useStore((s) => s.graph.data.set);
   const host = useStore((s) => s.host);
@@ -105,9 +105,11 @@ export function FitPlot2D() {
   const [pick2, setPick2] = useState<[number, number]>([0, 1]);
   // A categorical column cannot be an axis; it is held at its most common category (below).
   const isCat = (c: number) => dataset.info.columnKinds?.[c] === 'categorical';
-  // FitPlot only mounts this with two or more continuous columns (`fitView`), so the pickers
-  // never offer a category as an axis.
-  const axisCols = Array.from({ length: d }, (_, c) => c).filter((c) => !isCat(c));
+  // FitPlot only mounts this with two or more continuous columns the model reads (`fitView`), so
+  // the pickers offer neither a category nor a column the model ignores.
+  const axisCols = Array.from({ length: d }, (_, c) => c).filter(
+    (c) => !isCat(c) && (used.length === 0 || used.includes(c)),
+  );
   const ia = axisCols.includes(pick2[0]) ? pick2[0] : (axisCols[0] ?? 0);
   const ib =
     pick2[1] !== ia && axisCols.includes(pick2[1])
