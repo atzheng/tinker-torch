@@ -2,6 +2,7 @@ import { memo, useLayoutEffect, useMemo, useRef, useState, type ComponentType } 
 import {
   LAYOUT,
   resolveEdge,
+  categoryDials,
   setLinearOut,
   type Analysis,
   type Graph,
@@ -28,6 +29,7 @@ import {
 } from './neuronPure.js';
 import type { DragHandlers } from '../gestures/drag.js';
 import { pointerDownWith } from './tap.js';
+import { CategoryDialMark } from './CategoryDialMark.js';
 import { weightDragHandlers } from './weightEdit.js';
 import { hostShape } from '../state/hostShape.js';
 import { lockedIds } from '../state/locks.js';
@@ -204,6 +206,13 @@ export function NeuronView(p: NeuronViewProps) {
     return m;
   }, [layout]);
 
+  const dataInfo = useStore((s) => s.dataInfo);
+  const dials = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof categoryDials>[number]>();
+    for (const d of categoryDials(graph, analysis, dataInfo)) m.set(`${d.node}:${d.index}`, d);
+    return m;
+  }, [graph, analysis, dataInfo]);
+
   const shapes = useMemo(
     () => neuronHitShapes(layout, scale, LAYOUT.unitPitch, LAYOUT.unitW),
     [layout, scale],
@@ -221,7 +230,11 @@ export function NeuronView(p: NeuronViewProps) {
       const dst = unitsByNode.get(r.to.node);
       const error = p.errorEdges.has(w.edge);
       if (dst?.[0]?.kind === 'sum') continue;
-      if (src && dst && src.length === dst.length) {
+      // A Lookup's units are categories, not its (single) output: its wire is one plain wire.
+      const lookupSrc =
+        src?.[0]?.kind === 'cat' &&
+        graph.nodes.find((n) => n.id === r.from.node)?.type === 'lookup';
+      if (src && dst && !lookupSrc && src.length === dst.length) {
         src.forEach((a, k) => {
           const b = dst[k];
           if (!b) return;
@@ -364,6 +377,9 @@ export function NeuronView(p: NeuronViewProps) {
             transform={`translate(${u.x} ${u.y})`}
             data-testid={`unit-${u.node}-${u.index}`}
             data-kind={u.kind}
+            data-dial={
+              u.kind === 'cat' && dials.get(`${u.node}:${u.index}`)?.target ? 'true' : undefined
+            }
             data-role={roleOfNode(node, graph)}
             data-locked={lockedSet.has(u.node)}
             data-selected={selected}
@@ -372,12 +388,20 @@ export function NeuronView(p: NeuronViewProps) {
             onPointerDown={pointerDownWith({
               // A drag on a plus circle sets that unit's bias; other units only select.
               // Any other unit cell hands a drag to the edge nearest to where it began.
-              ...(u.kind === 'sum'
+              ...(u.kind === 'cat' && dials.get(`${u.node}:${u.index}`)?.target
                 ? weightDragHandlers(
-                    () => ({ kind: 'b', node: u.node, j: u.index }),
+                    () => {
+                      const t = dials.get(`${u.node}:${u.index}`)?.target;
+                      return t ? { kind: 'W', node: t.node, i: t.i, j: t.j } : null;
+                    },
                     () => p.select({ kind: 'unit', node: u.node, index: u.index }),
                   )
-                : dragOfEdge(-1)),
+                : u.kind === 'sum'
+                  ? weightDragHandlers(
+                      () => ({ kind: 'b', node: u.node, j: u.index }),
+                      () => p.select({ kind: 'unit', node: u.node, index: u.index }),
+                    )
+                  : dragOfEdge(-1)),
               onTap: () => p.select({ kind: 'unit', node: u.node, index: u.index }),
             })}
           >
@@ -392,6 +416,12 @@ export function NeuronView(p: NeuronViewProps) {
             )}
             <circle className="tk-ring" r={UNIT_R + 4} />
             <UnitCircle kind={u.kind} node={node} />
+            {u.kind === 'cat' && (
+              <CategoryDialMark
+                dial={dials.get(`${u.node}:${u.index}`)}
+                count={unitsByNode.get(u.node)?.length ?? 0}
+              />
+            )}
           </g>
         );
       })}

@@ -16,11 +16,13 @@
  * match, so any wiring order gives the same Linear. Expanding walks the Input's columns in order, so
  * Sum's inputs (and its fold order) follow the Input's column order.
  */
-import type { Analysis } from './analyse.js';
+import { categoryOf, type Analysis } from './analyse.js';
+import { lookupCategories } from './layout.js';
 import { freshId, LOCKED_MESSAGE, type EditOptions } from './edit.js';
 import { SETS } from './data/sets.js';
 import {
   parseGraph,
+  type DataInfo,
   parsePort,
   resolveEdge,
   type Edge,
@@ -315,4 +317,55 @@ export function expandToScalars(
   });
   if (biasId && b) layers[biasId] = { b: Float32Array.from(b) };
   return { ok: true, graph: parsed.graph, host: newHost(host, removed, layers), select: last };
+}
+
+/**
+ * One draggable per-category value at neuron grain (tinker-4w2). `target` is the parameter the
+ * dial sets: `W[i][j]` of `node` (a Lookup's table row `i`, or row `i` of the Linear that a
+ * One-hot feeds alone). Null when the piece has no single scalar parameter per category (a One-hot
+ * with no Linear of out 1 after it, or with other consumers), so the dial is only drawn.
+ */
+export type CategoryDial = {
+  /** The One-hot or Lookup the dial is drawn on. */
+  node: NodeId;
+  /** Category index. */
+  index: number;
+  /** Category name, `category k` while the data has no names. */
+  name: string;
+  target: { node: NodeId; i: number; j: number } | null;
+};
+
+/**
+ * The dials of every One-hot and every Lookup of width 1, in graph order and category order. A
+ * Lookup of width > 1 has no scalar per category: it gets none (it stays a layer box). Pure: the
+ * values live in the host params, `W[i * out + j]`.
+ */
+export function categoryDials(graph: Graph, analysis: Analysis, data: DataInfo): CategoryDial[] {
+  const dials: CategoryDial[] = [];
+  for (const n of graph.nodes) {
+    if (n.type !== 'onehot' && !(n.type === 'lookup' && n.width === 1)) continue;
+    const k = n.type === 'onehot' ? analysis.outWidth[n.id] : lookupCategories(analysis, n.id);
+    if (k === undefined || k < 1) continue;
+    const names = categoryOf(analysis, data, n.id)?.names;
+    let target: ((i: number) => CategoryDial['target']) | null = null;
+    if (n.type === 'lookup') target = (i) => ({ node: n.id, i, j: 0 });
+    else {
+      const out = graph.edges.filter((e) => parsePort(e[0]).node === n.id);
+      const first = out[0];
+      const to =
+        out.length === 1 && first
+          ? graph.nodes.find((m) => m.id === parsePort(first[1]).node)
+          : undefined;
+      if (to?.type === 'linear' && to.out === 1) target = (i) => ({ node: to.id, i, j: 0 });
+    }
+    for (let i = 0; i < k; i++) {
+      dials.push({
+        node: n.id,
+        index: i,
+        name: names?.[i] ?? `category ${i}`,
+        target: target ? target(i) : null,
+      });
+    }
+  }
+  return dials;
 }
