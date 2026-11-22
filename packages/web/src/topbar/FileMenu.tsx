@@ -157,7 +157,7 @@ export function FileMenu() {
 
   async function copyLink(): Promise<void> {
     try {
-      const base = window.location.href.replace(/#.*$/, '');
+      const base = window.location.origin + window.location.pathname;
       const value = await encodeShare(saveText(withWeights), base.length);
       if (value === null) {
         setNote({ ok: false, message: SHARE_TOO_LARGE });

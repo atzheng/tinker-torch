@@ -5,6 +5,9 @@ import {
   decodeShare,
   encodeShare,
   SHARE_BAD_LINK,
+  SHARE_FRAGMENT_MAX,
+  SHARE_INFLATED_MAX,
+  startFromUrl,
   SHARE_NEWER,
   SHARE_PREFIX,
   shareFromHash,
@@ -87,4 +90,43 @@ test('shareFromHash', () => {
   expect(shareFromHash('#x=1.abc')).toBe('x=1.abc');
   expect(shareFromHash('#a=1&x=1.abc')).toBe('x=1.abc');
   expect(shareFromHash('')).toBeNull();
+});
+
+test('a high-ratio payload is refused', async () => {
+  const stream = new CompressionStream('deflate-raw');
+  const w = stream.writable.getWriter();
+  void w.write(new Uint8Array(SHARE_INFLATED_MAX + 1000));
+  void w.close();
+  const bytes = new Uint8Array(await new Response(stream.readable).arrayBuffer());
+  expect(bytes.length).toBeLessThan(SHARE_FRAGMENT_MAX);
+  const b64 = btoa(String.fromCharCode(...bytes));
+  expect(failure(await decodeShare('x=1.' + b64))).toBe(SHARE_BAD_LINK);
+  expect(failure(await decodeShare('x=1.' + 'A'.repeat(SHARE_FRAGMENT_MAX)))).toBe(SHARE_BAD_LINK);
+});
+
+test('padding, %3D and standard base64 still load', async () => {
+  const value = (await encodeShare(presetText(mlpGraph(), {}))) ?? '';
+  const std = value.replace(/-/g, '+').replace(/_/g, '/');
+  for (const v of [value + '=', value + '%3D', std, std + '==']) {
+    expect((await decodeShare(v)).ok).toBe(true);
+  }
+});
+
+test('start-up: the link wins over ?preset=; failures call fail', async () => {
+  const value = (await encodeShare(presetText(mlpGraph(), { title: 'Shared' }))) ?? '';
+  const loaded: string[] = [];
+  const presets: string[] = [];
+  const fails: string[] = [];
+  const load = (f: { graph: Graph }) => {
+    loaded.push(f.graph.data.set);
+    return { ok: true, message: null };
+  };
+  const lp = (n: string) => presets.push(n) > 0;
+  await startFromUrl('?preset=xor', '#' + value, load, lp, (m) => fails.push(m));
+  expect(loaded).toHaveLength(1);
+  expect(presets).toEqual([]);
+  await startFromUrl('?preset=xor', '', load, lp, (m) => fails.push(m));
+  expect(presets).toEqual(['xor']);
+  await startFromUrl('', '#x=1.AAAA', load, lp, (m) => fails.push(m));
+  expect(fails).toEqual([SHARE_BAD_LINK]);
 });
