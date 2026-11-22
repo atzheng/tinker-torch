@@ -27,6 +27,7 @@ export function saveText(withWeights: boolean): string {
   doc['title'] = preset.title;
   if (preset.prompt !== undefined) doc['prompt'] = preset.prompt;
   if (preset.instructions !== undefined) doc['instructions'] = preset.instructions;
+  if (preset.labels) doc['labels'] = preset.labels;
   if (preset.locked.length > 0) doc['locked'] = preset.locked;
   const { show } = useStore.getState();
   if (show) doc['show'] = show;
@@ -76,6 +77,7 @@ export function loadParsed(file: SaveFile | Preset): { ok: boolean; message: str
     };
     if (file.prompt !== undefined) active.prompt = file.prompt;
     if (file.instructions !== undefined) active.instructions = file.instructions;
+    if (file.labels !== undefined) active.labels = file.labels;
   }
   // The file's seed drives init of unsaved layers, batch order and dropout; one undo step.
   s.setRunSeed(file.graph.train.seed);

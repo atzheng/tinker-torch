@@ -18,6 +18,7 @@ import {
   type SurfaceAxis,
   type SurfaceRange,
 } from '../plot/lossSurface.js';
+import { useUiLabel } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import styles from './Results.module.css';
 
@@ -193,10 +194,11 @@ function Surface({
   };
 
   const ref = usePlotCanvas(draw, [surface, path, range, hostKey]);
+  const panelTitle = useUiLabel('panel-surface', 'Loss surface');
   return (
     <div className={styles.panel} data-testid="loss-surface">
       <div className={styles.head} data-panel-head="">
-        <span className={styles.title}>Loss surface</span>
+        <span className={styles.title}>{panelTitle}</span>
         {diverged ? <span data-testid="surface-diverged">Diverged</span> : null}
       </div>
       <div className={styles.plot}>

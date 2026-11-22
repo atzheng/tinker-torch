@@ -15,7 +15,7 @@ import {
   squareSides,
   valueToParam,
 } from '../plot/histogramPure.js';
-import { useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { plotIndex } from '../state/plotPrediction.js';
 import { useStore } from '../state/store.js';
 import { axisLabel } from '../state/names.js';
@@ -60,6 +60,7 @@ export function TargetHistogram() {
   const running = useStore((s) => s.running);
   const [squares, setSquares] = useState(false);
   const showSquaresToggle = useUiShown('histogram-squares');
+  const panelTitle = useUiLabel('panel-histogram', 'Target');
   const boxRef = useRef<HTMLDivElement>(null);
   const editRef = useRef<WeightEdit | null>(null);
 
@@ -222,7 +223,7 @@ export function TargetHistogram() {
   return (
     <div className={styles.panel} data-testid="target-histogram">
       <div className={`${styles.head} ${styles.headWrap}`} data-panel-head="">
-        <span className={styles.title}>Target</span>
+        <span className={styles.title}>{panelTitle}</span>
         {yhat !== null && (
           <span className={styles.readout} data-testid="histogram-yhat">
             {sig ? 'p' : 'ŷ'} = {fmt(yhat)}

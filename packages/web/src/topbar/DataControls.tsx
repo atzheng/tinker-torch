@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BUNDLED, REAL_META, SETS, isRealSet, type DatasetName } from '@tinker/core';
-import { useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { CsvDialog } from './CsvDialog.js';
 import { Popover } from './Popover.js';
@@ -70,16 +70,18 @@ function NumField(props: {
   scale?: number;
   onCommit: (v: number) => void;
 }) {
+  const label = useUiLabel(props.testid, props.label); // the testid is the UI id
   const scale = props.scale ?? 1;
   const shown = String(Math.round(props.value * scale * 1000) / 1000);
   const [draft, setDraft] = useState(shown);
   useEffect(() => setDraft(shown), [shown]);
   return (
     <label className={styles.field}>
-      <span>{props.label}</span>
+      <span>{label}</span>
       <input
         type="number"
         data-testid={props.testid}
+        aria-label={label}
         value={draft}
         min={props.min * scale}
         max={props.max * scale}
@@ -115,6 +117,14 @@ export function DataControls() {
   const size = useStore((s) => s.dataset.nTrain + s.dataset.nVal);
   const [dialog, setDialog] = useState<'csv' | 'sources' | null>(null);
   const real = isRealSet(data.set);
+  const lbl = {
+    set: useUiLabel('data-set', 'Dataset'),
+    n: useUiLabel('data-n', 'n'),
+    standardize: useUiLabel('data-standardize', 'Standardise'),
+    csv: useUiLabel('data-open-csv', 'Open CSV…'),
+    sources: useUiLabel('data-sources', 'Sources'),
+    resample: useUiLabel('data-resample', 'Resample'),
+  };
   const sh = {
     set: useUiShown('data-set'),
     n: useUiShown('data-n'),
@@ -138,9 +148,10 @@ export function DataControls() {
     <div className={styles.row} data-testid="data-controls">
       {sh.set && (
         <label className={styles.field}>
-          <span>Dataset</span>
+          <span>{lbl.set}</span>
           <select
             data-testid="data-set"
+            aria-label={lbl.set}
             value={data.set}
             onChange={(e) => void chooseSet(e.target.value as DatasetName)}
           >
@@ -165,8 +176,15 @@ export function DataControls() {
         (real ? (
           // A real dataset has a fixed number of rows: n shows it and cannot be changed.
           <label className={styles.field}>
-            <span>n</span>
-            <input type="number" data-testid="data-n" value={size} disabled readOnly />
+            <span>{lbl.n}</span>
+            <input
+              type="number"
+              aria-label={lbl.n}
+              data-testid="data-n"
+              value={size}
+              disabled
+              readOnly
+            />
           </label>
         ) : (
           <NumField
@@ -229,34 +247,37 @@ export function DataControls() {
                   <input
                     type="checkbox"
                     data-testid="data-standardize"
+                    aria-label={lbl.standardize}
                     checked={data.standardize}
                     onChange={(e) => setData({ standardize: e.target.checked })}
                   />
-                  <span>Standardise</span>
+                  <span>{lbl.standardize}</span>
                 </label>
               )}
               {sh.csv && (
                 <button
                   type="button"
                   data-testid="data-open-csv"
+                  aria-label={lbl.csv}
                   onClick={() => {
                     close();
                     setDialog('csv');
                   }}
                 >
-                  Open CSV…
+                  {lbl.csv}
                 </button>
               )}
               {sh.sources && (
                 <button
                   type="button"
                   data-testid="data-sources"
+                  aria-label={lbl.sources}
                   onClick={() => {
                     close();
                     setDialog('sources');
                   }}
                 >
-                  Sources
+                  {lbl.sources}
                 </button>
               )}
             </>
@@ -264,8 +285,13 @@ export function DataControls() {
         </Popover>
       )}
       {sh.resample && (
-        <button type="button" data-testid="data-resample" onClick={resample}>
-          Resample
+        <button
+          type="button"
+          data-testid="data-resample"
+          aria-label={lbl.resample}
+          onClick={resample}
+        >
+          {lbl.resample}
         </button>
       )}
       {dialog === 'csv' && <CsvDialog onClose={() => setDialog(null)} />}

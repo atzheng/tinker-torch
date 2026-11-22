@@ -33,3 +33,16 @@
 .check {
   color: var(--text);
 }
+
+/* Long preset labels (CONTRACTS.md section 12) are cut with an ellipsis; the full text is the aria-label. */
+.field > span {
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row button {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

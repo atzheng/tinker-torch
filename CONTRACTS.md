@@ -685,6 +685,18 @@ Step log (tinker-6t7.10): `panel-step-log` is opt-in like `panel-loss-1d` (shown
 
 Adding an id to `UI_IDS` changes nothing for a preset without `ui` (everything shows). A preset that has a `ui` list shows only what it lists, so a newly added panel or control starts hidden in such presets until the preset adds its id (confirmed: this is the allow-list behaviour; presets are widened deliberately).
 
+### Label overrides (`labels`, tinker-6t7.11)
+
+```ts
+Preset.labels?: Record<string, string>;                // core/file.ts; ids from LABEL_IDS (a subset of UI_IDS)
+const LABEL_IDS: readonly string[]; const LABEL_MAX_LENGTH = 40;
+useUiLabel(id: string, fallback: string): string;      // web/state/disclosure.ts
+```
+
+A preset's `labels` renames controls and readouts: `{ "lr-slider": "Step size", "loss-readout": "Average surprise", "btn-run": "Keep stepping" }`. Labels are plain text (no TeX) everywhere, panel titles included. `parseFile` refuses, with one plain sentence each: a non-object, an id that is not in `UI_IDS`, an id that is in `UI_IDS` but not in `LABEL_IDS` (no text to change), a non-string, an empty or blank label, and a label over 40 characters. Ids not listed stay as they are. `LABEL_IDS`: every `training-bar` id; the `data-*` controls (`data-set`, `data-n`, `data-noise`, `data-val`, `data-seed`, `data-standardize`, `data-open-csv`, `data-sources`, `data-resample`); the canvas buttons `grain-toggle`, `fit-view`, `tidy-layout`, `reset-view`; the six `panel-*` ids (the panel title, and the splitter aria-label); `truth-toggle`, `loss-log-toggle`, `loss-restore-best`, `loss-mode-likelihood`, `loss-mode-total`, `loss-mode-mean`; and `loss-readout`, which has no title by default: an override adds a small title before the train and val values (and is the readout's aria-label). Details: `btn-run` renames Run only (Pause stays); the lr, speed, optimizer and batch selects show their values, so their label is the aria-label and tooltip (lr also shows it as its caption); `step-count` and `param-count` rename the caption before the number. Wherever a label is visible, the aria-label (and a tooltip where the text can be cut) follows it. Training bar: long labels are cut with an ellipsis (buttons at 150 px, captions at 130 px); the full text is in `aria-label` / `title`, so the bar never wraps or scrolls.
+
+Labels travel with the preset: they live in `ActivePreset.labels` (so undo of a file load restores them, a plain file or new graph clears them) and Save writes them back. Components read a label with `useUiLabel(id, defaultText)`; a later bead that makes another control renamable adds its id to `LABEL_IDS` and uses the hook.
+
 ## 13. Commands
 
 From the repo root: `pnpm install`, `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, `pnpm dev` (Vite on :5173), `pnpm e2e` (playwright-core against `pnpm preview`, added by `tinker-ysl.5`), `pnpm torch-ref` (runs the uv script; needs uv and network), `pnpm data-ref` (opt-in, Node and network: re-downloads the classic datasets and rewrites `packages/core/src/data/real/*.json`; the generated files are committed and tests never fetch). Per package: `pnpm --filter @tinker/<core|engine|web> <script>`.

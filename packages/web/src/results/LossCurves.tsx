@@ -1,4 +1,4 @@
-import { useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { useState } from 'react';
 import { decimatePath, linearScale, logScale, logTicks, niceTicks } from '../plot/axes.js';
 import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
@@ -107,10 +107,13 @@ export function LossCurves() {
   const showRestore = useUiShown('loss-restore-best');
   const showReadout = useUiShown('loss-readout');
   const showPins = useUiShown('pins');
+  const lblLog = useUiLabel('loss-log-toggle', 'Log scale');
+  const lblRestore = useUiLabel('loss-restore-best', 'Restore best');
+  const panelTitle = useUiLabel('panel-loss', 'Loss');
   return (
     <div className={`${styles.panel} ${styles.lossPanel}`} data-testid="loss-curves">
       <div className={styles.head} data-panel-head="">
-        <span className={styles.title}>Loss</span>
+        <span className={styles.title}>{panelTitle}</span>
         {showLog && (
           <label className={styles.toggle}>
             <input
@@ -118,8 +121,9 @@ export function LossCurves() {
               checked={log}
               onChange={(e) => setLog(e.target.checked)}
               data-testid="loss-log-toggle"
+              aria-label={lblLog}
             />
-            Log scale
+            {lblLog}
           </label>
         )}
         {showRestore && (
@@ -128,8 +132,9 @@ export function LossCurves() {
             onClick={restoreBest}
             disabled={!best || !canRestore}
             data-testid="loss-restore-best"
+            aria-label={lblRestore}
           >
-            Restore best
+            {lblRestore}
           </button>
         )}
       </div>

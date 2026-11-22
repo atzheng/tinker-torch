@@ -1,4 +1,4 @@
-import { useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { useMemo, useState } from 'react';
 import { grid2dSlice, hasTruth, truth, truthMargin, unstandardizeRows } from '@tinker/core';
 import { CLASS_COUNT, classColor, type PlotColors } from '../plot/color.js';
@@ -369,10 +369,11 @@ export function FitPlot2D() {
   const showTruthToggle = useUiShown('truth-toggle');
   const showResample = useUiShown('resample-run');
   const showPicker = useUiShown('prediction-picker');
+  const panelTitle = useUiLabel('panel-fit', 'Fit');
   return (
     <div className={styles.panel} data-testid="fit-plot">
       <div className={`${styles.head} ${styles.headWrap}`} data-panel-head="">
-        <span className={styles.title}>Fit</span>
+        <span className={styles.title}>{panelTitle}</span>
         {multiclass ? (
           <span className={`${styles.key} tk-diag-label`} data-testid="fit-key">
             {classNames.map((name, i) => (

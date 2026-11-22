@@ -13,6 +13,40 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Long preset labels (CONTRACTS.md section 12) are cut with an ellipsis; the full text is in title / aria-label. */
+.bar button {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A caption text: shrinks before anything else is pushed out of the bar. */
+.lbl {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group > *,
+.field,
+.stat {
+  min-width: 0;
+}
+
+.stat {
+  display: flex;
+  gap: 4px;
+}
+
+.stat b {
   flex: none;
 }
 
@@ -41,6 +75,8 @@
 
 .field input[type='range'] {
   width: 90px;
+  min-width: 36px;
+  flex: 0 1 90px;
 }
 
 .value {
@@ -54,6 +90,7 @@
 
 .bar select {
   max-width: 110px;
+  min-width: 0;
   padding: 0 4px;
 }
 

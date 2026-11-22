@@ -55,6 +55,7 @@ export function ResultsPanels() {
   const [lift, setLift] = useState<{ id: PanelId; dy: number; to: number } | null>(null);
 
   const allowed = useStore((s) => s.show?.ui);
+  const labels = useStore((s) => s.preset?.labels);
   const visible = order.filter(
     (p) =>
       isShown(allowed, `panel-${p}`) &&
@@ -118,7 +119,7 @@ export function ResultsPanels() {
                 data-testid={`splitter-${prev}-${id}`}
                 role="separator"
                 aria-orientation="horizontal"
-                aria-label={`Resize ${TITLES[prev]} and ${TITLES[id]}`}
+                aria-label={`Resize ${labels?.[`panel-${prev}`] ?? TITLES[prev]} and ${labels?.[`panel-${id}`] ?? TITLES[id]}`}
                 onPointerDown={(e) => onSplitDown(prev, id, e)}
               />
             )}
