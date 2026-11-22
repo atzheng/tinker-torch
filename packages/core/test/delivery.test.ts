@@ -4,7 +4,9 @@ import { generate } from '../src/data/sets.js';
 import { SETS, sample, truth, type DataConfig } from '../src/index.js';
 import {
   DELIVERY_DOMAIN,
+  DELIVERY_LATE_RATE,
   DELIVERY_ZONES,
+  LATE_TRUE,
   TIME_TRUE,
   generateDelivery,
 } from '../src/data/delivery.js';
@@ -72,13 +74,60 @@ describe('delivery story', () => {
     });
   });
 
-  test('late rate near the truth at large n', () => {
+  test('late rate: the constant matches the integral and the sample at large n', () => {
+    // Midpoint rule over distance and rain, every queue value and zone.
+    const M = 100;
+    let sum = 0;
+    let cnt = 0;
+    for (let i = 0; i < M; i++)
+      for (let j = 0; j < M; j++)
+        for (let q = 0; q <= 12; q++)
+          for (const ze of LATE_TRUE.zone) {
+            const z =
+              LATE_TRUE.intercept +
+              LATE_TRUE.distance * (0.5 + ((i + 0.5) / M) * 9.5) +
+              LATE_TRUE.rain * (((j + 0.5) / M) * 10) +
+              LATE_TRUE.queue * q +
+              ze;
+            sum += 1 / (1 + Math.exp(-z));
+            cnt++;
+          }
+    expect(Math.abs(sum / cnt - DELIVERY_LATE_RATE)).toBeLessThan(0.001);
     const rows = generate('delivery_late', 40000, 0, makeRng(11));
     const p = rows.reduce((s, r) => s + r.y, 0) / rows.length;
+    expect(Math.abs(p - DELIVERY_LATE_RATE)).toBeLessThan(0.02);
     const pt = rows.reduce((s, r) => s + truthAt('delivery_late', r.x), 0) / rows.length;
-    expect(Math.abs(p - pt)).toBeLessThan(0.01);
-    expect(pt).toBeGreaterThan(0.3);
-    expect(pt).toBeLessThan(0.5);
+    expect(Math.abs(pt - DELIVERY_LATE_RATE)).toBeLessThan(0.01);
+  });
+
+  test.each(['delivery_late', 'delivery_time'] as const)('%s: generic invariants', (set) => {
+    for (const val of [0, 0.3, 0.5]) {
+      const ds = sample(cfg(set, { n: 100, val }));
+      expect(ds.nVal).toBe(Math.round(100 * val));
+      expect(ds.nTrain + ds.nVal).toBe(100);
+      expect(ds.xTrain.length).toBe(ds.nTrain * 3);
+      expect(ds.xVal.length).toBe(ds.nVal * 3);
+      for (const a of [ds.xTrain, ds.yTrain, ds.xVal, ds.yVal]) {
+        expect(Array.from(a).every(Number.isFinite)).toBe(true);
+      }
+      expect(ds.info.columns).toEqual(['x1', 'x2', 'x3']);
+    }
+    const ds = sample(cfg(set, { n: 300, val: 0.2, standardize: true }));
+    for (let c = 0; c < 3; c++) {
+      const col = Array.from({ length: ds.nTrain }, (_, i) => ds.xTrain[i * 3 + c] ?? 0);
+      const m = col.reduce((s, v) => s + v, 0) / col.length;
+      const sd = Math.sqrt(col.reduce((s, v) => s + (v - m) ** 2, 0) / col.length);
+      expect(Math.abs(m)).toBeLessThan(1e-5);
+      expect(sd).toBeCloseTo(1, 4);
+    }
+    if (set === 'delivery_late') {
+      expect(ds.info.kind).toBe('binary');
+      expect(ds.info.classNames).toEqual(['on time', 'late']);
+      expect(Array.from(ds.yTrain).every((v) => v === 0 || v === 1)).toBe(true);
+    } else {
+      expect(ds.info.kind).toBe('regression');
+      expect(ds.info.classNames).toBeUndefined();
+    }
   });
 
   test('delivery time: residual spread is zone plus noise', () => {

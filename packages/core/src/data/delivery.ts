@@ -27,15 +27,23 @@ export const DELIVERY_DOMAIN: [number, number][] = [
 /**
  * True late probability: P(late | distance, rain, queue, zone) = sigmoid(b0 + b1 distance +
  * b2 rain + b3 queue + zone effect). The zone effects average to 0. Averaged over the generator's
- * inputs the rate of late deliveries is about 0.35 (`DELIVERY_LATE_RATE`, checked in the tests).
+ * inputs the rate of late deliveries is `DELIVERY_LATE_RATE`.
  */
 export const LATE_TRUE = {
-  intercept: -4.7,
+  intercept: -5.0,
   distance: 0.4,
   rain: 0.25,
   queue: 0.12,
   zone: [-0.6, -0.2, 0.2, 0.6],
 };
+
+/**
+ * The population late rate: the mean of P(late | x, zone) over distance and rain uniform, queue
+ * uniform on 0..12 and the four zones equally likely. Computed by midpoint-rule integration on a
+ * 400 x 400 grid of (distance, rain) with every queue value and zone (0.34082...); the test
+ * recomputes it to 3 decimals.
+ */
+export const DELIVERY_LATE_RATE = 0.3408;
 
 /** True mean delivery time in minutes: linear in the three inputs plus a zone effect (mean 0). */
 export const TIME_TRUE = {

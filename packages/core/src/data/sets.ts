@@ -294,6 +294,7 @@ export function generate(set: DatasetName, n: number, noise: number, rng: Rng): 
   const rn = rng.fork('noise');
   const rows: Row[] = [];
 
+  // Delivery sets branch early: tinker-6t7.7 (categorical input) reshapes this function.
   if (set === 'delivery_late' || set === 'delivery_time') {
     return generateDelivery(set, n, noise, rng).map(({ x, y }) => ({ x, y }));
   }
