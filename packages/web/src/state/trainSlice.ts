@@ -6,6 +6,7 @@ import {
   initParams,
   makeRng,
   reconcileParams,
+  withStartParams,
   sample,
   type Analysis,
   type Batch,
@@ -349,7 +350,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       ? carry.host
       : rt.host && rt.hostGraph && rt.hostAnalysis
         ? reconcileParams(rt.host, rt.hostAnalysis, analysis, rt.seed)
-        : initParams(analysis, rt.seed);
+        : withStartParams(initParams(analysis, rt.seed), get().startParams, analysis); // Reset: the loaded values, the rest from the seed
     rt.hostGraph = graph;
     rt.hostAnalysis = analysis;
     if (structural || carry) {

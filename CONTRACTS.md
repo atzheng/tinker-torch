@@ -284,6 +284,7 @@ function reconcileParams(old: HostParams, oldAnalysis: Analysis, analysis: Analy
 function countParams(host: HostParams): number;
 function paramsToJson(host: HostParams): Record<NodeId, Record<string, number[]>>; // prototype-free object
 function paramsFromJson(json: unknown, analysis: Analysis): { params: HostParams; dropped: NodeId[] };
+function withStartParams(base: HostParams, start: HostParams | null, analysis: Analysis): HostParams; // tinker-6t7.9
 ```
 
 Initialisation follows each piece's `paramInit` (plain data, carried in `analysis.paramInit`): Linear follows `nn.Linear`, W and b both uniform on ±1/√in; `{ kind: 'const', value }` fills a tensor. Different seeds give different values; the same seed always gives the same values. Note the layout: torch stores `weight` as [out, in]; HostParams stores [in, out] so that the forward pass is `x @ W + b`. Fixtures (section 11) are written in HostParams layout.
@@ -625,6 +626,22 @@ A file with `title`, `prompt`, `locked` or `show` is a Preset. Save writes `tink
 Saved params whose shapes do not match the graph are dropped with a notice, not an error. Bundled presets live in `web/src/presets/*.json` (`linear`, `logistic`, `sine`, `xor`, `skip`, `softmax`, `scalar`, `mlp`, `iris`, `intercept-prob`, `intercept-mean`; a preset that names a real set loads the set's rows first, see section 6); `?preset=<name>` loads a bundled preset on start, and a preset file can also be opened through Load.
 
 Default start (tinker-9io.8): `initialGraph()` (web `state/graphSlice.ts`) is the bundled `scalar` preset (`presets/scalar.json`): Columns `x1`, `x2` -> Weights `w1`, `w2` (drawn as weight wires) -> `sum` -> `bias` (ŷ) -> squared-error group `diff`/`err`/`loss` (L) on the `plane` dataset. Its loss row is placed by hand with `positions` (a second row under the Sum and Bias) so the whole drawing fits at names >= 8 px on the narrowest s10 viewport (1024x768 touch); keep it that way when editing the preset. The former default is the bundled `mlp` preset (small ReLU network on `sine`). Saved params whose shapes do not match the graph are dropped with a notice, not an error. Bundled presets live in `web/src/presets/*.json`; `?preset=<name>` loads a bundled preset on start, and a preset file can also be opened through Load.
+
+**Authoring `params` by hand.** `params` maps node id to its tensors: `{ "lin1": { "W": [...], "b": [...] } }` (W row-major [in, out]). A Weight (`scalew`) or a Bias (`bias`) also takes a plain number, which `parseFile` turns into the list form (`"w1": 0.5` is `{ "W": [0.5] }`, `"b": 0` is `{ "b": [0] }`); Save keeps writing the list form. `parseFile` fails with one sentence for a number on an unknown node, on a piece other than Weight or Bias, or a non-finite number. List-form entries that do not fit the graph are still dropped with a notice. Example (every learner starts at w1 = 0, w2 = 0, b = 0.5; Reset returns there):
+
+```json
+{
+  "kind": "tinker", "version": 2, "title": "Start at zero",
+  "graph": { "...": "as in presets/scalar.json" },
+  "params": { "w1": 0, "w2": 0, "bias": 0.5 }
+}
+```
+
+### Start values and Reset (tinker-6t7.9)
+
+The `params` of a loaded file or preset are the run's start values. The store keeps them as `startParams: HostParams | null` (`presetSlice`), set by the file loader after `apply` from what `paramsFromJson` accepted. Reset (and the fresh start after a divergence) draws a new seed, initialises every node from it, then `withStartParams` overlays the start values: a node with a start entry whose tensors fit its current shapes exactly gets those values, every other node keeps its seeded values. So `params` may be partial, and a file or preset without `params` behaves as before (random, Reset reseeds). Plain saved files with weights work the same way: Reset returns to what was loaded. Training does not change `startParams`; the Weights save still writes the live parameters.
+
+When they are cleared or ignored: loading a file replaces them (a file without `params` clears them); `loadGraph` (a new graph) clears them; they travel with the graph in the undo history (`pastStarts`/`futureStarts`, parallel to `pastPresets`), so undoing a load restores the previous start values. A graph edit never edits them, but an entry applies only while its node exists with exactly the same tensor shapes (a Linear whose size changed is drawn from the seed on Reset; if the size is changed back, the start values apply again). Edits that keep the weights (`reconcileParams`) do not use them; only Reset does.
 
 ### Progressive disclosure (`show`, tinker-6t7.1)
 
