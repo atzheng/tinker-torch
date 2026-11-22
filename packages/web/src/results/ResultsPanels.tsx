@@ -56,7 +56,7 @@ export function ResultsPanels() {
     (p) =>
       isShown(allowed, `panel-${p}`) &&
       (p !== 'surface' || hasSurface) &&
-      (p !== 'loss-1d' || hasParams) &&
+      (p !== 'loss-1d' || (hasParams && allowed?.includes('panel-loss-1d') === true)) &&
       (p !== 'histogram' || hasHistogram),
   );
   const visibleSet = new Set(visible);

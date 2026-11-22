@@ -28,7 +28,7 @@ export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'can
           isShown(s.show?.ui, id) &&
           (id !== 'panel-surface' || surface) &&
           (id !== 'panel-histogram' || histogram) &&
-          (id !== 'panel-loss-1d' || params),
+          (id !== 'panel-loss-1d' || (params && s.show?.ui?.includes(id) === true)),
       );
     }
     return UI_IDS[region].some((id) => isShown(s.show?.ui, id));

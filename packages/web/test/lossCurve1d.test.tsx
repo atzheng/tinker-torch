@@ -145,11 +145,12 @@ test('a model with several parameters lists them in the picker', () => {
   m.done();
 });
 
-test('the panel is part of the results column, and hidden by a ui list that lacks it', () => {
+test('the panel is opt-in: no ui list means no loss-1d panel; a ui list with panel-loss-1d shows it', () => {
   loadBundled('intercept-prob');
   expect(s().show).toBeNull();
   const m = mount(<ResultsPanels />);
-  expect(m.host.querySelector('[data-panel="loss-1d"]')).not.toBeNull();
+  expect(m.host.querySelector('[data-panel="loss"]')).not.toBeNull(); // the default panels are there
+  expect(m.host.querySelector('[data-panel="loss-1d"]')).toBeNull();
   act(() => {
     useStore.setState({ show: { ui: ['panel-fit', 'panel-loss'] } });
   });
