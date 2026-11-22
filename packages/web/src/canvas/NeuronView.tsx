@@ -15,7 +15,6 @@ import { WEB_PIECES } from './drawings/index.js';
 import { fitName } from './pure.js';
 import { SvgTex } from '../tex/Tex.js';
 import {
-  NODE_RADIUS,
   NodeShell,
   NodeShapeContext,
   bodyRadius,

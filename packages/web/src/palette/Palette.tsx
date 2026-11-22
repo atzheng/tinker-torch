@@ -59,7 +59,13 @@ function chipOf(entry: PaletteEntry): {
 }
 
 /** Palette entries that make a value (a pill, as `shapeOfNode`): a new Bias is unwired, so a value. */
-const VALUE_ENTRIES: ReadonlySet<string> = new Set(['input', 'target', 'column', 'weights', 'bias']);
+const VALUE_ENTRIES: ReadonlySet<string> = new Set([
+  'input',
+  'target',
+  'column',
+  'weights',
+  'bias',
+]);
 
 const GROUP = 'Adds the pieces that make it. Drop it on a wire or on empty canvas.';
 

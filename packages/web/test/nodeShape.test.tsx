@@ -46,8 +46,9 @@ const bodyRx = (id: string) =>
 
 test('Canvas: Input is a value, Linear an operation, Bias switches when wired', () => {
   const g = mlpGraph();
-  const first = g.nodes.find((n) => n.type === 'input')!;
-  const lin = g.nodes.find((n) => n.type === 'linear')!;
+  const first = g.nodes.find((n) => n.type === 'input');
+  const lin = g.nodes.find((n) => n.type === 'linear');
+  if (!first || !lin) throw new Error('mlp preset changed');
   const bare: Graph = { ...g, nodes: [...g.nodes, { id: 'bz', type: 'bias' }] };
   act(() => useStore.getState().loadGraph(bare));
   act(() => root.render(<Canvas />));

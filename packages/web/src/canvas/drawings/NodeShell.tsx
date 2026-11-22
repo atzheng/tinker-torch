@@ -116,14 +116,7 @@ export function NodeShell(p: NodeShellProps) {
   const secondaryY = lines.length > 1 ? [h - 24, h - 10] : [h - 12];
   return (
     <g data-piece={p.piece} data-role={p.role} data-shape={shape}>
-      <rect
-        className="tk-body"
-        x={0}
-        y={0}
-        width={w}
-        height={h}
-        rx={bodyRadius(shape, h)}
-      />
+      <rect className="tk-body" x={0} y={0} width={w} height={h} rx={bodyRadius(shape, h)} />
       <text className="tk-name" x={PAD} y={NAME_PX + 4} style={{ fontSize: name.size }}>
         {name.text}
       </text>
