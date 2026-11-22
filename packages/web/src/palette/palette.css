@@ -95,6 +95,10 @@
   --role: var(--role-param);
   --role-fill: var(--role-param-fill);
 }
+.tk-palette-entry[data-shape='value'] {
+  border-radius: 999px;
+  padding-inline: 14px;
+}
 .tk-palette-entry[data-kind='macro'] {
   border-style: dashed;
 }

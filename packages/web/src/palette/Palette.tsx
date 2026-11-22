@@ -58,6 +58,9 @@ function chipOf(entry: PaletteEntry): {
   return { role, glyph: GLYPH[entry.key] };
 }
 
+/** Palette entries that make a value (a pill, as `shapeOfNode`): a new Bias is unwired, so a value. */
+const VALUE_ENTRIES: ReadonlySet<string> = new Set(['input', 'target', 'column', 'weights', 'bias']);
+
 const GROUP = 'Adds the pieces that make it. Drop it on a wire or on empty canvas.';
 
 /** One plain phrase per entry: what the piece is and what it connects to (the chip's tooltip). */
@@ -206,6 +209,7 @@ export function Palette() {
                 data-testid={`palette-${entry.key}`}
                 data-dragging={dragging?.key === entry.key}
                 data-role={chipOf(entry).role}
+                data-shape={entry.kind === 'piece' && VALUE_ENTRIES.has(entry.key) ? 'value' : 'op'}
                 data-family={entry.family}
                 data-kind={entry.kind}
                 title={ENTRY_TITLES[entry.key] ?? entry.label}
