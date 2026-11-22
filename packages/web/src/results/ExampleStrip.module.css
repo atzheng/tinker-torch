@@ -1,0 +1,53 @@
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px 8px;
+}
+.grid {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--cell), 1fr));
+}
+.cell {
+  position: relative;
+  height: var(--cell-h);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+  touch-action: manipulation;
+}
+.fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  text-shadow:
+    0 0 3px var(--surface),
+    0 0 3px var(--surface);
+}
+.note {
+  padding: 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.read {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+.legend {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
