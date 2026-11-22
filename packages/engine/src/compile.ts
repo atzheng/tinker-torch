@@ -201,11 +201,13 @@ export function compile(graph: Graph, data: DataInfo): Model {
     const src = s.ports.find(([port]) => port === 'pred')?.[1];
     if (src !== undefined) probLosses.push({ loss: s.node.id, src });
   }
-  // Per-example plan (`exampleLosses`): the values feeding the Mean at the L pin, or else the first Mean on the loss path.
-  const meanStep =
-    lossPlan.steps.find((s) => s.node.id === analysis.lossNode && s.node.type === 'mean') ??
-    lossPlan.steps.find((s) => s.node.type === 'mean');
-  const exampleSrc = meanStep?.ports.find(([port]) => port === 'in')?.[1] ?? null;
+  // Per-example plan (`exampleLosses`): only when the L node is itself a Mean over a [n, 1] value.
+  const meanStep = lossPlan.steps.find(
+    (s) => s.node.id === analysis.lossNode && s.node.type === 'mean',
+  );
+  const exampleCand = meanStep?.ports.find(([port]) => port === 'in')?.[1] ?? null;
+  const exShape = exampleCand === null ? undefined : analysis.shape[exampleCand];
+  const exampleSrc = exShape?.kind === 'example' && exShape.width === 1 ? exampleCand : null;
   const plans: Record<Mode, Plan> = {
     examples: makePlan(
       analysis.order,

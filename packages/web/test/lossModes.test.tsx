@@ -127,3 +127,30 @@ test('squared error offers total and mean only', () => {
   expect(m.q('loss-mode-mean')).not.toBeNull();
   act(() => m.root.unmount());
 });
+
+test('an invalid graph clears the live readout (em dash, not the previous graph)', () => {
+  s().loadGraph(biasGraph(40));
+  expect(s().liveLoss?.train).not.toBeNull();
+  const m = mount();
+  act(() => s().loadGraph({ ...biasGraph(40), loss: null }));
+  expect(s().canTrain).toBe(false);
+  expect(s().liveLoss).toBeNull();
+  expect(m.q('loss-readout-train')?.textContent).toBe('—');
+  act(() => m.root.unmount());
+});
+
+test('likelihood only when L is directly the Mean: a term added to it leaves total and mean', () => {
+  const g = biasGraph(40);
+  s().loadGraph({
+    ...g,
+    nodes: [...g.nodes, { id: 'pen', type: 'scale', c: 0.1 }, { id: 'tot', type: 'add' }],
+    edges: [...g.edges, ['loss', 'pen'], ['loss', 'tot.a'], ['pen', 'tot.b']],
+    loss: 'tot',
+  });
+  expect(s().analysis.issues).toEqual([]);
+  expect(s().exampleLosses('train')).toBeNull();
+  const m = mount();
+  expect(m.q('loss-mode-likelihood')).toBeNull();
+  expect(m.q('loss-mode-total')).not.toBeNull();
+  act(() => m.root.unmount());
+});

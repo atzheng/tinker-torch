@@ -232,9 +232,9 @@ function makeEngine(): Engine {
 
     /**
      * Borrows `model`, `params` and `batch`. Dropout off. The per-example values that the Mean at the
-     * L pin averages (the Mean's input, flattened: n values for a `[n, 1]` loss such as log loss or
-     * cross-entropy), computed in float32 like `evaluate`; null when the loss path has no Mean.
-     * Penalty terms are not included. Jitted per model, freed by `disposeModel`.
+     * L pin averages (n values), computed in float32 like `evaluate`. Null unless the L node is itself
+     * a Mean whose input is one value per example (`[n, 1]`): a penalty added to the Mean, a Mean
+     * pooling inside the model or a wider input gives null. Jitted per model, freed by `disposeModel`.
      */
     exampleLosses(model, params, batch) {
       const m = internals(model);

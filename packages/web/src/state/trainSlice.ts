@@ -384,6 +384,8 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
         running: false,
         diverged: false,
         probIssue: null,
+        liveLoss: null,
+        exampleStats: null,
         host: null, // rt.host belongs to an earlier graph; the canvas must not see it with this one
         step: rt.step,
         trainLoss: rt.trainLoss,
