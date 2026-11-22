@@ -23,7 +23,7 @@ export type LayerLayout = {
   }[];
   size: [number, number];
 };
-export type NeuronUnitKind = 'in' | 'sum' | 'act' | 'out' | 'target';
+export type NeuronUnitKind = 'in' | 'sum' | 'act' | 'out' | 'target' | 'cat';
 export type NeuronLayout = {
   units: { node: NodeId; index: number; kind: NeuronUnitKind; x: number; y: number }[];
   edges: {
@@ -562,6 +562,13 @@ export function layoutLayers(g: Graph, _a: Analysis): LayerLayout {
   return { nodes: core.boxes, wires: core.wires, size: core.size };
 }
 
+/** Category count a Lookup reads (the shape of its `in` wire), undefined while unknown. */
+export function lookupCategories(a: Analysis, id: NodeId): number | undefined {
+  const from = a.inputs[id]?.['in']?.[0]?.from;
+  const s = from === undefined ? undefined : a.shape[from];
+  return s?.kind === 'example' ? s.category?.count : undefined;
+}
+
 /** Same columns as layer view; a Linear with at most 8 units on each side opens into circles and one edge per weight. */
 export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
   const { nodes, byId, edges } = prepare(g, false);
@@ -603,6 +610,15 @@ export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
       }
       case 'target':
         return unitPlan('target', 1);
+      case 'onehot': {
+        const w = a.outWidth[n.id];
+        return small(w) ? unitPlan('cat', w) : boxPlan();
+      }
+      case 'lookup': {
+        // One dial per category, only for a scalar value per category (width 1).
+        const k = lookupCategories(a, n.id);
+        return n.width === 1 && small(k) ? unitPlan('cat', k) : boxPlan();
+      }
       default:
         return boxPlan();
     }

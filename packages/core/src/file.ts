@@ -134,6 +134,7 @@ export const UI_IDS = {
     'btn-step',
     'btn-run',
     'btn-reset',
+    'btn-random-start',
     'btn-restore-best',
     'lr-slider',
     'speed',

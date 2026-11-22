@@ -105,8 +105,9 @@ export function FitPlot2D() {
   const [pick2, setPick2] = useState<[number, number]>([0, 1]);
   // A categorical column cannot be an axis; it is held at its most common category (below).
   const isCat = (c: number) => dataset.info.columnKinds?.[c] === 'categorical';
-  const axes = Array.from({ length: d }, (_, c) => c).filter((c) => !isCat(c));
-  const axisCols = axes.length >= 2 ? axes : Array.from({ length: d }, (_, c) => c);
+  // FitPlot only mounts this with two or more continuous columns (`fitView`), so the pickers
+  // never offer a category as an axis.
+  const axisCols = Array.from({ length: d }, (_, c) => c).filter((c) => !isCat(c));
   const ia = axisCols.includes(pick2[0]) ? pick2[0] : (axisCols[0] ?? 0);
   const ib =
     pick2[1] !== ia && axisCols.includes(pick2[1])
