@@ -64,6 +64,7 @@ export function TrainingBar() {
     run: useStore((x) => x.run),
     pause: useStore((x) => x.pause),
     reset: useStore((x) => x.reset),
+    randomStart: useStore((x) => x.randomStart),
     restoreBest: useStore((x) => x.restoreBest),
     setSpeed: useStore((x) => x.setSpeed),
     engineStatus: useStore((x) => x.engineStatus),
@@ -89,6 +90,7 @@ export function TrainingBar() {
     step: useUiShown('btn-step'),
     run: useUiShown('btn-run'),
     reset: useUiShown('btn-reset'),
+    randomStart: useUiShown('btn-random-start'),
     best: useUiShown('btn-restore-best'),
     lr: useUiShown('lr-slider'),
     speed: useUiShown('speed'),
@@ -101,6 +103,7 @@ export function TrainingBar() {
     step: useUiLabel('btn-step', 'Step'),
     run: useUiLabel('btn-run', 'Run'),
     reset: useUiLabel('btn-reset', 'Reset'),
+    randomStart: useUiLabel('btn-random-start', 'New random start'),
     best: useUiLabel('btn-restore-best', 'Restore best'),
     speed: useUiLabel('speed', 'Steps per frame'),
     optimizer: useUiLabel('optimizer', 'Optimizer'),
@@ -109,7 +112,7 @@ export function TrainingBar() {
     params: useUiLabel('param-count', 'Parameters'),
   };
   // A group whose controls are all hidden is not drawn.
-  const g1 = sh.step || sh.run || sh.reset || sh.best;
+  const g1 = sh.step || sh.run || sh.reset || sh.randomStart || sh.best;
   const g2 = sh.lr || sh.speed || sh.optimizer || sh.batch;
   const g3 = sh.count || sh.params;
   // The component re-renders on every step change, so the dev live-array readout below is fresh.
@@ -163,6 +166,17 @@ export function TrainingBar() {
               data-testid="btn-reset"
             >
               {lbl.reset}
+            </button>
+          )}
+          {sh.randomStart && (
+            <button
+              type="button"
+              onClick={s.randomStart}
+              disabled={!s.analysis.trainable}
+              aria-label={lbl.randomStart}
+              data-testid="btn-random-start"
+            >
+              {lbl.randomStart}
             </button>
           )}
           {sh.best && (
