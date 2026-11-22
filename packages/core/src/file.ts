@@ -28,7 +28,12 @@ export type Preset = SaveFile & {
   checks?: Check[];
   locked?: NodeId[];
   show?: Show;
+  /** Label overrides by `UI_IDS` id (CONTRACTS.md section 12). Plain text, 1 to `LABEL_MAX_LENGTH` characters. */
+  labels?: Record<string, string>;
 };
+
+/** Longest label override, in characters: the training bar still has to fit 1024 px. */
+export const LABEL_MAX_LENGTH = 40;
 
 /** The palette's group ids, in palette order (the web palette's `GROUPS` uses exactly these). */
 export const PALETTE_GROUP_IDS = [
@@ -122,6 +127,37 @@ export const UI_IDS = {
   ],
 } as const;
 
+/**
+ * The ids whose text a preset can override with `labels` (CONTRACTS.md section 12): every control
+ * with a visible or accessible name that the web app reads through `useUiLabel`, and the panel
+ * titles. Add an id here in the same change that wires it up.
+ */
+export const LABEL_IDS: readonly string[] = [
+  ...UI_IDS['training-bar'],
+  'data-set',
+  'data-n',
+  'data-noise',
+  'data-val',
+  'data-seed',
+  'data-standardize',
+  'data-open-csv',
+  'data-sources',
+  'data-resample',
+  'grain-toggle',
+  'fit-view',
+  'tidy-layout',
+  'reset-view',
+  ...UI_IDS.results,
+  'truth-toggle',
+  'loss-readout',
+  'loss-mode-likelihood',
+  'loss-mode-total',
+  'loss-mode-mean',
+  'loss-log-toggle',
+  'loss-restore-best',
+];
+const LABEL_ID_SET = new Set<string>(LABEL_IDS);
+
 export type UiRegion = keyof typeof UI_IDS;
 export const ALL_UI_IDS: readonly string[] = Object.values(UI_IDS).flat();
 
@@ -171,7 +207,8 @@ export function parseFile(json: unknown): ParseFileResult {
     'instructions' in json ||
     'checks' in json ||
     'locked' in json ||
-    'show' in json
+    'show' in json ||
+    'labels' in json
   ) {
     const { title, prompt, locked } = json;
     if (typeof title !== 'string') return fail('The preset title must be text.');
@@ -209,8 +246,11 @@ export function parseFile(json: unknown): ParseFileResult {
     }
     const shown = parseShow(json['show']);
     if (typeof shown === 'string') return fail(shown);
+    const labels = parseLabels(json['labels']);
+    if (typeof labels === 'string') return fail(labels);
     const preset: Preset = { ...file, title };
     if (shown) preset.show = shown;
+    if (labels) preset.labels = labels;
     if (prompt !== undefined) preset.prompt = prompt;
     if (instr !== undefined) preset.instructions = instr as string[];
     if (checks !== undefined) preset.checks = checks;
@@ -281,6 +321,26 @@ function parseShow(v: unknown): Show | string | undefined {
     }
   }
   return out;
+}
+
+/** The preset's `labels` field, or one plain sentence when it is malformed. */
+function parseLabels(v: unknown): Record<string, string> | string | undefined {
+  if (v === undefined) return undefined;
+  if (!isRecord(v)) return 'The preset "labels" must be an object from control ids to text.';
+  const out: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const [id, text] of Object.entries(v)) {
+    if (!UI_ID_SET.has(id)) {
+      return `The preset "labels" names "${id}", which is not a control or panel.`;
+    }
+    if (!LABEL_ID_SET.has(id)) return `The preset "labels" cannot rename "${id}".`;
+    if (typeof text !== 'string') return `The label for "${id}" must be text.`;
+    if (text.trim() === '') return `The label for "${id}" is empty.`;
+    if (text.length > LABEL_MAX_LENGTH) {
+      return `The label for "${id}" is longer than ${LABEL_MAX_LENGTH} characters.`;
+    }
+    out[id] = text;
+  }
+  return { ...out };
 }
 
 /** True when `id` passes an allow-list; an absent list shows everything. */

@@ -6,6 +6,8 @@ export type ActivePreset = {
   title: string;
   prompt?: string;
   instructions?: string[];
+  /** Label overrides by UI id; read with `useUiLabel`. */
+  labels?: Record<string, string>;
   checks?: Check[];
   /** Locked piece ids that exist in the loaded graph (unknown ids in the file are ignored). */
   locked: NodeId[];

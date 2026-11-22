@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import {
+  ALL_UI_IDS,
+  LABEL_IDS,
+  LABEL_MAX_LENGTH,
   analyse,
   initParams,
   paramsFromJson,
@@ -167,5 +170,39 @@ describe('preset show (progressive disclosure)', () => {
   });
   test('show must be an object', () => {
     expect(parseFile({ ...base(), show: [] }).ok).toBe(false);
+  });
+});
+
+describe('preset labels', () => {
+  const base = () => ({ ...JSON.parse(serializeFile(graph())), title: 'T' });
+  test('labels are kept; absent stays absent', () => {
+    const labels = { 'lr-slider': 'Step size', 'btn-run': 'Keep stepping', 'panel-fit': 'Picture' };
+    const r = parseFile({ ...base(), labels });
+    expect(r.ok && 'labels' in r.file && r.file.labels).toEqual(labels);
+    const r2 = parseFile(base());
+    expect(r2.ok && 'labels' in r2.file).toBe(false);
+    // a file with only labels is still a preset
+    const r3 = parseFile({ ...JSON.parse(serializeFile(graph())), title: 'T', labels: {} });
+    expect(r3.ok && 'labels' in r3.file && r3.file.labels).toEqual({});
+  });
+  test.each([
+    ['not an object', ['x'], /object/],
+    ['unknown id', { 'btn-stepp': 'X' }, /"btn-stepp"/],
+    ['id with no text', { 'btn-undo': 'X' }, /"btn-undo"/],
+    ['not text', { 'btn-step': 3 }, /must be text/],
+    ['empty', { 'btn-step': '  ' }, /empty/],
+    ['too long', { 'btn-step': 'x'.repeat(LABEL_MAX_LENGTH + 1) }, /longer than 40/],
+  ])('%s gives one sentence', (_n, labels, re) => {
+    const r = parseFile({ ...base(), labels });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(re);
+    expect(r.error).toMatch(/^[A-Z].*\.$/);
+  });
+  test('a label of exactly the cap is accepted; every label id is a UI id', () => {
+    expect(parseFile({ ...base(), labels: { 'btn-step': 'x'.repeat(LABEL_MAX_LENGTH) } }).ok).toBe(
+      true,
+    );
+    expect(LABEL_IDS.every((id) => ALL_UI_IDS.includes(id))).toBe(true);
   });
 });

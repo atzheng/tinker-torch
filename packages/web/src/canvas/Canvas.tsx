@@ -54,7 +54,7 @@ import {
   type Transform,
 } from './pure.js';
 import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
-import { useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 
 /** Pieces snap to this grid (layout units): the `--sp-2` spacing token. */
@@ -145,6 +145,10 @@ export function Canvas() {
   const showTidy = useUiShown('tidy-layout');
   const showResetView = useUiShown('reset-view');
   const showEquations = useUiShown('equation-strip');
+  const lblGrain = useUiLabel('grain-toggle', 'Neurons');
+  const lblFit = useUiLabel('fit-view', 'Fit');
+  const lblTidy = useUiLabel('tidy-layout', 'Tidy');
+  const lblReset = useUiLabel('reset-view', 'Reset view');
   const grain = useStore((s) => s.grain);
   const setGrain = useStore((s) => s.setGrain);
   // Neuron view repaints its edges from `host` itself, so the canvas does not follow it per frame.
@@ -529,11 +533,12 @@ export function Canvas() {
           type="button"
           className="tk-grain"
           data-testid="grain-toggle"
+          aria-label={lblGrain}
           aria-pressed={grain === 'neuron'}
           title="Switch between layer view and neuron view"
           onClick={() => setGrain(grain === 'neuron' ? 'layer' : 'neuron')}
         >
-          Neurons
+          {lblGrain}
         </button>
       )}
       {showFit &&
@@ -543,10 +548,11 @@ export function Canvas() {
             type="button"
             className="tk-grain tk-resetview"
             data-testid="fit-view"
+            aria-label={lblFit}
             title="Fit the whole graph in view"
             onClick={() => setUserView('fit')}
           >
-            Fit
+            {lblFit}
           </button>
         )}
       {showTidy && !isNeuron && graph.positions && (
@@ -554,13 +560,14 @@ export function Canvas() {
           type="button"
           className="tk-grain tk-resetview tk-tidy"
           data-testid="tidy-layout"
+          aria-label={lblTidy}
           title="Put every piece back where the automatic layout puts it"
           onClick={() => {
             const r = apply(clearPositions(graph));
             if (r.ok) setUserView('fit');
           }}
         >
-          Tidy
+          {lblTidy}
         </button>
       )}
       {!isNeuron && (
@@ -576,10 +583,11 @@ export function Canvas() {
           type="button"
           className="tk-grain tk-resetview"
           data-testid="reset-view"
+          aria-label={lblReset}
           title="Reset pan and zoom"
           onClick={() => setUserView(null)}
         >
-          Reset view
+          {lblReset}
         </button>
       )}
       {!isNeuron &&

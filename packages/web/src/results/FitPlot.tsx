@@ -1,4 +1,4 @@
-import { useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { useMemo, useState } from 'react';
 import { grid1d, hasTruth, truth, unstandardizeRows } from '@tinker/core';
 import { fitYRange, linearScale, niceTicks } from '../plot/axes.js';
@@ -225,10 +225,12 @@ function FitPlot1D() {
   const showTruthToggle = useUiShown('truth-toggle');
   const showResample = useUiShown('resample-run');
   const showPicker = useUiShown('prediction-picker');
+  const lblTruth = useUiLabel('truth-toggle', 'True function');
+  const panelTitle = useUiLabel('panel-fit', 'Fit');
   return (
     <div className={styles.panel} data-testid="fit-plot">
       <div className={styles.head} data-panel-head="">
-        <span className={styles.title}>Fit</span>
+        <span className={styles.title}>{panelTitle}</span>
         {showTruthToggle && hasTruth(set) && (
           <label className={styles.toggle}>
             <input
@@ -236,8 +238,9 @@ function FitPlot1D() {
               checked={showTruth}
               onChange={(e) => setShowTruth(e.target.checked)}
               data-testid="truth-toggle"
+              aria-label={lblTruth}
             />
-            True function
+            {lblTruth}
           </label>
         )}
         {showPicker && <PredictionPicker />}

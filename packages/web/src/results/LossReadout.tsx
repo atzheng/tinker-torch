@@ -1,3 +1,5 @@
+import type { LossMode } from '@tinker/core';
+import { useUiLabel } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { isMiniBatch } from '../state/trainSlice.js';
 import { useShallow } from 'zustand/react/shallow';
@@ -6,6 +8,25 @@ import { lossReadout } from './readoutModel.js';
 import styles from './Results.module.css';
 
 /** Large current train loss with the validation loss beside it, above the loss plot. */
+function ModeButton({ m }: { m: LossMode }) {
+  const label = useUiLabel(`loss-mode-${m}`, m);
+  const mode = useStore((s) => currentLossMode(s));
+  const setLossMode = useStore((s) => s.setLossMode);
+  return (
+    <button
+      type="button"
+      className={styles.readoutMode}
+      aria-pressed={mode === m}
+      aria-label={label}
+      title={label}
+      data-testid={`loss-mode-${m}`}
+      onClick={() => setLossMode(m)}
+    >
+      {label}
+    </button>
+  );
+}
+
 export function LossReadout() {
   // Selectors return strings, so this re-renders only when a shown value changes.
   const text = useStore(
@@ -27,25 +48,25 @@ export function LossReadout() {
   );
   const [train, val] = text;
   const modes = useStore(useShallow((s) => shownLossModes(s)));
-  const mode = useStore((s) => currentLossMode(s));
-  const setLossMode = useStore((s) => s.setLossMode);
+  const title = useUiLabel('loss-readout', '');
   const diverged = useStore((s) => s.diverged);
   const probIssue = useStore((s) => s.probIssue);
   return (
-    <div className={styles.readout} data-testid="loss-readout">
+    <div
+      className={styles.readout}
+      data-testid="loss-readout"
+      role={title ? 'group' : undefined}
+      aria-label={title || undefined}
+    >
+      {title && (
+        <span className={styles.readoutLabel} data-testid="loss-readout-title">
+          {title}
+        </span>
+      )}
       {modes.length > 1 && (
         <span className={styles.readoutModes} role="group" aria-label="Score">
           {modes.map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={styles.readoutMode}
-              aria-pressed={mode === m}
-              data-testid={`loss-mode-${m}`}
-              onClick={() => setLossMode(m)}
-            >
-              {m}
-            </button>
+            <ModeButton key={m} m={m} />
           ))}
         </span>
       )}

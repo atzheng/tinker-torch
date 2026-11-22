@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Graph } from '@tinker/core';
 import { getEngine, useEngine } from '../engine.js';
 import { SPEEDS, isMiniBatch } from '../state/trainSlice.js';
-import { useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import styles from './TrainingBar.module.css';
 
@@ -25,6 +25,7 @@ function LearningRate() {
   const lr = useStore((s) => s.graph.train.lr);
   const setLearningRate = useStore((s) => s.setLearningRate);
   const [draft, setDraft] = useState<number | null>(null);
+  const label = useUiLabel('lr-slider', 'lr');
   const shown = draft ?? lr;
   const commit = () => {
     if (draft !== null) setLearningRate(draft);
@@ -32,7 +33,9 @@ function LearningRate() {
   };
   return (
     <label className={styles.field}>
-      <span>lr</span>
+      <span className={styles.lbl} title={label}>
+        {label}
+      </span>
       <input
         type="range"
         min={-4}
@@ -43,7 +46,8 @@ function LearningRate() {
         onPointerUp={commit}
         onKeyUp={commit}
         onBlur={commit}
-        aria-label="Learning rate"
+        aria-label={label === 'lr' ? 'Learning rate' : label}
+        title={label === 'lr' ? undefined : label}
         data-testid="lr-slider"
       />
       <output className={styles.value} data-testid="lr-value">
@@ -93,6 +97,17 @@ export function TrainingBar() {
     count: useUiShown('step-count'),
     params: useUiShown('param-count'),
   };
+  const lbl = {
+    step: useUiLabel('btn-step', 'Step'),
+    run: useUiLabel('btn-run', 'Run'),
+    reset: useUiLabel('btn-reset', 'Reset'),
+    best: useUiLabel('btn-restore-best', 'Restore best'),
+    speed: useUiLabel('speed', 'Steps per frame'),
+    optimizer: useUiLabel('optimizer', 'Optimizer'),
+    batch: useUiLabel('batch', 'Batch size'),
+    count: useUiLabel('step-count', 'Step'),
+    params: useUiLabel('param-count', 'Parameters'),
+  };
   // A group whose controls are all hidden is not drawn.
   const g1 = sh.step || sh.run || sh.reset || sh.best;
   const g2 = sh.lr || sh.speed || sh.optimizer || sh.batch;
@@ -111,9 +126,10 @@ export function TrainingBar() {
               type="button"
               onClick={s.stepOnce}
               disabled={!runnable || s.running}
+              aria-label={lbl.step}
               data-testid="btn-step"
             >
-              Step
+              {lbl.step}
             </button>
           )}
           {sh.run &&
@@ -132,9 +148,10 @@ export function TrainingBar() {
                 className={styles.primary}
                 onClick={s.run}
                 disabled={!runnable}
+                aria-label={lbl.run}
                 data-testid="btn-run"
               >
-                Run
+                {lbl.run}
               </button>
             ))}
           {sh.reset && (
@@ -142,9 +159,10 @@ export function TrainingBar() {
               type="button"
               onClick={s.reset}
               disabled={!s.analysis.trainable}
+              aria-label={lbl.reset}
               data-testid="btn-reset"
             >
-              Reset
+              {lbl.reset}
             </button>
           )}
           {sh.best && (
@@ -153,9 +171,10 @@ export function TrainingBar() {
               onClick={s.restoreBest}
               disabled={!s.best || !s.canTrain}
               title={s.best ? `Step ${s.best.step}` : undefined}
+              aria-label={lbl.best}
               data-testid="btn-restore-best"
             >
-              Restore best
+              {lbl.best}
             </button>
           )}
         </div>
@@ -168,7 +187,8 @@ export function TrainingBar() {
               <select
                 value={s.speed}
                 onChange={(e) => s.setSpeed(Number(e.target.value))}
-                aria-label="Steps per frame"
+                aria-label={lbl.speed}
+                title={lbl.speed}
                 data-testid="speed"
               >
                 {SPEEDS.map((n) => (
@@ -184,7 +204,8 @@ export function TrainingBar() {
               <select
                 value={s.optimizer}
                 onChange={(e) => s.setOptimizer(e.target.value as Graph['train']['optimizer'])}
-                aria-label="Optimizer"
+                aria-label={lbl.optimizer}
+                title={lbl.optimizer}
                 data-testid="optimizer"
               >
                 <option value="sgd">SGD</option>
@@ -200,7 +221,8 @@ export function TrainingBar() {
                 onChange={(e) =>
                   s.setBatch(e.target.value === 'full' ? 'full' : Number(e.target.value))
                 }
-                aria-label="Batch size"
+                aria-label={lbl.batch}
+                title={lbl.batch}
                 data-testid="batch"
               >
                 <option value="full">Full batch</option>
@@ -218,12 +240,14 @@ export function TrainingBar() {
         <div className={styles.group}>
           {sh.count && (
             <span className={`${styles.stat} tk-diag`}>
-              Step <b data-testid="step-count">{sinceReset}</b>
+              <span className={styles.lbl}>{lbl.count}</span>{' '}
+              <b data-testid="step-count">{sinceReset}</b>
             </span>
           )}
           {sh.params && (
             <span className={`${styles.stat} tk-diag`}>
-              Parameters <b data-testid="param-count">{s.analysis.totalParams}</b>
+              <span className={styles.lbl}>{lbl.params}</span>{' '}
+              <b data-testid="param-count">{s.analysis.totalParams}</b>
             </span>
           )}
           {import.meta.env.DEV && (

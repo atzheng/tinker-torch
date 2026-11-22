@@ -13,7 +13,7 @@ import {
   yRange,
   type Visited,
 } from '../plot/lossCurve1d.js';
-import { useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import styles from './Results.module.css';
 import own from './LossCurve1D.module.css';
@@ -53,6 +53,7 @@ function Panel({ params, hostKey }: { params: ReturnType<typeof listParams>; hos
   const showAxis = useUiShown('loss-1d-axis');
   const showExplored = useUiShown('loss-1d-explored');
   const showTangent = useUiShown('loss-1d-tangent');
+  const panelTitle = useUiLabel('panel-loss-1d', 'Loss vs parameter');
 
   const [pick, setPick] = useState('');
   const [explored, setExplored] = useState(false);
@@ -173,7 +174,7 @@ function Panel({ params, hostKey }: { params: ReturnType<typeof listParams>; hos
   return (
     <div className={styles.panel} data-testid="loss-curve-1d">
       <div className={styles.head} data-panel-head="">
-        <span className={styles.title}>Loss vs parameter</span>
+        <span className={styles.title}>{panelTitle}</span>
         {diverged ? <span data-testid="curve1d-diverged">Diverged</span> : null}
         {slopeText && (
           <span className={own.slope} data-testid="curve1d-slope">

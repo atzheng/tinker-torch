@@ -514,9 +514,18 @@ path.tk-hit {
   min-width: 88px;
   padding: 0 14px;
   font: 14px var(--font);
+  /* A long preset label (CONTRACTS.md section 12) is cut, not pushed over the next button. */
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tk-resetview {
   left: 104px;
+}
+/* Only shown in the neuron view, where no button follows it. */
+.tk-grain[data-testid='reset-view'] {
+  max-width: 160px;
 }
 /* Beside Fit: puts every moved piece back on the automatic layout */
 .tk-tidy {

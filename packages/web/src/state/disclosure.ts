@@ -9,6 +9,14 @@ export function useUiShown(id: string): boolean {
   return useStore((s) => isShown(s.show?.ui, id));
 }
 
+/**
+ * The label of control or panel `id`: the loaded preset's override (CONTRACTS.md section 12), else
+ * `fallback`. Plain text. The override travels with the preset, so undo of a load restores it.
+ */
+export function useUiLabel(id: string, fallback: string): string {
+  return useStore((s) => s.preset?.labels?.[id] ?? fallback);
+}
+
 /** Is the region on screen: at least one of its ids is shown. */
 export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'canvas'>): boolean {
   return useStore((s) => {

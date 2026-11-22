@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { listParams } from '../plot/lossCurve1d.js';
 import { STEP_LOG_MAX_PARAMS } from '../state/trainSlice.js';
+import { useUiLabel } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import styles from './Results.module.css';
 import own from './StepLog.module.css';
@@ -29,10 +30,11 @@ export function StepLog() {
     sym.filter((x) => x === sym[i]).length === 1 ? (sym[i] ?? n) : n,
   );
   const hasSlope = rows.some((r) => r.slopes !== null);
+  const panelTitle = useUiLabel('panel-step-log', 'Steps');
   return (
     <div className={styles.panel} data-testid="step-log">
       <div className={styles.head} data-panel-head="">
-        <span className={styles.title}>Steps</span>
+        <span className={styles.title}>{panelTitle}</span>
       </div>
       {!small ? (
         <p className={own.note} data-testid="step-log-large">
