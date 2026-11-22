@@ -1,0 +1,102 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Lecture 1, stage 1: stepping downhill",
+  "prompt": "Start at 0.5. Each Step moves the number a little in the direction that lowers the surprise.",
+  "instructions": [
+    "Read the start value (0.5) and the slope on the curve. Predict where one Step takes you: new value = old value minus step size times slope.",
+    "Press Step once and check your prediction in the log.",
+    "Keep pressing Step. Where does the number settle? Press Reset to go back to 0.5."
+  ],
+  "checks": [
+    {
+      "kind": "paramNear",
+      "node": "bias",
+      "tensor": "b",
+      "value": 0.3333,
+      "tol": 0.03,
+      "step": 2
+    }
+  ],
+  "locked": ["bias", "y", "err", "loss"],
+  "show": {
+    "palette": [],
+    "tab": "loss",
+    "ui": [
+      "preset-menu",
+      "tab-loss",
+      "instructions",
+      "preset-prompt",
+      "success-check",
+      "panel-loss",
+      "panel-loss-1d",
+      "panel-examples",
+      "panel-step-log",
+      "loss-readout",
+      "loss-mode-likelihood",
+      "loss-mode-total",
+      "loss-mode-mean",
+      "loss-1d-tangent",
+      "btn-step",
+      "btn-reset",
+      "lr-slider",
+      "step-count"
+    ]
+  },
+  "labels": {
+    "loss-readout": "Score",
+    "lr-slider": "Step size",
+    "panel-loss-1d": "Score for each possible number",
+    "panel-examples": "The 30 deliveries",
+    "panel-step-log": "Steps so far"
+  },
+  "options": {
+    "loss-mode": "mean",
+    "loss-1d-tangent": true
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "bias",
+        "type": "bias"
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "err",
+        "type": "log_loss"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["bias", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
+    ],
+    "predictions": ["bias"],
+    "loss": "loss",
+    "data": {
+      "set": "delivery_late",
+      "n": 30,
+      "noise": 0.3,
+      "val": 0,
+      "seed": 1,
+      "standardize": false
+    },
+    "train": {
+      "optimizer": "sgd",
+      "lr": 0.15,
+      "batch": "full",
+      "seed": 11
+    }
+  },
+  "params": {
+    "bias": 0.5
+  }
+}

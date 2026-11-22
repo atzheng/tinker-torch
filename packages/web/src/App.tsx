@@ -13,6 +13,7 @@ import { TabBar } from './tabs/TabBar.js';
 import { TopBar } from './topbar/TopBar.js';
 import type { LayoutMode } from './layout/layoutMode.js';
 import { TrainingBar } from './trainbar/TrainingBar.js';
+import { useEngine } from './engine.js';
 
 export const NOTICE = 'Tinker needs a larger screen. Use a tablet or a laptop.';
 
@@ -82,6 +83,7 @@ export function gridFor(
 export const PORTRAIT_RESULTS = 'clamp(150px, 32%, 380px)';
 
 export function App() {
+  useEngine(); // the engine loads even when a preset hides the training bar (its other caller)
   const mode = useLayoutMode();
   const top = useRegionShown('top-bar');
   const results = useRegionShown('results');
