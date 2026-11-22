@@ -204,8 +204,8 @@ test('link inspector: link select is one undo step', () => {
   expect(node('yhat')).toMatchObject({ fn: 'sigmoid' });
 });
 
-test('the pinned nodes carry a role badge: ŷ on the link, L on the final Add', () => {
-  expect(must('node-yhat').getAttribute('data-role')).toBe('pred');
+test('the L node carries its role; the node pinned as ŷ carries none', () => {
+  expect(must('node-yhat').getAttribute('data-role')).toBeNull();
   expect(must('node-total').getAttribute('data-role')).toBe('loss');
   expect(must('node-mean').getAttribute('data-role')).toBeNull();
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { PALETTE, isShown, type PaletteEntry } from '@tinker/core';
+import { PALETTE, isShown, ownsParams, type Node, type PaletteEntry } from '@tinker/core';
 import { dnd } from '../canvas/dnd.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
@@ -34,11 +34,19 @@ const GLYPH: Record<string, string> = {
   lookup: 'E',
   weight_penalty: '\\lambda',
 };
-function chipOf(entry: PaletteEntry): { role?: 'input' | 'pred' | 'loss'; glyph?: string } {
+function chipOf(entry: PaletteEntry): {
+  role?: 'input' | 'pred' | 'loss' | 'param';
+  glyph?: string;
+} {
   if (entry.kind === 'macro') {
     return entry.family === 'losses' ? { role: 'loss', glyph: 'L' } : { glyph: GLYPH[entry.key] };
   }
-  const role = entry.key === 'input' || entry.key === 'target' ? 'input' : undefined;
+  const role =
+    entry.key === 'input' || entry.key === 'target'
+      ? 'input'
+      : ownsParams({ id: 'chip', ...entry.make() } as Node)
+        ? 'param'
+        : undefined;
   return { role, glyph: GLYPH[entry.key] };
 }
 

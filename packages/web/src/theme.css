@@ -64,6 +64,10 @@
   --role-pred-fill: #eee8fa;
   --role-loss: #8a5a00;
   --role-loss-fill: #faeed3;
+  /* Parameters (tinker-92a): everything that holds learnable numbers. Green, a hue none of the other
+     roles, the accent or the weight pair uses. */
+  --role-param: #2e7d32;
+  --role-param-fill: #e4f2e1;
   --on-role: #ffffff;
   --region-opacity: 0.08;
   /* Controls vs diagnostics (tinker-t6o, CONTRACTS.md section 10). A CONTROL is something the user
@@ -162,6 +166,8 @@
     --role-pred-fill: #2b2146;
     --role-loss: #f0b84a;
     --role-loss-fill: #40300f;
+    --role-param: #7ccf6a;
+    --role-param-fill: #1b3320;
     --on-role: #14171c;
     --region-opacity: 0.13;
     --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);

@@ -51,6 +51,10 @@ path.tk-hit {
   --role: var(--role-loss);
   --role-fill: var(--role-loss-fill);
 }
+[data-role='param'] {
+  --role: var(--role-param);
+  --role-fill: var(--role-param-fill);
+}
 .tk-body,
 .tk-shape {
   fill: var(--piece-fill);

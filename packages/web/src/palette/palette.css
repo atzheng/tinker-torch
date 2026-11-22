@@ -91,6 +91,10 @@
   --role: var(--role-loss);
   --role-fill: var(--role-loss-fill);
 }
+.tk-palette-entry[data-role='param'] {
+  --role: var(--role-param);
+  --role-fill: var(--role-param-fill);
+}
 .tk-palette-entry[data-kind='macro'] {
   border-style: dashed;
 }
@@ -124,7 +128,7 @@
   font-weight: 500;
   color: var(--node-secondary);
 }
-.tk-palette-entry[data-role] .tk-chip-glyph {
+.tk-palette-entry[data-role]:not([data-role='param']) .tk-chip-glyph {
   display: inline-grid;
   place-items: center;
   min-width: 18px;
