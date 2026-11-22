@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { parsePort, type PieceType } from '@tinker/core';
+import { ownsParams, parsePort, type Node } from '@tinker/core';
 import { fitName, legibleAt } from '../pure.js';
 import { SvgTex } from '../../tex/Tex.js';
 import { splitTex } from '../../tex/Tex.js';
@@ -11,7 +11,7 @@ import { splitTex } from '../../tex/Tex.js';
  */
 
 /** Ordinary pieces share one style; the three roles below are the only special ones. */
-export type NodeRole = 'input' | 'pred' | 'loss';
+export type NodeRole = 'input' | 'pred' | 'loss' | 'param';
 
 /** The pins of a graph (`Graph` has them); only these fields are read. */
 export type RolePins = { predictions: readonly string[]; loss: string | null };
@@ -21,21 +21,24 @@ const pinTarget = (ref: string): string => parsePort(ref).node;
 /**
  * The role of a node, or undefined for an ordinary one. The single place that maps graph data to
  * roles: the data pieces (Input, Target) are the input role, the node carrying the L pin is the
- * loss role and a node carrying a ŷ pin is the prediction role (L wins when a node has both).
+ * loss role, and a piece that owns parameters (Linear, Weight, Bias, Lookup) is the param role.
+ * The 'pred' role belongs to the yhat pin only: no node gets it.
  */
-export function roleOfNode(
-  node: { id: string; type: PieceType },
-  pins?: RolePins,
-): NodeRole | undefined {
+export function roleOfNode(node: Node, pins?: RolePins): NodeRole | undefined {
   if (node.type === 'input' || node.type === 'target') return 'input';
-  if (!pins) return undefined;
-  if (pins.loss !== null && pinTarget(pins.loss) === node.id) return 'loss';
-  if (pins.predictions.some((p) => pinTarget(p) === node.id)) return 'pred';
+  if (pins && pins.loss !== null && pinTarget(pins.loss) === node.id) return 'loss';
+  // A piece that owns parameters is drawn in the parameter colour. The piece that computes a yhat is
+  // not coloured as the prediction: that role belongs to the yhat pin only (tinker-92a).
+  if (ownsParams(node)) return 'param';
   return undefined;
 }
 
 /** The glyph (TeX, no dollars) of a role badge. */
-export const ROLE_GLYPH: Record<NodeRole, string> = { input: 'x', pred: '\\hat{y}', loss: 'L' };
+export const ROLE_GLYPH: Record<Exclude<NodeRole, 'param'>, string> = {
+  input: 'x',
+  pred: '\\hat{y}',
+  loss: 'L',
+};
 
 /** Box (node-local units) a custom glyph `slot` must stay inside: the KaTeX bead's foreignObject goes here. */
 export function slotBox(w: number, h: number) {
