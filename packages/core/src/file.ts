@@ -128,9 +128,14 @@ export function parseFile(json: unknown): ParseFileResult {
   const g = parseGraphWithMap(json['graph']);
   if (!g.ok) return fail(g.error);
 
-  const params = json['params'];
+  let params = json['params'];
   if (params !== undefined && !isRecord(params)) {
     return fail('The saved weights in this file must be an object.');
+  }
+  if (params !== undefined) {
+    const norm = normaliseParams(params as Record<string, unknown>, g.graph);
+    if (typeof norm === 'string') return fail(norm);
+    params = norm;
   }
 
   // A version 1 file is migrated by parseGraph; what we hold is always a version 2 file.
@@ -163,6 +168,34 @@ export function parseFile(json: unknown): ParseFileResult {
     return { ok: true, file: preset };
   }
   return { ok: true, file };
+}
+
+/**
+ * Scalar shorthand (CONTRACTS.md section 12): a plain number for a Weight (`"w1": 0.5` is
+ * `{ "W": [0.5] }`) or a Bias (`"b": 0` is `{ "b": [0] }`). Anything else is copied as it is (the
+ * {W, b} arrays are checked against the graph later, by `paramsFromJson`, which drops what does not
+ * fit). Returns one plain sentence for a shorthand that cannot mean anything.
+ */
+function normaliseParams(
+  params: Record<string, unknown>,
+  graph: Graph,
+): Record<string, unknown> | string {
+  const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const id of Object.keys(params)) {
+    const v = params[id];
+    if (typeof v !== 'number') {
+      out[id] = v;
+      continue;
+    }
+    const node = graph.nodes.find((n) => n.id === id);
+    if (!node) return `The saved weights name "${id}", which is not a piece in this graph.`;
+    if (node.type !== 'scalew' && node.type !== 'bias') {
+      return `The saved weights give "${id}" a single number, but only a Weight or a Bias takes one; use lists such as {"W": [...], "b": [...]}.`;
+    }
+    if (!Number.isFinite(v)) return `The saved value for "${id}" must be a finite number.`;
+    out[id] = node.type === 'scalew' ? { W: [v] } : { b: [v] };
+  }
+  return out;
 }
 
 const PALETTE_IDS = new Set<string>([...PALETTE.map((e) => e.key), ...PALETTE_GROUP_IDS]);

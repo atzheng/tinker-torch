@@ -1,5 +1,12 @@
 import type { StateCreator } from 'zustand';
-import { parseFile, parseGraph, type EditResult, type Graph, type Show } from '@tinker/core';
+import {
+  parseFile,
+  parseGraph,
+  type EditResult,
+  type Graph,
+  type HostParams,
+  type Show,
+} from '@tinker/core';
 import scalarPreset from '../presets/scalar.json';
 import type { ActivePreset, PresetSlice } from './presetSlice.js';
 
@@ -23,6 +30,9 @@ export type GraphSlice = {
   /** `show` parallel to `pastPresets` / `futurePresets`: it travels with the preset. */
   pastShows: (Show | null)[];
   futureShows: (Show | null)[];
+  /** `startParams` parallel to `pastPresets` / `futurePresets`: it travels with the graph. */
+  pastStarts: (HostParams | null)[];
+  futureStarts: (HostParams | null)[];
   canUndo: boolean;
   canRedo: boolean;
   /** Message of the last refused edit, for the toast. Cleared by the next ok edit or `clearError`. */
@@ -63,6 +73,8 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
   futurePresets: [],
   pastShows: [],
   futureShows: [],
+  pastStarts: [],
+  futureStarts: [],
   canUndo: false,
   canRedo: false,
   error: null,
@@ -72,17 +84,26 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       return edit;
     }
     const { graph, past, pastPresets, pastShows, preset: current, show: currentShow } = get();
+    const { pastStarts, startParams } = get();
     const nextPast = [...past, graph].slice(-HISTORY_LIMIT);
     set({
       graph: edit.graph,
       past: nextPast,
       pastPresets: [...pastPresets, current].slice(-HISTORY_LIMIT),
       pastShows: [...pastShows, currentShow].slice(-HISTORY_LIMIT),
+      pastStarts: [...pastStarts, startParams].slice(-HISTORY_LIMIT),
       future: [],
       futurePresets: [],
       futureShows: [],
+      futureStarts: [],
       ...(preset !== undefined
-        ? { preset, show: show ?? null, promptDismissed: false, loadEpoch: get().loadEpoch + 1 }
+        ? {
+            preset,
+            show: show ?? null,
+            startParams: null,
+            promptDismissed: false,
+            loadEpoch: get().loadEpoch + 1,
+          }
         : {}),
       canUndo: true,
       canRedo: false,
@@ -93,6 +114,7 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
   undo: () => {
     const { graph, past, future, pastPresets, futurePresets, preset } = get();
     const { pastShows, futureShows, show } = get();
+    const { pastStarts, futureStarts, startParams } = get();
     const prev = past[past.length - 1];
     if (!prev) return;
     const nextPast = past.slice(0, -1);
@@ -106,6 +128,9 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       futurePresets: [...futurePresets, preset],
       pastShows: pastShows.slice(0, -1),
       futureShows: [...futureShows, show],
+      pastStarts: pastStarts.slice(0, -1),
+      futureStarts: [...futureStarts, startParams],
+      startParams: pastStarts[pastStarts.length - 1] ?? null,
       preset: prevPreset,
       show: prevShow,
       ...(prevPreset !== preset ? { promptDismissed: false } : {}),
@@ -117,6 +142,7 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
   redo: () => {
     const { graph, past, future, pastPresets, futurePresets, preset } = get();
     const { pastShows, futureShows, show } = get();
+    const { pastStarts, futureStarts, startParams } = get();
     const next = future[future.length - 1];
     if (!next) return;
     const nextFuture = future.slice(0, -1);
@@ -129,6 +155,9 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       futurePresets: futurePresets.slice(0, -1),
       pastShows: [...pastShows, show],
       futureShows: futureShows.slice(0, -1),
+      pastStarts: [...pastStarts, startParams],
+      futureStarts: futureStarts.slice(0, -1),
+      startParams: futureStarts[futureStarts.length - 1] ?? null,
       preset: nextPreset,
       show: nextShow,
       ...(nextPreset !== preset ? { promptDismissed: false } : {}),
@@ -153,6 +182,9 @@ export const createGraphSlice: StateCreator<GraphSlice & PresetSlice, [], [], Gr
       futurePresets: [],
       pastShows: [],
       futureShows: [],
+      pastStarts: [],
+      futureStarts: [],
+      startParams: null,
       preset: null,
       show: null,
       promptDismissed: false,

@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { NodeId, Show } from '@tinker/core';
+import type { HostParams, NodeId, Show } from '@tinker/core';
 
 /** What a loaded preset leaves in the store (CONTRACTS.md section 12). */
 export type ActivePreset = {
@@ -23,16 +23,26 @@ export type PresetSlice = {
    * graph (`loadGraph`) changes it.
    */
   show: Show | null;
+  /**
+   * The parameter values a loaded file or preset carried (possibly for some nodes only), or null.
+   * Reset returns to them (nodes without an entry are drawn from the seed). Travels with the
+   * graph in the undo history (`pastStarts`); cleared by a new graph (`loadGraph`) and by loading
+   * a file without params. Set by the file loader after `apply`.
+   */
+  startParams: HostParams | null;
   /** True once the person dismissed the prompt line of the current preset. */
   promptDismissed: boolean;
   setPreset: (preset: ActivePreset | null) => void;
+  setStartParams: (start: HostParams | null) => void;
   dismissPrompt: () => void;
 };
 
 export const createPresetSlice: StateCreator<PresetSlice, [], [], PresetSlice> = (set) => ({
   preset: null,
   show: null,
+  startParams: null,
   promptDismissed: false,
+  setStartParams: (startParams) => set({ startParams }),
   setPreset: (preset) => set({ preset, promptDismissed: false }),
   dismissPrompt: () => set({ promptDismissed: true }),
 });

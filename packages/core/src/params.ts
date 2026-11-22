@@ -137,6 +137,29 @@ export function reconcileParams(
   return host;
 }
 
+/**
+ * Overlay start values (what a loaded file or preset carried) on `base` (a fresh init): each node of
+ * `base` that has an entry in `start` whose tensors fit its current shapes exactly takes the start
+ * values; every other node keeps `base`. Entries that no longer fit (shapes changed by an edit) or
+ * name nodes that are gone are ignored, never an error. Does not mutate its arguments; the start
+ * arrays are shared with the result (HostParams arrays are immutable).
+ */
+export function withStartParams(
+  base: HostParams,
+  start: HostParams | null,
+  analysis: Analysis,
+): HostParams {
+  if (!start) return base;
+  const shapes = owners(analysis, true);
+  const out: HostParams = Object.create(null) as HostParams;
+  for (const id of Object.keys(base)) {
+    const s = Object.hasOwn(start, id) ? start[id] : undefined;
+    const o = shapes.get(id);
+    out[id] = s && o && matches(s, o.shapes) ? s : (base[id] as HostLayer);
+  }
+  return out;
+}
+
 export function countParams(host: HostParams): number {
   let n = 0;
   for (const id of Object.keys(host)) {
