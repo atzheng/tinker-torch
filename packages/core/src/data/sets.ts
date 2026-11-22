@@ -35,6 +35,11 @@ export type SetSpec = {
    */
   f: (x: readonly number[]) => number;
   /**
+   * Multiclass only, optional: the clean generator's class probabilities at the given noise
+   * (k numbers summing to 1). `truthProbs` uses it; without it the truth is the one-hot of `f`.
+   */
+  probs?: (x: readonly number[], noise: number) => number[];
+  /**
    * Binary only: a smooth signed field that is positive where the truth is class 1 and
    * zero on the decision boundary (for contouring; `f` itself jumps for most sets).
    */
@@ -234,6 +239,7 @@ export const SETS: Record<DatasetName, SetSpec> = {
   },
   delivery_late: DELIVERY_SPECS.delivery_late,
   delivery_time: DELIVERY_SPECS.delivery_time,
+  delivery_lateness: DELIVERY_SPECS.delivery_lateness,
   iris: bundledSpec('iris'),
   penguins: bundledSpec('penguins'),
   wine: bundledSpec('wine'),
@@ -300,7 +306,7 @@ export function generate(set: DatasetName, n: number, noise: number, rng: Rng): 
   const rows: Row[] = [];
 
   // The delivery sets (a categorical zone column among the inputs) have their own generator.
-  if (set === 'delivery_late' || set === 'delivery_time') {
+  if (set === 'delivery_late' || set === 'delivery_time' || set === 'delivery_lateness') {
     return generateDelivery(set, n, noise, rng);
   }
 

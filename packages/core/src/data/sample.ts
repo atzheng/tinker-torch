@@ -185,14 +185,26 @@ export function truthMargin(set: DatasetName, xRaw: Float32Array): Float32Array 
 
 /**
  * What a model's output should look like on `xRaw`: the same as `truth` for regression and binary
- * sets; for multiclass sets row-major [n, k] one-hot of the true class.
+ * sets; for multiclass sets row-major [n, k]: the generator's class probabilities at `noise` when
+ * the set has them (`SetSpec.probs`, e.g. delivery_lateness), else the one-hot of the true class.
  */
-export function truthProbs(set: DatasetName, xRaw: Float32Array): Float32Array {
+export function truthProbs(set: DatasetName, xRaw: Float32Array, noise = 0): Float32Array {
   const spec = SETS[set];
   const t = truth(set, xRaw);
   if (spec.kind !== 'multiclass') return t;
   const k = classCount(set);
   const out = new Float32Array(t.length * k);
+  if (spec.probs) {
+    const d = spec.d;
+    const row: number[] = new Array<number>(d).fill(0);
+    for (let i = 0; i < t.length; i++) {
+      for (let c = 0; c < d; c++) row[c] = xRaw[i * d + c] ?? 0;
+      spec.probs(row, noise).forEach((p, c) => {
+        out[i * k + c] = p;
+      });
+    }
+    return out;
+  }
   t.forEach((c, i) => {
     out[i * k + c] = 1;
   });
