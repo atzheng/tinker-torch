@@ -77,8 +77,8 @@ export function gridFor(
   };
 }
 
-/** The portrait results band: about a third of the window, never under 180 px. */
-export const PORTRAIT_RESULTS = 'clamp(180px, 34%, 380px)';
+/** The portrait results band: about a third of the window, never under 150 px. */
+export const PORTRAIT_RESULTS = 'clamp(150px, 32%, 380px)';
 
 export function App() {
   const mode = useLayoutMode();

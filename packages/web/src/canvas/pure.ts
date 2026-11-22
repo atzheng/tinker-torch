@@ -353,10 +353,11 @@ export function placeInspector(
   gap = 16,
 ): InspectorPlacement {
   const left = Math.min(Math.max(4, target.cx - width / 2), Math.max(4, view.w - width - 4));
-  if (view.h - (target.bottom + gap) >= needH || target.top - gap < needH) {
-    return { left, top: Math.min(target.bottom + gap, Math.max(4, view.h - 120)) };
-  }
-  return { left, bottom: view.h - (target.top - gap) };
+  if (view.h - (target.bottom + gap) >= needH) return { left, top: target.bottom + gap };
+  if (target.top - gap >= needH) return { left, bottom: view.h - (target.top - gap) };
+  // Neither side has room: sit as low as the canvas allows with the whole panel inside it, over the
+  // target if need be (a short portrait canvas), never cut off at the bottom.
+  return { left, top: Math.max(4, Math.min(target.bottom + gap, view.h - needH - 4)) };
 }
 
 /** Size in abstract units of the pill drawn behind a wire's width text, at `scale` px per unit. */

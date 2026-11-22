@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { PALETTE, isShown, ownsParams, type Node, type PaletteEntry } from '@tinker/core';
 import { dnd } from '../canvas/dnd.js';
 import { HINTS } from '../hints.js';
@@ -130,6 +130,19 @@ export function Palette() {
   const isOpen = (g: Group) => toggled[g.id] ?? (allowed !== undefined || g.open);
   const visibleIn = (g: Group) =>
     PALETTE.filter(g.has).filter((e) => isShown(allowed, g.id) || isShown(allowed, e.key));
+  // Strip: a mouse wheel (vertical delta) scrolls it sideways; a trackpad's horizontal delta already does.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!strip || !el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [strip]);
   useEffect(() => () => dnd.cancel(), []); // unmounted mid-drag: leave no ghost
   // Tap-to-add ends on Escape, or on a press that is neither on the palette nor on the drawing.
   useEffect(() => {
@@ -150,7 +163,7 @@ export function Palette() {
     };
   }, []);
   return (
-    <div className="tk-palette" data-testid="palette" data-strip={strip}>
+    <div className="tk-palette" data-testid="palette" data-strip={strip} ref={ref}>
       <div className="tk-palette-head">
         <h2 className="tk-region-title">Pieces</h2>
         <p className="tk-palette-hint" data-testid="palette-hint">

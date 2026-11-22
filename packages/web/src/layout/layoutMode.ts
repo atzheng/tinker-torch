@@ -10,7 +10,11 @@ export const MIN_SIDE = 600;
 /** The side-by-side layout (palette | canvas | results) needs at least this width (px). */
 export const LANDSCAPE_MIN_WIDTH = 1024;
 
+/** The stacked layout needs this height (px): below it the canvas would be under about 280 px tall. */
+export const PORTRAIT_MIN_HEIGHT = 700;
+
 export function layoutFor(width: number, height: number): LayoutMode {
   if (width < MIN_SIDE || height < MIN_SIDE) return 'notice';
-  return width >= LANDSCAPE_MIN_WIDTH && width >= height ? 'landscape' : 'portrait';
+  if (width >= LANDSCAPE_MIN_WIDTH && width >= height) return 'landscape';
+  return height < PORTRAIT_MIN_HEIGHT ? 'notice' : 'portrait';
 }

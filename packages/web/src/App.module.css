@@ -60,7 +60,7 @@
 /* Portrait or narrow windows (layout/layoutMode.ts): one column. gridFor sets the rows. */
 .app[data-layout='portrait'] {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(48px, auto) auto minmax(0, 1fr) clamp(180px, 34%, 380px) minmax(
+  grid-template-rows: minmax(48px, auto) auto minmax(0, 1fr) clamp(150px, 32%, 380px) minmax(
       56px,
       auto
     );

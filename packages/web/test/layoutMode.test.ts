@@ -38,7 +38,10 @@ test('portrait and narrow windows stack the regions', () => {
 test('the notice shows only below 600 px in either direction', () => {
   expect(layoutFor(599, 1000)).toBe('notice');
   expect(layoutFor(1200, 599)).toBe('notice');
-  expect(layoutFor(600, 600)).toBe('portrait');
+  expect(layoutFor(600, 600)).toBe('notice'); // stacked layout needs 700 px of height
+  expect(layoutFor(900, 699)).toBe('notice');
+  expect(layoutFor(900, 700)).toBe('portrait');
+  expect(layoutFor(1024, 600)).toBe('landscape');
   expect(layoutFor(390, 844)).toBe('notice');
 });
 
