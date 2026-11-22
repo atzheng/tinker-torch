@@ -28,7 +28,6 @@ export function ExampleStrip() {
     const cells = stripCells(losses, dataset.yTrain, mode, dataset.info.kind !== 'regression');
     return { mode, cells };
     // `host` stands for every change of the parameters
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, graph, analysis, dataset, exampleLosses]);
 
   const n = data?.cells.length ?? 0;
@@ -60,7 +59,9 @@ export function ExampleStrip() {
             className={own.grid}
             data-testid="example-grid"
             style={{ '--cell': size, '--cell-h': size } as CSSProperties}
-            onPointerLeave={() => setActive(null)}
+            onPointerLeave={(e) => {
+              if (e.pointerType === 'mouse') setActive(null); // a tap keeps its value shown
+            }}
           >
             {data.cells.map((c, i) => {
               const color = c.cls >= 0 ? `var(--class-${c.cls % 6})` : 'var(--accent)';

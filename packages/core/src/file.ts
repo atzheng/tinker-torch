@@ -77,7 +77,12 @@ export const UI_IDS = {
     'preset-prompt',
     'instructions',
   ],
-  results: ['panel-fit', 'panel-loss', 'panel-surface', 'panel-histogram', 'panel-loss-1d',
+  results: [
+    'panel-fit',
+    'panel-loss',
+    'panel-surface',
+    'panel-histogram',
+    'panel-loss-1d',
     'panel-examples',
   ],
   // Controls inside the results panels; they never make the results region itself visible.
