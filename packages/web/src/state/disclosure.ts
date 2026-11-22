@@ -84,7 +84,9 @@ export function useRegionShown(
           (id !== 'panel-histogram' || histogram) &&
           ((id !== 'panel-loss-1d' && id !== 'panel-step-log') ||
             (params && s.show?.ui?.includes(id) === true)) &&
-          (id !== 'panel-examples' || s.show?.ui?.includes(id) === true),
+          (id !== 'panel-examples' || s.show?.ui?.includes(id) === true) &&
+          (id !== 'panel-class-bars' ||
+            (s.dataset.info.kind !== 'regression' && s.show?.ui?.includes(id) === true)),
       );
     }
     return UI_IDS[region].some((id) => isShown(s.show?.ui, id));

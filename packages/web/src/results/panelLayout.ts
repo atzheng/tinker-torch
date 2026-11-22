@@ -8,6 +8,7 @@ export const PANEL_IDS = [
   'loss-1d',
   'step-log',
   'examples',
+  'class-bars',
 ] as const;
 export type PanelId = (typeof PANEL_IDS)[number];
 export type PanelWeights = Record<PanelId, number>;
@@ -21,6 +22,7 @@ export const PANEL_TAB: Record<PanelId, 'model' | 'loss'> = {
   'loss-1d': 'loss',
   examples: 'loss',
   'step-log': 'loss',
+  'class-bars': 'model',
 };
 
 /** Whether a panel is on screen with `tab` showing; with one tab shown (`split` false) every panel the preset lists is. */
@@ -37,6 +39,7 @@ export const DEFAULT_WEIGHTS: PanelWeights = {
   'loss-1d': 1,
   examples: 1,
   'step-log': 1,
+  'class-bars': 1,
 };
 
 /** A panel never shrinks below this share of the visible panels' total weight. */
