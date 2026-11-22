@@ -102,7 +102,17 @@ export function TargetHistogram() {
     const base = h - m.b;
     // The vertical axis is a count for the bars; with squares it is also "length", 1 unit = g.unit px.
     const yc = linearScale(0, bins.max * 1.1, base, m.t);
-    drawAxes(ctx, c, w, h, m, xs, yc, niceTicks(g.xlo, g.xhi, 6), niceTicks(0, bins.max, 3));
+    drawAxes(
+      ctx,
+      c,
+      w,
+      h,
+      m,
+      xs,
+      yc,
+      niceTicks(g.xlo, g.xhi, 6),
+      squares ? [] : niceTicks(0, bins.max, 3),
+    );
     ctx.save();
     ctx.beginPath();
     ctx.rect(m.l, m.t, g.pw, g.ph);

@@ -140,3 +140,20 @@ test('setting the bias the way a drag does is one undo step and moves the line',
   s().undo();
   expect(s().host?.bias?.b?.[0]).not.toBeCloseTo(0.5);
 });
+
+test('a Bias with an incoming edge is not draggable (its output is parent + b)', () => {
+  const g = {
+    nodes: [
+      { id: 'b1', type: 'bias' },
+      { id: 'b2', type: 'bias' },
+      { id: 's', type: 'link', fn: 'sigmoid' },
+    ],
+    edges: [
+      ['b1', 'b2'],
+      ['b2', 's'],
+    ],
+  } as unknown as Parameters<typeof predictionChain>[0];
+  expect(predictionChain(g, 'b2').param).toBeNull();
+  expect(predictionChain(g, 's').param).toBeNull();
+  expect(predictionChain(g, 'b1').param).toEqual({ node: 'b1', sigmoid: false });
+});
