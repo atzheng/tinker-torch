@@ -36,11 +36,12 @@ test('every piece is drawn by the one node shell: one body, same radius, ports o
   }
 });
 
-test('only inputs, the node pinned as ŷ and the node pinned as L carry a role', () => {
+test('inputs, parameter pieces and the node pinned as L carry a role; the node pinned as ŷ gets none', () => {
   const role = (id: string) =>
     host.querySelector(`[data-testid="node-${id}"]`)?.getAttribute('data-role') ?? null;
-  expect(['x', 'y', 'lin2', 'loss'].map(role)).toEqual(['input', 'input', 'pred', 'loss']);
-  expect(['lin1', 'act1', 'diff', 'err'].map(role)).toEqual([null, null, null, null]);
+  expect(['x', 'y', 'lin2', 'loss'].map(role)).toEqual(['input', 'input', 'param', 'loss']);
+  expect(['lin1'].map(role)).toEqual(['param']);
+  expect(['act1', 'diff', 'err'].map(role)).toEqual([null, null, null]);
   // the pins are drawn as pins at the pinned node's output, not as pieces of their own
   expect(host.querySelector('[data-testid="pin-pred-lin2"]')).not.toBeNull();
   expect(host.querySelector('[data-testid="pin-loss-loss"]')).not.toBeNull();
