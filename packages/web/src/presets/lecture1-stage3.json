@@ -1,0 +1,108 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Lecture 1, stage 3: squared error against log loss",
+  "prompt": "The loss here is squared error. Drag the line on the histogram to change the prediction, then compare with log loss.",
+  "instructions": [
+    "Drag the prediction line on the histogram. Turn on Squares to see the error of each delivery as a square.",
+    "Press Run and note where the chance settles.",
+    "Drop Log loss (mean) from the palette onto the line after Sigmoid and set it as the loss. Do both losses agree on the best chance?"
+  ],
+  "locked": ["y"],
+  "show": {
+    "palette": ["sigmoid", "log_loss", "loss_squared_error", "loss_log_loss"],
+    "tab": "model",
+    "ui": [
+      "preset-menu",
+      "tab-model",
+      "tab-loss",
+      "instructions",
+      "preset-prompt",
+      "success-check",
+      "panel-loss",
+      "panel-loss-1d",
+      "panel-examples",
+      "panel-histogram",
+      "histogram-squares",
+      "loss-readout",
+      "loss-mode-likelihood",
+      "loss-mode-total",
+      "loss-mode-mean",
+      "loss-1d-tangent",
+      "loss-log-toggle",
+      "btn-step",
+      "btn-reset",
+      "lr-slider",
+      "step-count",
+      "btn-run",
+      "btn-undo",
+      "btn-redo",
+      "pins"
+    ]
+  },
+  "labels": {
+    "loss-readout": "Score",
+    "lr-slider": "Step size",
+    "panel-loss-1d": "Score for each possible number",
+    "panel-examples": "The 30 deliveries"
+  },
+  "options": {
+    "loss-mode": "mean"
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "bias",
+        "type": "bias"
+      },
+      {
+        "id": "yhat",
+        "type": "link",
+        "fn": "sigmoid"
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "diff",
+        "type": "subtract"
+      },
+      {
+        "id": "err",
+        "type": "square"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["bias", "yhat"],
+      ["yhat", "diff.a"],
+      ["y", "diff.b"],
+      ["diff", "err"],
+      ["err", "loss"]
+    ],
+    "predictions": ["yhat"],
+    "loss": "loss",
+    "data": {
+      "set": "delivery_late",
+      "n": 30,
+      "noise": 0.3,
+      "val": 0,
+      "seed": 1,
+      "standardize": false
+    },
+    "train": {
+      "optimizer": "sgd",
+      "lr": 0.5,
+      "batch": "full",
+      "seed": 11
+    }
+  },
+  "params": {
+    "bias": 0
+  }
+}

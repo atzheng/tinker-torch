@@ -1,0 +1,125 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Lecture 1, stage 4: a number that depends on the distance",
+  "prompt": "Now the chance of being late depends on distance. Train the Weight and Bias, then add the zone as a category.",
+  "instructions": [
+    "Press Run. The fit plot shows the chance of late against distance; the loss surface shows the Weight and Bias.",
+    "Add an Input for the zone column and put a Lookup after it. Join it into the Sum.",
+    "Switch to Neurons to see one dial for each zone. Run again: which zone is later?"
+  ],
+  "show": {
+    "palette": ["inputs", "categories", "scalew", "sum", "bias", "sigmoid"],
+    "tab": "model",
+    "ui": [
+      "preset-menu",
+      "btn-undo",
+      "btn-redo",
+      "data-resample",
+      "file-menu",
+      "tab-model",
+      "tab-loss",
+      "grain-toggle",
+      "fit-view",
+      "tidy-layout",
+      "reset-view",
+      "instructions",
+      "preset-prompt",
+      "success-check",
+      "panel-fit",
+      "panel-loss",
+      "panel-loss-1d",
+      "panel-surface",
+      "loss-readout",
+      "loss-mode-likelihood",
+      "loss-mode-total",
+      "loss-mode-mean",
+      "loss-1d-tangent",
+      "loss-log-toggle",
+      "truth-toggle",
+      "btn-step",
+      "btn-reset",
+      "lr-slider",
+      "step-count",
+      "btn-run",
+      "btn-random-start",
+      "param-count"
+    ]
+  },
+  "labels": {
+    "loss-readout": "Score",
+    "lr-slider": "Step size",
+    "btn-random-start": "Try another start"
+  },
+  "options": {
+    "loss-mode": "mean"
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "x",
+        "type": "input",
+        "columns": ["x1"]
+      },
+      {
+        "id": "w",
+        "type": "scalew"
+      },
+      {
+        "id": "sum",
+        "type": "sum"
+      },
+      {
+        "id": "bias",
+        "type": "bias"
+      },
+      {
+        "id": "yhat",
+        "type": "link",
+        "fn": "sigmoid"
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "err",
+        "type": "log_loss"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["x", "w"],
+      ["w", "sum"],
+      ["sum", "bias"],
+      ["bias", "yhat"],
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
+    ],
+    "predictions": ["yhat"],
+    "loss": "loss",
+    "data": {
+      "set": "delivery_late",
+      "n": 200,
+      "noise": 0.3,
+      "val": 0.2,
+      "seed": 7,
+      "standardize": true
+    },
+    "train": {
+      "optimizer": "sgd",
+      "lr": 0.1,
+      "batch": "full",
+      "seed": 11
+    }
+  },
+  "params": {
+    "w": 0,
+    "bias": 0
+  }
+}

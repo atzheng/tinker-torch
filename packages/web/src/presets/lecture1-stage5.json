@@ -1,0 +1,122 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Lecture 1, stage 5: several inputs, three outcomes",
+  "prompt": "Predict whether a delivery is on time, late or very late from several inputs, with Softmax giving three chances that add to 1.",
+  "instructions": [
+    "Add rain and queue to the Input, then press Run. Does the loss go down?",
+    "Turn on Standardize, press Reset and Run again, with a larger step size.",
+    "Read the three chances for a delivery: which outcome does the model pick?"
+  ],
+  "show": {
+    "palette": [
+      "inputs",
+      "categories",
+      "linear",
+      "sigmoid",
+      "softmax",
+      "cross_entropy",
+      "loss_cross_entropy"
+    ],
+    "tab": "model",
+    "ui": [
+      "preset-menu",
+      "btn-undo",
+      "btn-redo",
+      "data-resample",
+      "file-menu",
+      "data-standardize",
+      "tab-model",
+      "tab-loss",
+      "grain-toggle",
+      "fit-view",
+      "tidy-layout",
+      "reset-view",
+      "instructions",
+      "preset-prompt",
+      "success-check",
+      "panel-fit",
+      "panel-loss",
+      "panel-loss-1d",
+      "panel-surface",
+      "loss-readout",
+      "loss-mode-likelihood",
+      "loss-mode-total",
+      "loss-mode-mean",
+      "loss-log-toggle",
+      "truth-toggle",
+      "prediction-picker",
+      "btn-step",
+      "btn-reset",
+      "lr-slider",
+      "step-count",
+      "btn-run",
+      "btn-random-start",
+      "param-count"
+    ]
+  },
+  "labels": {
+    "loss-readout": "Score",
+    "lr-slider": "Step size",
+    "btn-random-start": "Try another start"
+  },
+  "options": {
+    "loss-mode": "mean"
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "x",
+        "type": "input",
+        "columns": ["x1"]
+      },
+      {
+        "id": "lin1",
+        "type": "linear",
+        "out": 3,
+        "bias": true
+      },
+      {
+        "id": "yhat",
+        "type": "link",
+        "fn": "softmax"
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "err",
+        "type": "cross_entropy"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["x", "lin1"],
+      ["lin1", "yhat"],
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
+    ],
+    "predictions": ["yhat"],
+    "loss": "loss",
+    "data": {
+      "set": "delivery_lateness",
+      "n": 200,
+      "noise": 0.3,
+      "val": 0.2,
+      "seed": 7,
+      "standardize": false
+    },
+    "train": {
+      "optimizer": "sgd",
+      "lr": 0.01,
+      "batch": "full",
+      "seed": 11
+    }
+  }
+}
