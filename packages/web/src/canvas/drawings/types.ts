@@ -1,5 +1,6 @@
 import type { FC } from 'react';
 import type { Node, PieceType } from '@tinker/core';
+import type { ProbBar } from '../probBarPure.js';
 
 export type NodeOf<T extends PieceType> = Extract<Node, { type: T }>;
 
@@ -20,6 +21,8 @@ export type LayerProps<T extends PieceType> = {
   scale?: number;
   /** Parameter count of this piece (0 for most). */
   paramCount: number;
+  /** Current probability (Link on a ŷ pin only), drawn as a filled bar; see `probBarPure`. */
+  probBar?: ProbBar;
   /** Weights to draw as a heat map (Linear only); read only, never write into the arrays. */
   weights?: { W: Float32Array; rows: number; cols: number };
 };

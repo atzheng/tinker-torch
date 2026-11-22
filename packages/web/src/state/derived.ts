@@ -1,6 +1,12 @@
 import { useMemo } from 'react';
 import { analyse, initParams, type Analysis, type HostParams } from '@tinker/core';
 import { edgeIndexOf, neuronSelectionLive, pinLive } from '../canvas/pure.js';
+import {
+  PROB_BAR_MAX_ROWS,
+  probBarTargets,
+  probBars,
+  type ProbBar,
+} from '../canvas/probBarPure.js';
 import { useStore, type Store } from './store.js';
 import type { Selection } from './viewSlice.js';
 
@@ -42,6 +48,27 @@ export function useWeights(analysis: Analysis, live = true): HostParams | undefi
   const trained = useStore(live ? selectTrainedHost : selectNoHost);
   const initial = useInitialWeights(analysis);
   return trained ?? initial;
+}
+
+/**
+ * Probability bars (tinker-6t7.17) for the Links that carry a ŷ pin, by node id: the value of the
+ * current parameters, averaged over the training examples. Follows `host`, so it updates live; empty
+ * until the engine has a model. Nothing engine-side is kept (`predictPins` copies out plain arrays).
+ */
+export function useProbBars(analysis: Analysis): Record<string, ProbBar> {
+  const graph = useStore((s) => s.graph);
+  const dataset = useStore((s) => s.dataset);
+  const host = useStore((s) => s.host);
+  const predictPins = useStore((s) => s.predictPins);
+  return useMemo(() => {
+    void host; // the recompute trigger: parameters changed
+    if (probBarTargets(graph, analysis.outWidth).length === 0) return {};
+    const d = dataset.info.columns.length;
+    const n = d === 0 ? 1 : Math.min(dataset.nTrain, PROB_BAR_MAX_ROWS);
+    if (n < 1) return {};
+    const outs = predictPins(dataset.xTrain.slice(0, n * d), n);
+    return outs ? probBars(graph, analysis.outWidth, outs, n) : {};
+  }, [graph, analysis, dataset, host, predictPins]);
 }
 
 /**

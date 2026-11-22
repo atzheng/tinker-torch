@@ -156,6 +156,8 @@ export type TrainSlice = {
    * picked in the fit plot header (`plotPrediction`, default the first).
    */
   predictGrid: (x: Float32Array, n: number) => Float32Array | null;
+  /** Like `predictGrid` but for every ŷ pin, in pin order (null when there is no model or it fails). */
+  predictPins: (x: Float32Array, n: number) => Float32Array[] | null;
   /**
    * Training loss (mean loss plus penalty over the whole training set, dropout off) of the current
    * model with the two parameters `axes` set to a[i] and b[j] and every other parameter as it is;
@@ -775,6 +777,15 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       try {
         const { graph, plotPrediction } = get();
         return engine.predict(model, state.params, x, n)[plotIndex(graph, plotPrediction)] ?? null;
+      } catch {
+        return null;
+      }
+    },
+    predictPins: (x, n) => {
+      const { engine, model, state } = rt;
+      if (!engine || !model || !state) return null;
+      try {
+        return engine.predict(model, state.params, x, n);
       } catch {
         return null;
       }
