@@ -62,9 +62,9 @@ export const NOISE_SD_PER_UNIT = 10;
 
 /**
  * `delivery_lateness`: the same delivery time as `delivery_time` (same draws), cut into on time
- * (< 38 min), late (38 to < 49) and very late (>= 49). At noise 0.3 the classes hold about
- * 50 / 35 / 15 percent of the deliveries (the 38 and 49 minute marks are about the 50th and 85th
- * percentiles of the time).
+ * (< 38 min), late (38 to < 49) and very late (>= 49). The class shares depend on noise:
+ * about .51/.36/.13 at noise 0, .51/.35/.14 at 0.3, .51/.28/.21 at 1 and .51/.19/.30 at 2 (the 38
+ * and 49 minute marks are about the 50th and 85th percentiles of the time at noise 0.3).
  */
 export const LATENESS_CUTS = [38, 49] as const;
 export const LATENESS_CLASSES = ['on time', 'late', 'very late'] as const;
@@ -140,7 +140,7 @@ export function latenessProbs(x: readonly number[], noise: number): number[] {
   return [c0, c1 - c0, 1 - c1];
 }
 
-/** The most probable class of the clean generator (the time's mean decides). */
+/** The class of the mean delivery time (noise-free; at high noise it can differ from the most probable class). */
 const latenessTruth = (x: readonly number[]): number => lateness(timeTruth(x));
 
 const COMMON = {

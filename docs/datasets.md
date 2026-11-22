@@ -35,7 +35,7 @@ sets share one generator (same seed and n give the same feature rows): `delivery
 | lateness             | on time, late, very late (0 to 2)   | the delivery time (same draws as `delivery_time`) cut at 38 and 49 minutes: under 38, 38 to under 49, 49 or more  |
 
 The overall late rate is 0.341 (`DELIVERY_LATE_RATE`, the population rate by numerical integration over the input ranges and zones). Noise applies to delivery time and lateness (standard deviation
-10 x noise minutes; at noise 0.3 the three lateness classes hold about 50 / 35 / 15 percent, not balanced, and at noise 0 the class is a
+10 x noise minutes; the class shares depend on noise (about .51/.36/.13 at noise 0, .51/.35/.14 at 0.3, .51/.28/.21 at 1, .51/.19/.30 at 2), not balanced, and at noise 0 the class is a
 deterministic function of the inputs); late labels are already random, so the Noise field is hidden for `delivery_late`.
 The fit plot's truth is the same formula at the row's own zone; the plot's slice holds zone at its
 most common category in the training rows (it cannot be an axis). Every random stream
@@ -51,6 +51,6 @@ sorted, collected over the whole file before the train and validation split, so 
 sees a new category; use it through One-hot or Lookup); other text columns are left out. Rows with
 a missing value are dropped; what was left out or dropped is reported in the dialog. The opened file lives in the session only: it is not part of a saved model.
 
-`delivery_lateness` truth: `truth` is the most probable class from the mean time; `truthProbs(set, x, noise)`
+`delivery_lateness` truth: `truth` is the class of the mean delivery time (noise-free, so the True boundary does not move with Noise, and at high noise it can differ from the most probable class); `truthProbs(set, x, noise)`
 gives the exact class probabilities (Normal CDF between the cuts, one-hot at noise 0). Zone as a
 target is not offered.

@@ -347,7 +347,7 @@ function classCount(set: DatasetName): number;                // 1, 2 or k
 | spiral3 | 2 | [-2, 2]² | k = 3 spiral arms, arm c at angle 2πc/3 + 4t, radius 1.8t, t ∈ [0.1, 1]; truth is the nearest arm |
 | delivery_late | 3 | [0.5, 10] × [0, 10] × [0, 12] | binary: late ~ Bernoulli(sigmoid(−5.0 + 0.4 distance + 0.25 rain + 0.12 queue + zone effect)); truth is P(late) averaged over the 4 zones |
 | delivery_time | 3 | same | regression: minutes = 12 + 3 distance + 0.8 rain + 1 queue + zone effect + noise; truth is the linear part |
-| delivery_lateness | 3 | same | multiclass k = 3 (`on time`, `late`, `very late`): the delivery_time draw cut at 38 and 49 minutes (tinker-7bz); truth is the class of the mean time, `truthProbs` the exact probabilities |
+| delivery_lateness | 3 | same | multiclass k = 3 (`on time`, `late`, `very late`): the delivery_time draw cut at 38 and 49 minutes (tinker-7bz); truth is the class of the mean delivery time (noise-free; can differ from the most probable class at high noise), `truthProbs` the exact probabilities |
 
 - Regression noise: y = f*(x) + noise · s · ε, ε ~ N(0, 1), where s is the standard deviation of f* over a uniform sample of the domain (a constant per set, computed once).
 - Classification noise: Gaussian jitter of point positions with std noise · 0.5 (blobs: noise scales its std, 0.6 · (0.5 + noise)). Classes are balanced.
