@@ -32,7 +32,10 @@ test('every piece is drawn by the one node shell: one body, same radius, ports o
   for (const n of [...nodes, ...lossNodes].filter((x) => x.getAttribute('data-stub') !== 'true')) {
     const bodies = n.querySelectorAll('.tk-body');
     expect(bodies, n.getAttribute('data-testid') ?? '').toHaveLength(1);
-    expect(bodies[0]?.getAttribute('rx')).toBe('8');
+    // the radius is one of two: an operation's 8, or a value's pill (tinker-paq)
+    expect(bodies[0]?.getAttribute('rx')).toBe(
+      n.getAttribute('data-shape') === 'value' ? '28' : '8',
+    );
     expect(n.querySelector('.tk-name')?.textContent).toBeTruthy();
     // No per-type outline: the only circles in a node are its ports and a role badge.
     expect(n.querySelectorAll('circle.tk-shape')).toHaveLength(0);

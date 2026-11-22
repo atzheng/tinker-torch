@@ -14,7 +14,13 @@ import { ACTIVATION_LABEL, ACTIVATION_SYMBOL } from './drawings/activation.js';
 import { WEB_PIECES } from './drawings/index.js';
 import { fitName } from './pure.js';
 import { SvgTex } from '../tex/Tex.js';
-import { NODE_RADIUS, NodeShell, roleOfNode } from './drawings/NodeShell.js';
+import {
+  NodeShell,
+  NodeShapeContext,
+  bodyRadius,
+  roleOfNode,
+  shapeOfNode,
+} from './drawings/NodeShell.js';
 import { LockBadge } from './drawings/LockBadge.js';
 import type { LayerProps } from './drawings/types.js';
 import { layerProps } from './LayerView.js';
@@ -313,6 +319,7 @@ export function NeuronView(p: NeuronViewProps) {
         const units = unitsByNode.get(node.id);
         const nodeSelected = sel?.kind === 'node' && sel.id === node.id;
         const hit = shapes.find((s) => s.kind === 'node' && s.id === node.id);
+        const shape = units ? 'op' : shapeOfNode(node, graph);
         return (
           <g
             key={node.id}
@@ -320,6 +327,7 @@ export function NeuronView(p: NeuronViewProps) {
             data-testid={`node-${node.id}`}
             data-type={node.type}
             data-role={roleOfNode(node, graph)}
+            data-shape={shape}
             data-locked={lockedSet.has(node.id)}
             data-selected={nodeSelected}
             data-error={p.errorNodes.has(node.id)}
@@ -353,12 +361,14 @@ export function NeuronView(p: NeuronViewProps) {
               y={-4}
               width={box.w + 8}
               height={box.h + 8}
-              rx={NODE_RADIUS + 4}
+              rx={bodyRadius(shape, box.h) + 4}
             />
             {units ? (
               <UnitColumnName node={node} w={box.w} scale={scale} />
             ) : (
-              <BoxDrawing node={node} box={box} p={p} />
+              <NodeShapeContext.Provider value={shape}>
+                <BoxDrawing node={node} box={box} p={p} />
+              </NodeShapeContext.Provider>
             )}
             {lockedSet.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
