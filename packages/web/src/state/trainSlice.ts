@@ -2,6 +2,7 @@ import type { StateCreator, StoreApi } from 'zustand';
 import {
   analyse,
   batchSchedule,
+  exampleStats,
   gatherBatch,
   initParams,
   makeRng,
@@ -12,10 +13,12 @@ import {
   type Batch,
   type Graph,
   type HostParams,
+  type LossMode,
 } from '@tinker/core';
 import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engine';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { initialGraph } from './graphSlice.js';
+import { currentLossMode, type ExampleStatsPair } from './lossMode.js';
 import { plotIndex } from './plotPrediction.js';
 import { probabilitySentence } from './probRange.js';
 import type { Store } from './store.js';
@@ -78,6 +81,27 @@ export type TrainSlice = {
   valLoss: number | null;
   history: HistoryPoint[];
   best: Best | null;
+  /** The readout mode the user picked (tinker-6t7.5); `currentLossMode` applies the preset's disclosure. */
+  lossMode: LossMode;
+  setLossMode: (m: LossMode) => void;
+  /**
+   * The objective L (dropout off) of the current parameters on the whole train and validation
+   * sets, null for a split that is empty or non-finite, and null as a whole with no compiled
+   * model. Republished with `host` (at most once per frame while running, on every hand edit):
+   * the loss readout shows it in every mode, so it follows a dragged parameter.
+   */
+  liveLoss: { train: number | null; val: number | null } | null;
+  /**
+   * Likelihood (product of the per-example probabilities, float32) of the current parameters on
+   * each split; null unless the current readout mode is likelihood. Republished with `liveLoss`.
+   */
+  exampleStats: ExampleStatsPair | null;
+  /**
+   * Per-example values that the L pin's Mean averages (`Engine.exampleLosses`, dropout off) of the
+   * current parameters on the whole train or validation split, one per row; null with no compiled
+   * model or no Mean. For the likelihood readout and the per-example strip.
+   */
+  exampleLosses: (split: 'train' | 'val') => Float32Array | null;
   /** Steps per frame while running (12 ms budget per frame). */
   speed: number;
   /** Immutable snapshot of the current parameters, published at most once per frame. */
@@ -238,6 +262,8 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       history: rt.history.slice(),
       best: rt.best,
       host,
+      liveLoss: computeLiveLoss(),
+      exampleStats: computeExampleStats(),
       ...extra,
     });
   }
@@ -257,6 +283,41 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     } catch {
       return null;
     }
+  }
+
+  function exampleLossesOf(split: 'train' | 'val'): Float32Array | null {
+    const { engine, model, state } = rt;
+    const batch = split === 'train' ? rt.trainBatch : rt.valBatch;
+    if (!engine || !model || !state || !batch || batch.n === 0) return null;
+    try {
+      return engine.exampleLosses(model, state.params, batch);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The stats the readout needs now: only for the likelihood and total modes, else null. */
+  function computeExampleStats(): ExampleStatsPair | null {
+    const mode = currentLossMode(get());
+    if (mode !== 'likelihood') return null;
+    const t = exampleLossesOf('train');
+    const v = exampleLossesOf('val');
+    return { train: t && exampleStats(t), val: v && exampleStats(v) };
+  }
+
+  function computeLiveLoss(): TrainSlice['liveLoss'] {
+    const { engine, model, state, trainBatch, valBatch } = rt;
+    if (!engine || !model || !state) return null;
+    const one = (b: Batch | null): number | null => {
+      if (!b || b.n === 0) return null;
+      try {
+        const v = engine.evaluate(model, state.params, b);
+        return Number.isFinite(v) ? v : null;
+      } catch {
+        return null;
+      }
+    };
+    return { train: one(trainBatch), val: one(valBatch) };
   }
 
   function clearRun(): void {
@@ -489,6 +550,10 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     rt.raf = requestAnimationFrame(frame);
   }
 
+  refreshExampleStatsRef = () => {
+    const stats = computeExampleStats();
+    if (stats !== get().exampleStats) set({ exampleStats: stats });
+  };
   resyncRef = (carried) => resync(false, carried ?? null);
 
   // Engine loading: compile as soon as it is ready.
@@ -514,6 +579,11 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     valLoss: null,
     history: [],
     best: null,
+    lossMode: 'mean',
+    setLossMode: (m) => set({ lossMode: m }),
+    liveLoss: null,
+    exampleStats: null,
+    exampleLosses: exampleLossesOf,
     speed: DEFAULT_SPEED,
     host: null,
     currentHost: () => {
@@ -661,6 +731,10 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
  */
 export function attachTrainLoop(store: StoreApi<Store>): void {
   rt.seed = store.getState().graph.train.seed;
+  // A mode switch or a new preset disclosure refreshes the per-example stats (they are only computed for the modes that need them).
+  store.subscribe((s, prev) => {
+    if (s.lossMode !== prev.lossMode || s.show !== prev.show) refreshExampleStatsRef?.();
+  });
   store.subscribe(() => {
     const s = store.getState(); // the listener argument can be stale inside nested set() calls
     if (s.graph !== rt.lastGraph || s.dataset !== rt.lastDataset) {
@@ -675,4 +749,5 @@ export function attachTrainLoop(store: StoreApi<Store>): void {
   resyncRef?.();
 }
 
+let refreshExampleStatsRef: (() => void) | null = null;
 let resyncRef: ((carried?: ScalarCarry | null) => void) | null = null;

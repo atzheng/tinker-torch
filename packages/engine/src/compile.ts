@@ -32,7 +32,7 @@ import type { PieceCtx } from './pieces/index.js';
 import type { Model } from './types.js';
 
 type NodeId = string;
-type Mode = 'predict' | 'loss' | 'prob';
+type Mode = 'predict' | 'loss' | 'prob' | 'examples';
 /** One node of a plan: the node and, per input port, the node that feeds it. */
 type Step = { node: Node; ports: [port: string, src: NodeId][] };
 
@@ -72,7 +72,11 @@ export type Internals = {
   /** Unfused log_loss / cross_entropy of the loss plan, with the node feeding their `pred` (same order as `plans.prob.outputs`). */
   probLosses: { loss: NodeId; src: NodeId }[];
   plans: Record<Mode, Plan>;
+  /** The Mean of the loss path and the node feeding it (per-example values); null when the loss path has no Mean. */
+  exampleSrc: NodeId | null;
   predictFn(): PredictFn;
+  /** Jitted per-example values (plan `examples`); consumes params, x, y. */
+  exampleFn(): LossFn;
   evalFn(): LossFn;
   stepFn(): StepFn;
   /** Same step with a 6th output: min and max of each unfused probability loss's pred (only for models with `probLosses`). */
@@ -197,7 +201,19 @@ export function compile(graph: Graph, data: DataInfo): Model {
     const src = s.ports.find(([port]) => port === 'pred')?.[1];
     if (src !== undefined) probLosses.push({ loss: s.node.id, src });
   }
+  // Per-example plan (`exampleLosses`): the values feeding the Mean at the L pin, or else the first Mean on the loss path.
+  const meanStep =
+    lossPlan.steps.find((s) => s.node.id === analysis.lossNode && s.node.type === 'mean') ??
+    lossPlan.steps.find((s) => s.node.type === 'mean');
+  const exampleSrc = meanStep?.ports.find(([port]) => port === 'in')?.[1] ?? null;
   const plans: Record<Mode, Plan> = {
+    examples: makePlan(
+      analysis.order,
+      byId,
+      lossPorts,
+      exampleSrc === null ? [] : [exampleSrc],
+      fused,
+    ),
     predict: makePlan(analysis.modelOrder, byId, wired, analysis.predictions, new Set()),
     loss: lossPlan,
     prob: makePlan(
@@ -217,6 +233,7 @@ export function compile(graph: Graph, data: DataInfo): Model {
 
   let predictFn: PredictFn | null = null;
   let evalFn: LossFn | null = null;
+  let exampleFn: LossFn | null = null;
   let stepFn: StepFn | null = null;
   let stepRangeFn: StepFn | null = null;
   /** The jitted train step; with `withRange` it returns a 6th output, `[2 * probLosses]` min/max pairs. */
@@ -299,6 +316,7 @@ export function compile(graph: Graph, data: DataInfo): Model {
     lossNode: analysis.lossNode,
     probLosses,
     plans,
+    exampleSrc,
     disposables: new Set(),
     disposed: false,
     predictFn() {
@@ -316,6 +334,14 @@ export function compile(graph: Graph, data: DataInfo): Model {
       ) as unknown as LossFn;
       self.disposables.add(evalFn as unknown as { dispose(): void });
       return evalFn;
+    },
+    exampleFn() {
+      exampleFn ??= jit(
+        (params: ParamTree, x: JArray, y: JArray) =>
+          walk(self, 'examples', params, x, y, { train: false, masks: null })[0] as JArray,
+      ) as unknown as LossFn;
+      self.disposables.add(exampleFn as unknown as { dispose(): void });
+      return exampleFn;
     },
     optimizer() {
       opt ??= OPTIMIZERS[graph.train.optimizer].make(graph.train.lr);

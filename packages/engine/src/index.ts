@@ -231,6 +231,24 @@ function makeEngine(): Engine {
     },
 
     /**
+     * Borrows `model`, `params` and `batch`. Dropout off. The per-example values that the Mean at the
+     * L pin averages (the Mean's input, flattened: n values for a `[n, 1]` loss such as log loss or
+     * cross-entropy), computed in float32 like `evaluate`; null when the loss path has no Mean.
+     * Penalty terms are not included. Jitted per model, freed by `disposeModel`.
+     */
+    exampleLosses(model, params, batch) {
+      const m = internals(model);
+      if (m.exampleSrc === null) return null;
+      const t = peekParams(params);
+      checkBatch(m, batch.x, batch.y, batch.n);
+      checkTree(m, t);
+      const { x, y } = batchArrays(m, batch);
+      const pRef = tree.ref(t);
+      const out = guarded([pRef, x, y], () => m.exampleFn()(pRef, x, y));
+      return Float32Array.from(out.dataSync() as Float32Array);
+    },
+
+    /**
      * Borrows `model`, `params` and `batch`; frees everything it makes. Not jitted (the training step is
      * unchanged). One `{ node, min, max }` per UNFUSED log_loss / cross_entropy on the loss path (`node` is the
      * loss node): the min and max over every entry of its `pred` on the batch (NaN if an entry is NaN),

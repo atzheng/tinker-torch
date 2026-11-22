@@ -118,6 +118,30 @@
   line-height: 1.1;
 }
 
+.readoutModes {
+  display: inline-flex;
+  gap: 2px;
+  font-family: var(--font);
+  font-size: var(--fs-xs);
+}
+
+.readoutMode {
+  padding: 1px 6px;
+  min-height: 24px;
+  border: 1px solid var(--border, currentColor);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--diag-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.readoutMode[aria-pressed='true'] {
+  background: var(--series-train);
+  border-color: var(--series-train);
+  color: var(--bg, #fff);
+}
+
 .readoutGroup {
   display: inline-flex;
   align-items: baseline;
