@@ -2,11 +2,12 @@ import { predictionChain } from '../plot/histogramPure.js';
 import { plotIndex } from './plotPrediction.js';
 import { twoParams } from '../plot/lossSurface.js';
 import { useStore } from './store.js';
-import { panelTab, type PanelId } from '../results/panelLayout.js';
+import { PANEL_IDS, panelOnTab } from '../results/panelLayout.js';
 import {
   effectiveTab,
   isShown,
   shownTabs,
+  tabsSplit,
   UI_IDS,
   type UiRegion,
   type ViewTab,
@@ -20,6 +21,11 @@ export function useUiShown(id: string): boolean {
 /** The tab being drawn: the one asked for (`viewTab`), or a shown one when the preset hides it. */
 export function useViewTab(): ViewTab {
   return useStore((s) => effectiveTab(s.viewTab, s.show?.ui));
+}
+
+/** True when both tabs are shown; with one, that tab draws the whole graph and every panel and piece. */
+export function useSplitTabs(): boolean {
+  return useStore((s) => tabsSplit(s.show?.ui));
 }
 
 /** The tabs the preset leaves visible, in tab order (a new array each call: compare by `join`). */
@@ -70,19 +76,9 @@ export function useRegionShown(
         s.dataset.info.kind !== 'multiclass' &&
         !predictionChain(s.graph, pred.split('.')[0] ?? pred).hasInput;
       const tab = effectiveTab(s.viewTab, s.show?.ui);
-      return (
-        [
-          'panel-fit',
-          'panel-loss',
-          'panel-surface',
-          'panel-histogram',
-          'panel-loss-1d',
-          'panel-examples',
-          'panel-step-log',
-        ] as const
-      ).some(
-        (id) =>
-          panelTab(id.slice('panel-'.length) as PanelId) === tab &&
+      return PANEL_IDS.map((p) => [p, `panel-${p}`] as const).some(
+        ([p, id]) =>
+          panelOnTab(p, tab, tabsSplit(s.show?.ui)) &&
           isShown(s.show?.ui, id) &&
           (id !== 'panel-surface' || surface) &&
           (id !== 'panel-histogram' || histogram) &&

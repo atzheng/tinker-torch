@@ -114,13 +114,13 @@ test('a wire across the boundary shows as a stub on both tabs and can be removed
 test('tapping a stub goes to the other tab with that piece selected', () => {
   mount();
   const ghost = q('node-diff') as Element;
-  expect(ghost.getAttribute('data-ghost')).toBe('true');
+  expect(ghost.getAttribute('data-stub')).toBe('true');
   act(
     () => void ghost.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
   );
   expect(s().viewTab).toBe('loss');
   expect(s().selection).toEqual({ kind: 'node', id: 'diff' });
-  expect(q('node-diff')?.getAttribute('data-ghost')).toBe('false');
+  expect(q('node-diff')?.getAttribute('data-stub')).toBe('false');
 });
 
 test('a preset can hide a tab and choose the opening one; neither field shows both, on model', () => {
@@ -129,7 +129,7 @@ test('a preset can hide a tab and choose the opening one; neither field shows bo
   expect(q('tab-bar')).toBeNull(); // one tab: no bar
   expect(s().viewTab).toBe('loss'); // the model tab is hidden: the loss tab opens
   expect(q('node-y')).not.toBeNull();
-  expect(q('node-lin1')).toBeNull();
+  expect(q('node-lin1')).not.toBeNull(); // one tab shown: it draws the whole graph
   expect(q('loss-curves')).not.toBeNull();
 
   act(() => void loadText(presetText({ tab: 'loss' })));
@@ -160,4 +160,33 @@ test('a preset that carries show.tab is saved back with it', () => {
   mount();
   loadText(presetText({ tab: 'loss' }));
   expect(JSON.parse(saveText(false)).show).toEqual({ tab: 'loss' });
+});
+
+test('a loss-only preset draws the whole graph: every piece, panel and palette entry, no stubs', () => {
+  mount();
+  act(() => void loadText(presetText({ ui: ['tab-loss', 'panel-fit', 'panel-loss', 'btn-step'] })));
+  expect(q('tab-bar')).toBeNull();
+  for (const id of ['x', 'lin1', 'act1', 'lin2', 'y', 'diff', 'loss']) {
+    expect(q(`node-${id}`), id).not.toBeNull();
+  }
+  expect(host.querySelector('[data-stub="true"]')).toBeNull();
+  expect(q('fit-plot')).not.toBeNull();
+  expect(q('loss-curves')).not.toBeNull();
+  expect(paletteKeys()).toEqual(expect.arrayContaining(['linear', 'square']));
+  expect(q('grain-toggle')).toBeNull(); // not listed by this preset
+});
+
+test('an unwired Add dropped on either tab stays in view on both', () => {
+  mount();
+  const g = s().graph;
+  act(
+    () =>
+      void s().apply({
+        ok: true,
+        graph: { ...g, nodes: [...g.nodes, { id: 'free-add', type: 'add' }] },
+      }),
+  );
+  expect(q('node-free-add')).not.toBeNull();
+  act(() => s().setViewTab('loss'));
+  expect(q('node-free-add')?.getAttribute('data-stub')).toBe('false');
 });

@@ -8,6 +8,7 @@ import {
   parseFile,
   partitionNodes,
   shownTabs,
+  tabsSplit,
   viewOfTab,
   type DataInfo,
   type Edge,
@@ -171,6 +172,24 @@ describe('viewOfTab', () => {
       for (const n of v.graph.nodes) expect(l.nodes[n.id], `${tab}:${n.id}`).toBeDefined();
       for (const w of l.wires) expect(v.graph.edges[w.edge]).not.toEqual(['', '']);
     }
+  });
+
+  test('one tab shown: that tab draws the whole graph with no stubs', () => {
+    const graph = mlp();
+    const v = viewOfTab(graph, analyse(graph, info), 'loss', true);
+    expect(v.graph).toBe(graph);
+    expect(v.ghosts).toEqual({});
+    expect(tabsSplit(['tab-loss'])).toBe(false);
+    expect(tabsSplit(undefined)).toBe(true);
+  });
+
+  test('an unwired Add is drawn on both tabs', () => {
+    const graph = mlp();
+    graph.nodes.push({ id: 'free-add', type: 'add' });
+    const a = analyse(graph, info);
+    expect(ids(viewOfTab(graph, a, 'model').graph)).toContain('free-add');
+    expect(ids(viewOfTab(graph, a, 'loss').graph)).toContain('free-add');
+    expect(viewOfTab(graph, a, 'loss').ghosts['free-add']).toBeUndefined();
   });
 
   test('the two tabs together cover every node and every wire', () => {

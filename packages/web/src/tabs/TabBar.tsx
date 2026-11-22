@@ -25,6 +25,7 @@ function Tab({
       className={styles.tab}
       data-testid={TAB_UI_IDS[tab]}
       aria-selected={active}
+      aria-controls="tab-panel"
       tabIndex={active ? 0 : -1}
       onClick={() => setTab(tab)}
       onKeyDown={onKey}

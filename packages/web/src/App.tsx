@@ -109,7 +109,7 @@ export function App() {
           <PromptLine />
           <InstructionsPanel />
           <SuccessTick />
-          <div className={styles.canvasBody}>
+          <div className={styles.canvasBody} id="tab-panel" role="tabpanel">
             <Canvas />
           </div>
         </main>

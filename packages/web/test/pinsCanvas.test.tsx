@@ -52,7 +52,7 @@ test('regions are drawn behind the pieces: model and objective, none for danglin
 test('the pins are the role pins; a selected piece offers add pins for the roles it lacks', () => {
   act(() => root.render(<Canvas />));
   expect(q('pin-pred-lin2')?.getAttribute('data-role')).toBe('pred');
-  expect(host.querySelectorAll('[data-ghost="true"]')).toHaveLength(1); // the stub of the Subtract
+  expect(host.querySelectorAll('[data-stub="true"]')).toHaveLength(1); // the stub of the Subtract
   expect(q('pin-loss-loss')).toBeNull(); // the L pin is on the loss tab
   act(() => useStore.getState().setViewTab('loss'));
   expect(q('pin-loss-loss')?.getAttribute('data-role')).toBe('loss');

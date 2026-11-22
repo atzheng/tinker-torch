@@ -11,7 +11,7 @@ import { dnd } from '../canvas/dnd.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
 import { useLayoutMode } from '../layout/useLayoutMode.js';
-import { useViewTab } from '../state/disclosure.js';
+import { useSplitTabs, useViewTab } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { Tex } from '../tex/Tex.js';
 import './palette.css';
@@ -138,9 +138,10 @@ export function Palette() {
   const isOpen = (g: Group) => toggled[g.id] ?? (allowed !== undefined || g.open);
   // Model pieces on the model tab, loss and penalty pieces on the loss tab (CONTRACTS.md section 9).
   const tab = useViewTab();
+  const split = useSplitTabs();
   const visibleIn = (g: Group) =>
     PALETTE.filter(g.has)
-      .filter((e) => paletteTabs(e).includes(tab))
+      .filter((e) => !split || paletteTabs(e).includes(tab))
       .filter((e) => isShown(allowed, g.id) || isShown(allowed, e.key));
   // Strip: a mouse wheel (vertical delta) scrolls it sideways; a trackpad's horizontal delta already does.
   const ref = useRef<HTMLDivElement>(null);

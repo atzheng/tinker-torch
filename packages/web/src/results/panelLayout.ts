@@ -13,8 +13,19 @@ export type PanelId = (typeof PANEL_IDS)[number];
 export type PanelWeights = Record<PanelId, number>;
 
 /** The tab each panel belongs to (CONTRACTS.md section 9, "Tabs"): the fit and the target histogram describe the model; the rest describe the loss. */
-export function panelTab(id: PanelId): 'model' | 'loss' {
-  return id === 'fit' || id === 'histogram' ? 'model' : 'loss';
+export const PANEL_TAB: Record<PanelId, 'model' | 'loss'> = {
+  fit: 'model',
+  histogram: 'model',
+  loss: 'loss',
+  surface: 'loss',
+  'loss-1d': 'loss',
+  examples: 'loss',
+  'step-log': 'loss',
+};
+
+/** Whether a panel is on screen with `tab` showing; with one tab shown (`split` false) every panel the preset lists is. */
+export function panelOnTab(id: PanelId, tab: 'model' | 'loss', split: boolean): boolean {
+  return !split || PANEL_TAB[id] === tab;
 }
 
 export const DEFAULT_ORDER: readonly PanelId[] = PANEL_IDS;

@@ -29,7 +29,7 @@ test('every piece is drawn by the one node shell: one body, same radius, ports o
   act(() => useStore.getState().setViewTab('loss'));
   const lossNodes = [...host.querySelectorAll('[data-testid^="node-"]')];
   expect(lossNodes.length).toBe(5); // the stub of the prediction and the four loss pieces
-  for (const n of [...nodes, ...lossNodes].filter((x) => x.getAttribute('data-ghost') !== 'true')) {
+  for (const n of [...nodes, ...lossNodes].filter((x) => x.getAttribute('data-stub') !== 'true')) {
     const bodies = n.querySelectorAll('.tk-body');
     expect(bodies, n.getAttribute('data-testid') ?? '').toHaveLength(1);
     expect(bodies[0]?.getAttribute('rx')).toBe('8');

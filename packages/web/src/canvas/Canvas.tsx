@@ -7,6 +7,7 @@ import {
   layoutLayers,
   layoutNeurons,
   parsePort,
+  shownTabs,
   viewOfTab,
   type LayerLayout,
 } from '@tinker/core';
@@ -55,7 +56,7 @@ import {
   type Transform,
 } from './pure.js';
 import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
-import { useUiLabel, useUiShown, useViewTab } from '../state/disclosure.js';
+import { useSplitTabs, useUiLabel, useUiShown, useViewTab } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 
 /** Pieces snap to this grid (layout units): the `--sp-2` spacing token. */
@@ -144,12 +145,13 @@ export function Canvas() {
   const select = useStore((s) => s.select);
   const analysis = useAnalysis();
   const tab = useViewTab();
+  const split = useSplitTabs();
   const setViewTab = useStore((s) => s.setViewTab);
   const { graph, ghosts } = useMemo(
-    () => viewOfTab(fullGraph, analysis, tab),
-    [fullGraph, analysis, tab],
+    () => viewOfTab(fullGraph, analysis, tab, !split),
+    [fullGraph, analysis, tab, split],
   );
-  const showGrain = useUiShown('grain-toggle') && tab === 'model';
+  const showGrain = useUiShown('grain-toggle') && (tab === 'model' || !split);
   const showFit = useUiShown('fit-view');
   const showTidy = useUiShown('tidy-layout');
   const showResetView = useUiShown('reset-view');
@@ -160,7 +162,7 @@ export function Canvas() {
   const lblReset = useUiLabel('reset-view', 'Reset view');
   // The loss tab is always drawn by layer (its pieces have no neurons).
   const storedGrain = useStore((s) => s.grain);
-  const grain = tab === 'loss' ? 'layer' : storedGrain;
+  const grain = split && tab === 'loss' ? 'layer' : storedGrain;
   const setGrain = useStore((s) => s.setGrain);
   // Neuron view repaints its edges from `host` itself, so the canvas does not follow it per frame.
   const weights = useWeights(analysis, grain === 'layer');
@@ -595,7 +597,7 @@ export function Canvas() {
           {lblTidy}
         </button>
       )}
-      {!isNeuron && tab === 'model' && (
+      {!isNeuron && (tab === 'model' || !split) && (
         <ScalarBar
           graph={fullGraph}
           analysis={analysis}
@@ -672,7 +674,8 @@ export function Canvas() {
               ghosts={ghosts}
               onGhost={(id) => {
                 const to = ghosts[id];
-                if (to === undefined) return;
+                if (to === undefined || !shownTabs(useStore.getState().show?.ui).includes(to))
+                  return;
                 setViewTab(to);
                 selectNode(id);
               }}

@@ -365,7 +365,7 @@ export function LayerView(p: LayerViewProps) {
             aria-label={`${node.type} ${node.id}`}
             aria-pressed={selected}
             data-moving={p.moving === node.id}
-            data-ghost={ghost !== undefined}
+            data-stub={ghost !== undefined}
             onPointerDown={pointerDownWith({
               onTap: () =>
                 ghost !== undefined && p.onGhost

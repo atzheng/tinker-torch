@@ -519,7 +519,7 @@ One graph, two views of it. Nothing here is stored in the graph or the file; one
 ```ts
 type ViewTab = 'model' | 'loss';
 function partitionNodes(g: Graph, a: Analysis): Record<NodeId, ViewTab>;
-function viewOfTab(g: Graph, a: Analysis, tab: ViewTab): { graph: Graph; ghosts: Record<NodeId, ViewTab> };
+function viewOfTab(g: Graph, a: Analysis, tab: ViewTab, whole = false): { graph: Graph; ghosts: Record<NodeId, ViewTab> };
 function pieceTab(type: PieceType): ViewTab;               // by kind: Target, Subtract, Square, Abs, Huber, Log loss, Cross-entropy, Mean, Scale, Weights, Norm -> loss; else model
 function paletteTabs(entry: PaletteEntry): ViewTab[];      // pieces by kind, every macro (ready-made loss, weight penalty) on loss, Add on both
 function shownTabs(ui: readonly string[] | undefined): ViewTab[];   // see section 12, "Tabs"
@@ -528,8 +528,11 @@ function effectiveTab(want: ViewTab, ui: readonly string[] | undefined): ViewTab
 
 - `partitionNodes`: while a ŷ pin resolves, `analysis.region` decides (model region: model tab; objective region: loss tab). A node in neither region (and every node while no ŷ resolves) goes by `pieceTab(type)`. Duplicate ids: the first wins.
 - `viewOfTab` returns the graph a tab draws and lays out: that tab's nodes plus a *ghost* (stub) of every piece on the other tab that a resolved wire joins to a piece of this tab, and of the Linear a Weights tap on this tab reads (loss tab). `graph.edges` keeps its length and order, so edge indices mean the same as in the real graph; a wire is kept only when at least one end is a piece of this tab and both ends are drawn, every other edge is replaced by `['', '']` (it never resolves, so layout and drawing skip it). `positions` keep only this tab's own pieces. `ghosts` maps a ghost's id to the tab it really lives on. Draw, lay out and hit-test with this graph; compute every edit (`moveNodes`, `editForDrop`, `clearPositions`, delete, connect) from the real graph, whose ids are the same.
-- The web draws a ghost as a dashed box with the piece's name (a prediction as ŷ) and "on the Model tab" / "on the Loss tab"; its ports and wires are real, so a wire can still be dragged from or to it and selected, rewired or deleted like any wire; the ŷ pin shows on the ghost on the loss tab. Tapping a ghost switches to its tab and selects the piece. A ghost cannot be moved. Issues that name a piece or wire not drawn on this tab show as global lines.
-- Loss tab is always drawn by layer; the Neurons toggle (and neuron view) exist on the model tab only.
+- The web draws a ghost as a dashed box with the piece's name (a prediction as ŷ) and "on the Model tab" / "on the Loss tab"; its ports and wires are real, so a wire can still be dragged from or to it and selected, rewired or deleted like any wire; the ŷ pin shows on the ghost on the loss tab. Tapping a ghost switches to its tab and selects the piece. A ghost cannot be moved; its node element has `data-stub="true"` (pin ghosts keep `data-ghost`). Issues that name a piece or wire not drawn on this tab show as global lines.
+- One tab shown (`tabsSplit(show.ui)` false; `viewOfTab(g, a, tab, whole = true)`): that tab draws the whole graph, no stubs; the palette is not filtered by tab, every panel the preset lists shows, and Neurons / Group are available. A stub tap whose tab is hidden does nothing.
+- An unreached piece whose palette entry is offered on both tabs (an unwired Add) is drawn as its own piece on both tabs.
+- A piece can change tab when wiring changes its region: a Linear wired only into a loss piece (not an ancestor of a ŷ pin) moves to the loss tab; wiring it back moves it again.
+- Loss tab is always drawn by layer (when both tabs are shown); the Neurons toggle (and neuron view) exist on the model tab only.
 
 ## 10. Web conventions
 
@@ -616,7 +619,7 @@ function effectiveTab(want: ViewTab, ui: readonly string[] | undefined): ViewTab
 `App` puts a `TabBar` (a `role="tablist"`: ArrowLeft/Right/Up/Down wrap, Home, End, roving tabindex; `data-testid` `tab-model`, `tab-loss`) at the top of the canvas region. `viewSlice.viewTab` is the tab asked for; read it through `useViewTab()` (`state/disclosure.ts`), which is never a hidden tab (`effectiveTab`). Switching clears the selection and the canvas view (pan and zoom). A load (a new `loadEpoch`) opens the preset's `show.tab`, else `model`. With one tab shown the bar is not drawn.
 - Canvas: draws `viewOfTab(graph, analysis, tab).graph`; edits always use the real graph (section 9, "Tabs").
 - Palette: `paletteTabs(entry)` includes the tab; a preset's `show.palette` filters further.
-- Results panels by tab (`panelTab` in `results/panelLayout.ts`): model tab: `fit`, `histogram`; loss tab: `loss`, `surface`, `loss-1d`, `examples`, `step-log`. The results region is on screen only when a panel of the tab on screen is shown (`useRegionShown('results')`). Portrait layout: the tab bar sits above the prompt line in the canvas region; nothing else changes.
+- Results panels by tab (`PANEL_TAB: Record<PanelId, ViewTab>` in `results/panelLayout.ts`, so a new panel must be assigned; `panelOnTab`): model tab: `fit`, `histogram`; loss tab: `loss`, `surface`, `loss-1d`, `examples`, `step-log`. The results region is on screen only when a panel of the tab on screen is shown (`useRegionShown('results')`). Portrait layout: the tab bar sits above the prompt line in the canvas region; nothing else changes.
 
 ## 11. PyTorch reference fixtures
 

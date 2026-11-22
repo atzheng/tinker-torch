@@ -70,6 +70,23 @@ export function partitionNodes(graph: Graph, analysis: Analysis): Record<NodeId,
   return out;
 }
 
+/** Whether the preset leaves both tabs (a split view) or one (that tab then draws the whole graph). */
+export function tabsSplit(ui: readonly string[] | undefined): boolean {
+  return shownTabs(ui).length === 2;
+}
+
+/**
+ * Pieces no role reaches whose palette entry is offered on both tabs (an unwired Add): drawn as
+ * their own piece on both tabs, so one dropped on either tab stays in view.
+ */
+function onBothTabs(graph: Graph, analysis: Analysis): Set<NodeId> {
+  const out = new Set<NodeId>();
+  for (const n of graph.nodes) {
+    if (n.type === 'add' && analysis.region[n.id] === undefined) out.add(n.id);
+  }
+  return out;
+}
+
 /** An edge no tab draws: it never resolves, so layout and drawing skip it and indices stay put. */
 const HIDDEN_EDGE: [string, string] = ['', ''];
 
@@ -89,24 +106,32 @@ export type TabView = {
  * (loss tab) when it is the Linear a Weights tap here reads. A wire is drawn when at least one end
  * is a piece of this tab and both ends are on screen.
  */
-export function viewOfTab(graph: Graph, analysis: Analysis, tab: ViewTab): TabView {
+export function viewOfTab(
+  graph: Graph,
+  analysis: Analysis,
+  tab: ViewTab,
+  /** One tab shown (`!tabsSplit(show.ui)`): that tab draws the whole graph, no stubs. */
+  whole = false,
+): TabView {
+  if (whole) return { graph, ghosts: Object.create(null) as Record<NodeId, ViewTab> };
   const part = partitionNodes(graph, analysis);
+  const both = onBothTabs(graph, analysis);
   const ghosts = Object.create(null) as Record<NodeId, ViewTab>;
   const resolved = graph.edges.map((e) => resolveEdge(graph.nodes, e));
-  const mine = (id: NodeId) => part[id] === tab;
+  const mine = (id: NodeId) => part[id] === tab || both.has(id);
   for (const r of resolved) {
     if (!r.ok) continue;
     const a = r.from.node;
     const b = r.to.node;
     const pa = part[a];
     const pb = part[b];
-    if (mine(a) && pb !== undefined && pb !== tab) ghosts[b] = pb;
-    if (mine(b) && pa !== undefined && pa !== tab) ghosts[a] = pa;
+    if (mine(a) && pb !== undefined && !mine(b)) ghosts[b] = pb;
+    if (mine(b) && pa !== undefined && !mine(a)) ghosts[a] = pa;
   }
   for (const n of graph.nodes) {
     if (n.type !== 'weights' || !mine(n.id)) continue;
     const of = part[n.of];
-    if (of !== undefined && of !== tab) ghosts[n.of] = of;
+    if (of !== undefined && !mine(n.of)) ghosts[n.of] = of;
   }
   const keep = (n: Node) => mine(n.id) || ghosts[n.id] !== undefined;
   const nodes = graph.nodes.filter(keep);
