@@ -17,6 +17,28 @@ Values are rounded to 6 decimals. The numeric column order is the order of the s
 Not bundled: Auto MPG (UCI, CC BY 4.0, 392 complete rows) is a possible later addition; use Open CSV
 meanwhile.
 
+## Generated: the delivery story
+
+Not a table: `packages/core/src/data/delivery.ts` draws the rows from a seeded generator with known
+true parameters, so n and Resample change the sample and the fit plot can show the truth. Two
+sets share one generator (same seed and n give the same feature rows): `delivery_late` (binary) and
+`delivery_time` (continuous). A preset picks the target by setting `data.set`.
+
+| Column               | Range                               | How it is drawn                                                                                                   |
+| -------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| distance (km)        | 0.5 to 10                           | uniform                                                                                                           |
+| rain (mm/h)          | 0 to 10                             | uniform                                                                                                           |
+| queue (orders ahead) | 0 to 12                             | uniform whole number                                                                                              |
+| zone                 | centre, north, east, south (0 to 3) | uniform; drawn and used by the truth, not yet an input column (tinker-6t7.7 adds it)                              |
+| late                 | 0 or 1                              | Bernoulli(sigmoid(-5.0 + 0.4 distance + 0.25 rain + 0.12 queue + zone effect)), zone effects -0.6, -0.2, 0.2, 0.6 |
+| delivery time (min)  |                                     | 12 + 3 distance + 0.8 rain + 1 queue + zone effect + noise, zone effects -2, -1, 1, 2                             |
+
+The overall late rate is 0.341 (`DELIVERY_LATE_RATE`, the population rate by numerical integration over the input ranges and zones). Noise applies to delivery time only (standard deviation
+10 x noise minutes); lateness is already random, so the Noise field is hidden for `delivery_late`.
+The fit plot's truth is the same formula averaged over the four zones. Every random stream
+(distance, rain, queue, zone, late, time noise) is separate, so adding a column does not change the
+others.
+
 ## Opening other data
 
 Data, Open CSV reads a CSV from a URL (only when you press Fetch; the server must allow cross-site

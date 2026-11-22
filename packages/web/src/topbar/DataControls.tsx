@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BUNDLED, REAL_META, isRealSet, type DatasetName } from '@tinker/core';
+import { BUNDLED, REAL_META, SETS, isRealSet, type DatasetName } from '@tinker/core';
 import { useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { CsvDialog } from './CsvDialog.js';
@@ -40,6 +40,13 @@ const GROUPS: { label: string; sets: { name: DatasetName; label: string }[] }[] 
     sets: [
       { name: 'blobs3', label: 'Three blobs' },
       { name: 'spiral3', label: 'Three spirals' },
+    ],
+  },
+  {
+    label: 'Delivery story',
+    sets: [
+      { name: 'delivery_late', label: 'Delivery: late or not' },
+      { name: 'delivery_time', label: 'Delivery: time (min)' },
     ],
   },
   {
@@ -121,7 +128,12 @@ export function DataControls() {
   };
   // The Data popover has a button only while one of its controls is shown.
   const anyMore =
-    (sh.noise && !real) || sh.val || sh.seed || sh.standardize || sh.csv || sh.sources;
+    (sh.noise && !real && !SETS[data.set].noiseUnused) ||
+    sh.val ||
+    sh.seed ||
+    sh.standardize ||
+    sh.csv ||
+    sh.sources;
   return (
     <div className={styles.row} data-testid="data-controls">
       {sh.set && (
@@ -177,7 +189,7 @@ export function DataControls() {
         >
           {(close) => (
             <>
-              {!real && sh.noise && (
+              {!real && !SETS[data.set].noiseUnused && sh.noise && (
                 <NumField
                   label="Noise"
                   testid="data-noise"
