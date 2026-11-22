@@ -1,3 +1,5 @@
+import { predictionChain } from '../plot/histogramPure.js';
+import { plotIndex } from './plotPrediction.js';
 import { twoParams } from '../plot/lossSurface.js';
 import { useStore } from './store.js';
 import { isShown, UI_IDS, type UiRegion } from '@tinker/core';
@@ -13,8 +15,16 @@ export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'can
     if (region === 'results') {
       // Only the panels that actually render count: the loss surface needs a 2-parameter model.
       const surface = s.host ? twoParams(s.host, s.analysis.order) !== null : false;
-      return (['panel-fit', 'panel-loss', 'panel-surface'] as const).some(
-        (id) => isShown(s.show?.ui, id) && (id !== 'panel-surface' || surface),
+      const pred = s.graph.predictions[plotIndex(s.graph, s.plotPrediction)];
+      const histogram =
+        pred !== undefined &&
+        s.dataset.info.kind !== 'multiclass' &&
+        !predictionChain(s.graph, pred.split('.')[0] ?? pred).hasInput;
+      return (['panel-fit', 'panel-loss', 'panel-surface', 'panel-histogram'] as const).some(
+        (id) =>
+          isShown(s.show?.ui, id) &&
+          (id !== 'panel-surface' || surface) &&
+          (id !== 'panel-histogram' || histogram),
       );
     }
     return UI_IDS[region].some((id) => isShown(s.show?.ui, id));
