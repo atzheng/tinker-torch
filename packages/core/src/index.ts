@@ -18,3 +18,4 @@ export * from './scalar.js';
 export * from './equation.js';
 export * from './likelihood.js';
 export * from './checks.js';
+export * from './viewPartition.js';

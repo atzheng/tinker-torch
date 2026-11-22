@@ -512,6 +512,28 @@ Choices fixed by `layout.ts` (constants in the exported `LAYOUT`; all in abstrac
 - Neuron view uses a wider column gap. Unit circles per node: Input (`in`, one per column), expanded Linear (`sum`, one per output), an Activation whose first source is an expanded Linear (`act`, same count), Link (`out`, a sigmoid or softmax), Target (`target`, one), One-hot (`cat`, one per category) and a Lookup of width 1 (`cat`, one per category: `lookupCategories(a, id)` is its count; a wider Lookup stays a box); only when the width is known and at most 8. Everything else is a box. `boxes` covers every node (a unit column's box is the bounding box of its circles); `wires` connect boxes in both views.
 - `edges[].from` is the unit centre of the upstream node when it has as many units as the Linear has inputs, else a point on the upstream box's right side spread evenly. `to` is the `sum` unit centre. Endpoints are centres; the web trims by the circle radius. Biases are not edges. `edges` is ordered by node (graph order), then i-major then j, so a node's edge index is `i*out + j`, matching HostParams `W` row-major `[in, out]`. `collapsed` lists every Linear that is not expanded, including ones with unknown widths.
 
+### Tabs: model and loss (`core/viewPartition.ts`, tinker-d6x)
+
+One graph, two views of it. Nothing here is stored in the graph or the file; one undo history.
+
+```ts
+type ViewTab = 'model' | 'loss';
+function partitionNodes(g: Graph, a: Analysis): Record<NodeId, ViewTab>;
+function viewOfTab(g: Graph, a: Analysis, tab: ViewTab, whole = false): { graph: Graph; ghosts: Record<NodeId, ViewTab> };
+function pieceTab(type: PieceType): ViewTab;               // by kind: Target, Subtract, Square, Abs, Huber, Log loss, Cross-entropy, Mean, Scale, Weights, Norm -> loss; else model
+function paletteTabs(entry: PaletteEntry): ViewTab[];      // pieces by kind, every macro (ready-made loss, weight penalty) on loss, Add on both
+function shownTabs(ui: readonly string[] | undefined): ViewTab[];   // see section 12, "Tabs"
+function effectiveTab(want: ViewTab, ui: readonly string[] | undefined): ViewTab;
+```
+
+- `partitionNodes`: while a ŷ pin resolves, `analysis.region` decides (model region: model tab; objective region: loss tab). A node in neither region (and every node while no ŷ resolves) goes by `pieceTab(type)`. Duplicate ids: the first wins.
+- `viewOfTab` returns the graph a tab draws and lays out: that tab's nodes plus a *ghost* (stub) of every piece on the other tab that a resolved wire joins to a piece of this tab, and of the Linear a Weights tap on this tab reads (loss tab). `graph.edges` keeps its length and order, so edge indices mean the same as in the real graph; a wire is kept only when at least one end is a piece of this tab and both ends are drawn, every other edge is replaced by `['', '']` (it never resolves, so layout and drawing skip it). `positions` keep only this tab's own pieces. `ghosts` maps a ghost's id to the tab it really lives on. Draw, lay out and hit-test with this graph; compute every edit (`moveNodes`, `editForDrop`, `clearPositions`, delete, connect) from the real graph, whose ids are the same.
+- The web draws a ghost as a dashed box with the piece's name (a prediction as ŷ) and "on the Model tab" / "on the Loss tab"; its ports and wires are real, so a wire can still be dragged from or to it and selected, rewired or deleted like any wire; the ŷ pin shows on the ghost on the loss tab. Tapping a ghost switches to its tab and selects the piece. A ghost cannot be moved; its node element has `data-stub="true"` (pin ghosts keep `data-ghost`). Issues that name a piece or wire not drawn on this tab show as global lines.
+- One tab shown (`tabsSplit(show.ui)` false; `viewOfTab(g, a, tab, whole = true)`): that tab draws the whole graph, no stubs; the palette is not filtered by tab, every panel the preset lists shows, and Neurons / Group are available. A stub tap whose tab is hidden does nothing.
+- An unreached piece whose palette entry is offered on both tabs (an unwired Add) is drawn as its own piece on both tabs.
+- A piece can change tab when wiring changes its region: a Linear wired only into a loss piece (not an ancestor of a ŷ pin) moves to the loss tab; wiring it back moves it again.
+- Loss tab is always drawn by layer (when both tabs are shown); the Neurons toggle (and neuron view) exist on the model tab only.
+
 ## 10. Web conventions
 
 - Store slices (section 1) are owned by beads; other beads read them through selectors and call their actions, and do not add fields to a slice they do not own without saying so in the PR body.
@@ -591,6 +613,13 @@ Choices fixed by `layout.ts` (constants in the exported `LAYOUT`; all in abstrac
   - *Parameter wires.* Each `analysis.paramWires` entry is a dashed wire (`param-wire-<weights>`, `--wire`, arrowhead, no pointer events) from the bottom centre of the Linear to the left middle of its Weights tap. It is not a data wire: it has no width label, cannot be selected, and `weights.of` is still a node field.
   - *Palette.* Groups (`GROUPS` in `palette/Palette.tsx`): Inputs, Features, Linear, Activations, Structure, Links, Math, Errors, Reductions, Losses (the primitive `log_loss` and `cross_entropy`), Parameters (Weights, norms), and Ready-made losses (every macro: the five losses and the weight penalty). Each header is a button (`palette-group-<id>`, `aria-expanded`, at least 32 px on touch) that collapses its entries; entries stay mounted (`hidden`) so `palette-<key>` ids and tap-to-add keep working. Start state: Inputs, Linear, Activations, Links and Ready-made losses open; the primitives for building a loss by hand (Features, Structure, Math, Errors, Reductions, Losses, Parameters) are collapsed. Entries are unchanged: they preview the node they create, keep `ENTRY_TITLES`, and drag or tap-to-add.
   - *Prediction picker.* `viewSlice.plotPrediction: NodeId | null` (`setPlotPrediction`); `plotIndex(graph, pick)` (`state/plotPrediction.ts`) is the index of that node among the ŷ pins, else 0, so a stale pick falls back to the first pin. `predictGrid(x, n)` and the resample run (`ResampleRequest.prediction`) use it; the fit plots (1-D and 2-D) show a `<select data-testid="prediction-picker">` of ŷ node ids in the header only when there are two or more ŷ pins, and "No prediction selected." when there are none. The loss-curve pin snapshot (`snapshotFit`) goes through `predictGrid`, so it follows the pick.
+
+### Tabs (tinker-d6x)
+
+`App` puts a `TabBar` (a `role="tablist"`: ArrowLeft/Right/Up/Down wrap, Home, End, roving tabindex; `data-testid` `tab-model`, `tab-loss`) at the top of the canvas region. `viewSlice.viewTab` is the tab asked for; read it through `useViewTab()` (`state/disclosure.ts`), which is never a hidden tab (`effectiveTab`). Switching clears the selection and the canvas view (pan and zoom). A load (a new `loadEpoch`) opens the preset's `show.tab`, else `model`. With one tab shown the bar is not drawn.
+- Canvas: draws `viewOfTab(graph, analysis, tab).graph`; edits always use the real graph (section 9, "Tabs").
+- Palette: `paletteTabs(entry)` includes the tab; a preset's `show.palette` filters further.
+- Results panels by tab (`PANEL_TAB: Record<PanelId, ViewTab>` in `results/panelLayout.ts`, so a new panel must be assigned; `panelOnTab`): model tab: `fit`, `histogram`; loss tab: `loss`, `surface`, `loss-1d`, `examples`, `step-log`. The results region is on screen only when a panel of the tab on screen is shown (`useRegionShown('results')`). Portrait layout: the tab bar sits above the prompt line in the canvas region; nothing else changes.
 
 ## 11. PyTorch reference fixtures
 
@@ -694,9 +723,9 @@ When they are cleared or ignored: loading a file replaces them (a file without `
 ### Progressive disclosure (`show`, tinker-6t7.1)
 
 ```ts
-type Show = { palette?: string[]; ui?: string[] };   // Preset gains: show?: Show
+type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' };   // Preset gains: show?: Show (tab: see "Tabs" below)
 const PALETTE_GROUP_IDS: readonly string[];            // core/file.ts, palette order (now with 'categories' after 'inputs', tinker-6t7.7); web Palette GROUPS uses the same ids
-const UI_IDS: Record<'top-bar' | 'canvas' | 'results' | 'training-bar', readonly string[]>; // core/file.ts
+const UI_IDS: Record<'top-bar' | 'canvas' | 'results' | 'panel-controls' | 'tabs' | 'training-bar', readonly string[]>; // core/file.ts
 const ALL_UI_IDS: readonly string[];                   // every id in UI_IDS
 function isShown(list: readonly string[] | undefined, id: string): boolean; // absent list: true
 ```
@@ -710,6 +739,15 @@ Later beads that add a panel, readout or control add its id to `UI_IDS` (and gat
 Step log (tinker-6t7.10): `panel-step-log` is opt-in like `panel-loss-1d` (shown only when `show.ui` lists it). The store keeps `stepLog: StepLogRow[]` (`trainSlice`): only Step adds a row (Run does not), models with at most 4 scalar parameter entries only, last 50 rows; cleared with the run (Reset, structural change, load, Restore best) and on a hand weight edit. A row holds the parameters and the first prediction (first training example, or the lone value with no input) AFTER the step, and the loss the step measured and the per-parameter slope (`engine.lossSlope`, full-batch, dropout off) from BEFORE it; the slopes are null (columns left out) unless the optimizer is plain `sgd`, the batch is full and the graph has no Dropout: otherwise the full-batch slope is not the step's gradient or the update is not lr x slope. `restoreBest` also clears the log.
 
 Adding an id to `UI_IDS` changes nothing for a preset without `ui` (everything shows). A preset that has a `ui` list shows only what it lists, so a newly added panel or control starts hidden in such presets until the preset adds its id (confirmed: this is the allow-list behaviour; presets are widened deliberately).
+
+### Tabs (`show.tab`, tinker-d6x)
+
+```ts
+type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' };
+UI_IDS.tabs = ['tab-model', 'tab-loss'];               // also in LABEL_IDS: the tab names can be renamed
+```
+
+Tab ids are not a region (they never make a region visible). `shownTabs(show.ui)`: when `ui` lists neither tab id (or is absent) both tabs show, so every preset written before tabs keeps both; when it lists one, only that tab shows (the other is hidden and its pieces, panels and palette are not reachable; the graph is unchanged); listing both shows both. `show.tab` is the tab the page opens on; absent: `model`. Validation, one plain sentence each: `The preset "show.tab" must be "model" or "loss".`, and `The preset opens on the loss tab, but its "show.ui" hides that tab.` (likewise for model). There is no way to hide both tabs. `show.tab` travels with `show` (undo of a load, Save).
 
 ### Label overrides (`labels`, tinker-6t7.11)
 

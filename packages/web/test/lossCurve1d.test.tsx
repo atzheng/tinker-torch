@@ -148,6 +148,7 @@ test('a model with several parameters lists them in the picker', () => {
 test('the panel is opt-in: no ui list means no loss-1d panel; a ui list with panel-loss-1d shows it', () => {
   loadBundled('intercept-prob');
   expect(s().show).toBeNull();
+  act(() => s().setViewTab('loss')); // the loss panels are on the loss tab
   const m = mount(<ResultsPanels />);
   expect(m.host.querySelector('[data-panel="loss"]')).not.toBeNull(); // the default panels are there
   expect(m.host.querySelector('[data-panel="loss-1d"]')).toBeNull();

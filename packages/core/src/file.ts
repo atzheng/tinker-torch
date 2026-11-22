@@ -2,6 +2,7 @@ import { parseGraphWithMap, serializeGraph, type Graph, type NodeId } from './gr
 import { parseChecks, type Check } from './checks.js';
 import type { JsonParams } from './params.js';
 import { PALETTE } from './registry.js';
+import { shownTabs } from './viewPartition.js';
 import { parseEmbeddedCsv, type EmbeddedCsv } from './data/csvEmbed.js';
 
 export type SaveFile = {
@@ -21,6 +22,8 @@ export type Show = {
   palette?: string[];
   /** Control and panel ids (`UI_IDS`). A region with none of its ids listed is removed. */
   ui?: string[];
+  /** The tab the page opens on (CONTRACTS.md section 9, "Tabs"). Default `model`; never a tab `ui` hides. */
+  tab?: 'model' | 'loss';
 };
 export type Preset = SaveFile & {
   title: string;
@@ -131,6 +134,8 @@ export const UI_IDS = {
     'pins',
     'histogram-squares',
   ],
+  // The model and loss tabs (CONTRACTS.md section 9). Listing neither keeps both; listing one hides the other.
+  tabs: ['tab-model', 'tab-loss'],
   'training-bar': [
     'btn-step',
     'btn-run',
@@ -153,6 +158,7 @@ export const UI_IDS = {
  */
 export const LABEL_IDS: readonly string[] = [
   ...UI_IDS['training-bar'],
+  ...UI_IDS.tabs,
   'data-set',
   'data-n',
   'data-noise',
@@ -330,7 +336,8 @@ const UI_ID_SET = new Set<string>(ALL_UI_IDS);
 /** The preset's `show` field, or one plain sentence when it is malformed or names an unknown id. */
 function parseShow(v: unknown): Show | string | undefined {
   if (v === undefined) return undefined;
-  if (!isRecord(v)) return 'The preset "show" must be an object with "palette" and "ui" lists.';
+  if (!isRecord(v))
+    return 'The preset "show" must be an object with "palette" and "ui" lists and an optional "tab".';
   const out: Show = {};
   for (const [key, known, what] of [
     ['palette', PALETTE_IDS, 'a palette piece or group'],
@@ -346,9 +353,18 @@ function parseShow(v: unknown): Show | string | undefined {
     }
     out[key] = [...new Set(list as string[])];
   }
+  const tab = v['tab'];
+  if (tab !== undefined) {
+    if (tab !== 'model' && tab !== 'loss')
+      return 'The preset "show.tab" must be "model" or "loss".';
+    if (!shownTabs(out.ui).includes(tab)) {
+      return `The preset opens on the ${tab} tab, but its "show.ui" hides that tab.`;
+    }
+    out.tab = tab;
+  }
   for (const k of Object.keys(v)) {
-    if (k !== 'palette' && k !== 'ui') {
-      return `The preset "show" has "${k}", but only "palette" and "ui" are known.`;
+    if (k !== 'palette' && k !== 'ui' && k !== 'tab') {
+      return `The preset "show" has "${k}", but only "palette", "ui" and "tab" are known.`;
     }
   }
   return out;

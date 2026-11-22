@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { analyse, layoutNeurons, setLinearOut, type HostParams } from '@tinker/core';
+import { analyse, layoutNeurons, setLinearOut, viewOfTab, type HostParams } from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { fitTransform } from '../src/canvas/pure.js';
 import { hostShape, noteHost } from '../src/state/hostShape.js';
@@ -51,12 +51,15 @@ function tapAt(target: Element, x: number, y: number) {
 }
 /** Client position of an abstract point: jsdom has no layout, so the canvas uses 800 x 500. */
 function screenOf(x: number, y: number): [number, number] {
-  const g = s().graph;
-  const layout = layoutNeurons(g, analyse(g, s().dataInfo));
+  const layout = neuron();
   const t = fitTransform(layout.size, { w: 800, h: 500 - 44 }); // 44: the header strip
   return [x * t.scale + t.tx, y * t.scale + t.ty + 44];
 }
-const neuron = () => layoutNeurons(s().graph, analyse(s().graph, s().dataInfo));
+// the canvas draws the model tab (CONTRACTS.md section 9, "Tabs")
+const neuron = () => {
+  const a = analyse(s().graph, s().dataInfo);
+  return layoutNeurons(viewOfTab(s().graph, a, 'model').graph, a);
+};
 
 // lin1 is 1x4, lin2 is 4x1 in the initial graph.
 const HAND: HostParams = {

@@ -1,5 +1,6 @@
 import { formatTick, type Scale } from './axes.js';
 import type { PlotColors } from './color.js';
+import { fitCategoryLabels } from './labelFit.js';
 
 export type Margins = { l: number; r: number; t: number; b: number };
 export const MARGINS: Margins = { l: 42, r: 10, t: 8, b: 32 };
@@ -22,6 +23,8 @@ export function drawAxes(
   yTicks: number[],
   /** Text for an x tick (default: the number); a categorical axis passes the category name. */
   xLabel: (t: number) => string = formatTick,
+  /** Categorical axis: truncate long labels and thin them (see labelFit.ts). */
+  fitLabels = false,
 ): void {
   const x0 = m.l;
   const x1 = w - m.r;
@@ -49,7 +52,12 @@ export function drawAxes(
   ctx.strokeRect(x0 + 0.5, y1 + 0.5, x1 - x0, y0 - y1);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  for (const t of xTicks) ctx.fillText(xLabel(t), xs.px(t), y0 + 4);
+  let texts = xTicks.map((t) => xLabel(t));
+  if (fitLabels && xTicks.length > 1) {
+    const slot = Math.abs(xs.px(xTicks[1] ?? 1) - xs.px(xTicks[0] ?? 0));
+    texts = fitCategoryLabels(texts, slot, (s) => ctx.measureText(s).width).map((s) => s ?? '');
+  }
+  xTicks.forEach((t, i) => ctx.fillText(texts[i] ?? '', xs.px(t), y0 + 4));
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   for (const t of yTicks) ctx.fillText(formatTick(t), x0 - 4, ys.px(t));

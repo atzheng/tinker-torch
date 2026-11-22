@@ -14,6 +14,7 @@ let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
   useStore.getState().loadGraph(initialGraph());
+  useStore.getState().setViewTab('model');
   useStore.getState().select(null);
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -51,8 +52,12 @@ test('regions are drawn behind the pieces: model and objective, none for danglin
 test('the pins are the role pins; a selected piece offers add pins for the roles it lacks', () => {
   act(() => root.render(<Canvas />));
   expect(q('pin-pred-lin2')?.getAttribute('data-role')).toBe('pred');
+  expect(host.querySelectorAll('[data-stub="true"]')).toHaveLength(1); // the stub of the Subtract
+  expect(q('pin-loss-loss')).toBeNull(); // the L pin is on the loss tab
+  act(() => useStore.getState().setViewTab('loss'));
   expect(q('pin-loss-loss')?.getAttribute('data-role')).toBe('loss');
-  expect(host.querySelectorAll('[data-ghost="true"]')).toHaveLength(0);
+  expect(q('pin-pred-lin2')?.getAttribute('data-role')).toBe('pred'); // on the stub of its piece
+  act(() => useStore.getState().setViewTab('model'));
   act(() => useStore.getState().selectNode('act1'));
   expect(q('pin-add-pred-act1')).not.toBeNull();
   expect(q('pin-add-loss-act1')).not.toBeNull();
@@ -70,6 +75,7 @@ test('tapping an add pin pins the role there in one undo step and selects the ne
   expect(useStore.getState().selection).toEqual({ kind: 'pin', role: 'pred', node: 'act1' });
   act(() => useStore.getState().undo());
   expect(useStore.getState().graph.predictions).toEqual(['lin2']);
+  act(() => useStore.getState().setViewTab('loss'));
   act(() => useStore.getState().selectNode('err'));
   press(q('pin-add-loss-err'));
   expect(useStore.getState().graph.loss).toBe('err');
@@ -79,9 +85,11 @@ test('tapping an add pin pins the role there in one undo step and selects the ne
 
 test('Delete removes a selected ŷ pin, never the L pin', () => {
   act(() => root.render(<Canvas />));
+  act(() => useStore.getState().setViewTab('loss'));
   act(() => useStore.getState().select({ kind: 'pin', role: 'loss', node: 'loss' }));
   deleteSelection();
   expect(useStore.getState().graph.loss).toBe('loss');
+  act(() => useStore.getState().setViewTab('model'));
   act(() => useStore.getState().select({ kind: 'pin', role: 'pred', node: 'lin2' }));
   act(() => deleteSelection());
   expect(useStore.getState().graph.predictions).toEqual([]);
@@ -102,9 +110,11 @@ test('the selected pin gets an inspector; the node inspector offers Pin as ŷ an
   act(() => useStore.getState().select({ kind: 'pin', role: 'pred', node: 'lin2' }));
   expect(q('inspector')?.textContent).toMatch(/Prediction/);
   expect(q('inspector-delete')).not.toBeNull();
+  act(() => useStore.getState().setViewTab('loss'));
   act(() => useStore.getState().select({ kind: 'pin', role: 'loss', node: 'loss' }));
   expect(q('inspector')?.textContent).toMatch(/Loss/);
   expect(q('inspector-delete')).toBeNull();
+  act(() => useStore.getState().setViewTab('model'));
   act(() => useStore.getState().selectNode('act1'));
   act(() => (q('inspector-pin-loss') as HTMLElement).click());
   expect(useStore.getState().graph.loss).toBe('act1');
@@ -128,6 +138,7 @@ test('the fit plot picker is only for several ŷ pins', async () => {
 });
 
 test('palette groups collapse and keep their entries mounted; ready-made losses collect the macros', () => {
+  act(() => useStore.getState().setViewTab('loss')); // the ready-made losses and Scale are on the loss tab
   act(() => root.render(<Palette />));
   const toggle = q('palette-group-math');
   expect(toggle?.getAttribute('aria-expanded')).toBe('false');

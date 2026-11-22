@@ -10,6 +10,7 @@ import { StepLog } from './StepLog.js';
 import { LossCurve1D } from './LossCurve1D.js';
 import { LossSurface } from './LossSurface.js';
 import { TargetHistogram, useHistogramApplies } from './TargetHistogram.js';
+import { useSplitTabs, useViewTab } from '../state/disclosure.js';
 import { useLayoutMode } from '../layout/useLayoutMode.js';
 import {
   deltaAlong,
@@ -17,6 +18,7 @@ import {
   extentAlong,
   midAlong,
   movePanel,
+  panelOnTab,
   posAlong,
   resizePair,
   type Orientation,
@@ -72,8 +74,11 @@ export function ResultsPanels() {
 
   const allowed = useStore((s) => s.show?.ui);
   const labels = useStore((s) => s.preset?.labels);
+  const tab = useViewTab();
+  const split = useSplitTabs();
   const visible = order.filter(
     (p) =>
+      panelOnTab(p, tab, split) &&
       isShown(allowed, `panel-${p}`) &&
       (p !== 'surface' || hasSurface) &&
       ((p !== 'loss-1d' && p !== 'step-log') ||

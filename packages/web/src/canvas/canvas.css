@@ -929,3 +929,21 @@ path.tk-hit {
 .tk-eqdock ~ .tk-hints {
   bottom: 140px;
 }
+
+/* Stubs (CONTRACTS.md section 9, "Tabs"): a piece of the other tab that a wire here reaches. */
+.tk-ghost-rect {
+  fill: var(--bg);
+  stroke: var(--node-border);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.tk-ghost-name {
+  fill: var(--node-name);
+  font: 600 15px var(--font);
+  pointer-events: none;
+}
+.tk-ghost-note {
+  fill: var(--node-secondary);
+  font: 12px var(--font);
+  pointer-events: none;
+}
