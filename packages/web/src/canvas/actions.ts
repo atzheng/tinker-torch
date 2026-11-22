@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { deleteEdge, deleteNode, parsePort, removePrediction } from '@tinker/core';
-import { uiShown } from '../state/disclosure.js';
+import { pinRolesNow, uiShown } from '../state/disclosure.js';
 import { lockedIds } from '../state/locks.js';
 import { useStore } from '../state/store.js';
 import { edgeIndexOf } from './pure.js';
@@ -15,7 +15,8 @@ export function deleteSelection(): void {
   }
   if (selection.kind === 'pin') {
     // A ŷ pin is removed; the L pin only moves (there is always one L pin to place).
-    if (selection.role !== 'pred') return;
+    // A pin of a role the tab cannot set (ŷ on the loss tab) is left alone too.
+    if (selection.role !== 'pred' || !pinRolesNow().includes('pred')) return;
     const i = graph.predictions.findIndex((x) => parsePort(x).node === selection.node);
     if (i >= 0 && apply(removePrediction(graph, i, { locked: lockedIds() })).ok) select(null);
     return;

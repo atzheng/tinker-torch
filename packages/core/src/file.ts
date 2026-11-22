@@ -23,7 +23,7 @@ export type Show = {
   /** Control and panel ids (`UI_IDS`). A region with none of its ids listed is removed. */
   ui?: string[];
   /** The tab the page opens on (CONTRACTS.md section 9, "Tabs"). Default `model`; never a tab `ui` hides. */
-  tab?: 'model' | 'loss';
+  tab?: 'model' | 'loss' | 'full';
 };
 export type Preset = SaveFile & {
   title: string;
@@ -136,8 +136,8 @@ export const UI_IDS = {
     'pins',
     'histogram-squares',
   ],
-  // The model and loss tabs (CONTRACTS.md section 9). Listing neither keeps both; listing one hides the other.
-  tabs: ['tab-model', 'tab-loss'],
+  // The model and loss tabs (CONTRACTS.md section 9). Listing none keeps all three; listing some hides the others.
+  tabs: ['tab-model', 'tab-loss', 'tab-full'],
   'training-bar': [
     'btn-step',
     'btn-run',
@@ -357,8 +357,8 @@ function parseShow(v: unknown): Show | string | undefined {
   }
   const tab = v['tab'];
   if (tab !== undefined) {
-    if (tab !== 'model' && tab !== 'loss')
-      return 'The preset "show.tab" must be "model" or "loss".';
+    if (tab !== 'model' && tab !== 'loss' && tab !== 'full')
+      return 'The preset "show.tab" must be "model", "loss" or "full".';
     if (!shownTabs(out.ui).includes(tab)) {
       return `The preset opens on the ${tab} tab, but its "show.ui" hides that tab.`;
     }

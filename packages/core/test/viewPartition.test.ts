@@ -5,6 +5,8 @@ import {
   effectiveTab,
   layoutLayers,
   paletteTabs,
+  pinRolesOf,
+  tabIsWhole,
   parseFile,
   partitionNodes,
   shownTabs,
@@ -109,16 +111,35 @@ describe('partitionNodes', () => {
 });
 
 describe('viewOfTab', () => {
-  test('model tab: the model, plus a stub for the piece the prediction wire reaches', () => {
+  test('model tab: only the model pieces, no loss stubs, no wire into a loss piece', () => {
     const graph = mlp();
     const v = viewOfTab(graph, analyse(graph, info), 'model');
-    expect(ids(v.graph)).toEqual(['x', 'lin1', 'act1', 'lin2', 'diff']);
-    expect(v.ghosts).toEqual({ diff: 'loss' });
-    // same edge indices: the crossing wire is still edge 3, the loss-side ones are blanked
+    expect(ids(v.graph)).toEqual(['x', 'lin1', 'act1', 'lin2']);
+    expect(v.ghosts).toEqual({});
+    // same edge indices: the wire into the loss (edge 3) and the loss-side ones are blanked
     expect(v.graph.edges).toHaveLength(graph.edges.length);
-    expect(v.graph.edges[3]).toEqual(['lin2', 'diff.a']);
+    expect(v.graph.edges[3]).toEqual(['', '']);
     expect(v.graph.edges[4]).toEqual(['', '']);
     expect(v.graph.edges[0]).toEqual(['x', 'lin1']);
+    expect(v.graph.edges[2]).toEqual(['act1', 'lin2']);
+  });
+
+  test('full tab: the whole graph, no stubs, whatever the preset shows', () => {
+    const graph = withPenalty();
+    const a = analyse(graph, info);
+    const v = viewOfTab(graph, a, 'full');
+    expect(v.graph).toBe(graph);
+    expect(v.ghosts).toEqual({});
+    expect(tabIsWhole('full', undefined)).toBe(true);
+    expect(tabIsWhole('model', undefined)).toBe(false);
+    expect(tabIsWhole('model', ['tab-model'])).toBe(true);
+  });
+
+  test('pin roles: ŷ on the model tab, L on the loss tab, both on the full tab or a whole view', () => {
+    expect(pinRolesOf('model', false)).toEqual(['pred']);
+    expect(pinRolesOf('loss', false)).toEqual(['loss']);
+    expect(pinRolesOf('full', false)).toEqual(['pred', 'loss']);
+    expect(pinRolesOf('loss', true)).toEqual(['pred', 'loss']);
   });
 
   test('loss tab: the loss pieces, plus the prediction as a stub', () => {
@@ -131,6 +152,15 @@ describe('viewOfTab', () => {
     expect(v.graph.edges[2]).toEqual(['', '']);
   });
 
+  test('loss tab: a ŷ node is a stub even with no wire into the loss', () => {
+    const graph = mlp();
+    graph.edges = graph.edges.filter((e) => e[0] !== 'lin2');
+    const v = viewOfTab(graph, analyse(graph, info), 'loss');
+    expect(v.ghosts['lin2']).toBe('model');
+    expect(ids(v.graph)).toContain('lin2');
+    expect(viewOfTab(graph, analyse(graph, info), 'model').ghosts).toEqual({});
+  });
+
   test('a Weights tap makes its Linear a stub on the loss tab, not the model tab', () => {
     const graph = withPenalty();
     const a = analyse(graph, info);
@@ -138,17 +168,19 @@ describe('viewOfTab', () => {
     expect(loss.ghosts).toEqual({ lin2: 'model', lin1: 'model' });
     const model = viewOfTab(graph, a, 'model');
     expect(ids(model.graph)).not.toContain('w1');
-    expect(model.ghosts).toEqual({ diff: 'loss' });
+    expect(model.ghosts).toEqual({});
   });
 
-  test('a wire between two stubs is not drawn', () => {
+  test('a wire into a loss piece is not drawn on the model tab', () => {
     const graph = mlp();
     graph.edges.push(['lin2', 'err']);
     const v = viewOfTab(graph, analyse(graph, info), 'model');
-    expect(v.graph.edges[graph.edges.length - 1]).toEqual(['lin2', 'err']);
-    expect(v.ghosts['err']).toBe('loss');
-    // diff -> err joins two stubs on the model tab
-    expect(v.graph.edges[5]).toEqual(['', '']);
+    const l = viewOfTab(graph, analyse(graph, info), 'loss');
+    // the wire lin2 -> err: the model tab never draws wires into loss pieces
+    expect(v.graph.edges[graph.edges.length - 1]).toEqual(['', '']);
+    expect(l.ghosts['lin2']).toBe('model');
+    // a wire between two stubs on the loss tab is blanked (lin1 -> act1 never reaches it)
+    expect(l.graph.edges[0]).toEqual(['', '']);
   });
 
   test('positions keep only the tab`s own pieces', () => {
@@ -206,9 +238,11 @@ describe('viewOfTab', () => {
 });
 
 describe('tabs in a preset', () => {
-  test('neither tab id listed: both tabs; one listed: only that one', () => {
-    expect(shownTabs(undefined)).toEqual(['model', 'loss']);
-    expect(shownTabs(['panel-fit'])).toEqual(['model', 'loss']);
+  test('no tab id listed: all three tabs; some listed: only those', () => {
+    expect(shownTabs(undefined)).toEqual(['model', 'loss', 'full']);
+    expect(shownTabs(['panel-fit'])).toEqual(['model', 'loss', 'full']);
+    expect(shownTabs(['tab-loss', 'tab-full'])).toEqual(['loss', 'full']);
+    expect(shownTabs(['tab-full'])).toEqual(['full']);
     expect(shownTabs(['tab-loss', 'panel-loss'])).toEqual(['loss']);
     expect(shownTabs(['tab-model', 'tab-loss'])).toEqual(['model', 'loss']);
   });
@@ -217,6 +251,8 @@ describe('tabs in a preset', () => {
     expect(effectiveTab('model', ['tab-loss'])).toBe('loss');
     expect(effectiveTab('model', undefined)).toBe('model');
     expect(effectiveTab('loss', ['tab-model'])).toBe('model');
+    expect(effectiveTab('full', ['tab-model', 'tab-loss'])).toBe('model');
+    expect(effectiveTab('full', undefined)).toBe('full');
   });
 
   const preset = (show: unknown) =>
@@ -234,11 +270,14 @@ describe('tabs in a preset', () => {
       tab: 'loss',
     });
     expect(preset({ tab: 'loss' }).ok).toBe(true);
+    expect(preset({ tab: 'full' }).ok).toBe(true);
+    expect(preset({ ui: ['tab-model', 'tab-loss'], tab: 'full' }).ok).toBe(false);
+    expect(preset({ ui: ['tab-full'] }).ok).toBe(true);
   });
 
   test('plain sentences for a bad tab', () => {
     const bad = preset({ tab: 'both' });
-    expect(!bad.ok && bad.error).toBe('The preset "show.tab" must be "model" or "loss".');
+    expect(!bad.ok && bad.error).toBe('The preset "show.tab" must be "model", "loss" or "full".');
     const hidden = preset({ ui: ['tab-model'], tab: 'loss' });
     expect(!hidden.ok && hidden.error).toBe(
       'The preset opens on the loss tab, but its "show.ui" hides that tab.',
@@ -253,16 +292,16 @@ describe('paletteTabs', () => {
     return paletteTabs(e);
   };
   test('model pieces on the model tab, loss and penalty pieces on the loss tab', () => {
-    expect(tabs('linear')).toEqual(['model']);
-    expect(tabs('input')).toEqual(['model']);
-    expect(tabs('sigmoid')).toEqual(['model']);
-    expect(tabs('target')).toEqual(['loss']);
-    expect(tabs('square')).toEqual(['loss']);
-    expect(tabs('l2')).toEqual(['loss']);
-    expect(tabs('weights')).toEqual(['loss']);
-    expect(tabs('loss_squared_error')).toEqual(['loss']);
-    expect(tabs('weight_penalty')).toEqual(['loss']);
-    expect(tabs('add')).toEqual(['model', 'loss']);
+    expect(tabs('linear')).toEqual(['model', 'full']);
+    expect(tabs('input')).toEqual(['model', 'full']);
+    expect(tabs('sigmoid')).toEqual(['model', 'full']);
+    expect(tabs('target')).toEqual(['loss', 'full']);
+    expect(tabs('square')).toEqual(['loss', 'full']);
+    expect(tabs('l2')).toEqual(['loss', 'full']);
+    expect(tabs('weights')).toEqual(['loss', 'full']);
+    expect(tabs('loss_squared_error')).toEqual(['loss', 'full']);
+    expect(tabs('weight_penalty')).toEqual(['loss', 'full']);
+    expect(tabs('add')).toEqual(['model', 'loss', 'full']);
   });
 
   test('every palette entry is on at least one tab', () => {

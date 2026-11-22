@@ -6,7 +6,7 @@ import {
   type HostParams,
   type LayerLayout,
   type Node,
-  type ViewTab,
+  type SplitTab,
 } from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
@@ -90,7 +90,9 @@ export type LayerViewProps = {
    * id, with the tab they live on. Drawn as a labelled dashed box; a tap calls `onGhost` (the
    * canvas switches to that tab). Their ports still start and take wires.
    */
-  ghosts?: Readonly<Record<string, ViewTab>>;
+  ghosts?: Readonly<Record<string, SplitTab>>;
+  /** The pin roles this tab may set or move (`pinRolesOf`); default both. Other pins are drawn, not draggable. */
+  pinRoles?: readonly PinRole[];
   onGhost?: (id: string) => void;
 };
 
@@ -101,7 +103,7 @@ for (const e of PALETTE) {
 }
 
 /** A stub: the name of the piece (the y-hat sign for a prediction) and the tab it really lives on. */
-function GhostBody(props: { node: Node; w: number; h: number; pred: boolean; tab: ViewTab }) {
+function GhostBody(props: { node: Node; w: number; h: number; pred: boolean; tab: SplitTab }) {
   const { node, w, h, pred, tab } = props;
   const where = tab === 'loss' ? 'Loss' : 'Model';
   return (
@@ -259,9 +261,10 @@ export function LayerView(p: LayerViewProps) {
     ...x,
     ghost: false,
   }));
-  if (sel?.kind === 'node' && !p.drag && layout.nodes[sel.id]) {
+  const roles = p.pinRoles ?? ['pred', 'loss'];
+  if (sel?.kind === 'node' && !p.drag && layout.nodes[sel.id] && p.ghosts?.[sel.id] === undefined) {
     const have = new Set(pinMarks.map((x) => pinKey(x.role, x.node)));
-    for (const role of ['pred', 'loss'] as const) {
+    for (const role of roles) {
       if (!have.has(pinKey(role, sel.id))) pinMarks.push({ role, node: sel.id, ghost: true });
     }
   }
@@ -505,13 +508,17 @@ export function LayerView(p: LayerViewProps) {
                 ? role === 'pred'
                   ? 'Add a prediction (\u0177) pin here'
                   : 'Move the loss (L) pin here'
-                : role === 'pred'
-                  ? 'Prediction pin: drag to another piece to move it'
-                  : 'Loss pin: drag to another piece to move it'
+                : !roles.includes(role)
+                  ? role === 'pred'
+                    ? 'Prediction pin: move it on the Model or Full graph tab'
+                    : 'Loss pin: move it on the Loss or Full graph tab'
+                  : role === 'pred'
+                    ? 'Prediction pin: drag to another piece to move it'
+                    : 'Loss pin: drag to another piece to move it'
             }
             onActivate={activate}
             onPointerDown={pointerDownWith(
-              ghost
+              ghost || !roles.includes(role)
                 ? { onTap: activate }
                 : {
                     onTap: () => p.select({ kind: 'pin', role, node }),

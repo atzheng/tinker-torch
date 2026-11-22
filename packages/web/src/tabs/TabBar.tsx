@@ -4,7 +4,11 @@ import { useShownTabs, useUiLabel, useViewTab } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import styles from './TabBar.module.css';
 
-export const TAB_LABELS: Record<ViewTab, string> = { model: 'Model', loss: 'Loss' };
+export const TAB_LABELS: Record<ViewTab, string> = {
+  model: 'Model',
+  loss: 'Loss',
+  full: 'Full graph',
+};
 
 function Tab({
   tab,
@@ -72,7 +76,7 @@ export function TabBar() {
       ref={ref}
       className={styles.bar}
       role="tablist"
-      aria-label="Model or loss"
+      aria-label="Model, loss or full graph"
       data-testid="tab-bar"
     >
       {shown.map((t) => (

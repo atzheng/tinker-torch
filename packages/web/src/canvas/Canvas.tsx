@@ -56,7 +56,13 @@ import {
   type Transform,
 } from './pure.js';
 import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
-import { useSplitTabs, useUiLabel, useUiShown, useViewTab } from '../state/disclosure.js';
+import {
+  usePinRoles,
+  useSplitTabs,
+  useUiLabel,
+  useUiShown,
+  useViewTab,
+} from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 
 /** Pieces snap to this grid (layout units): the `--sp-2` spacing token. */
@@ -147,11 +153,13 @@ export function Canvas() {
   const tab = useViewTab();
   const split = useSplitTabs();
   const setViewTab = useStore((s) => s.setViewTab);
+  const pinRoles = usePinRoles();
   const { graph, ghosts } = useMemo(
     () => viewOfTab(fullGraph, analysis, tab, !split),
     [fullGraph, analysis, tab, split],
   );
-  const showGrain = useUiShown('grain-toggle') && (tab === 'model' || !split);
+  const whole = !split || tab === 'full';
+  const showGrain = useUiShown('grain-toggle') && (tab === 'model' || whole);
   const showFit = useUiShown('fit-view');
   const showTidy = useUiShown('tidy-layout');
   const showResetView = useUiShown('reset-view');
@@ -302,7 +310,11 @@ export function Canvas() {
       const pin = drag.payload;
       return {
         edges: new Set<number>(),
-        nodes: new Set(graph.nodes.filter((n) => pinCanLandOn(graph, pin, n.id)).map((n) => n.id)),
+        nodes: new Set(
+          graph.nodes
+            .filter((n) => ghosts[n.id] === undefined && pinCanLandOn(graph, pin, n.id))
+            .map((n) => n.id),
+        ),
       };
     }
     const src = drag ? wireSource(drag.payload) : undefined;
@@ -436,6 +448,8 @@ export function Canvas() {
   useEffect(() => {
     return dnd.setHandler({
       resolve: (payload: DragPayload, cx, cy) => {
+        // A pin lands only on a real piece of this tab (not a stub), and only a role this tab sets.
+        if (payload.kind === 'pin' && !pinRoles.includes(payload.role)) return null;
         const target = resolveDrop(
           payload,
           graph,
@@ -445,6 +459,9 @@ export function Canvas() {
           toAbstract(cx, cy),
           coarse ? 32 : 20,
         );
+        if (payload.kind === 'pin' && target?.kind === 'node' && ghosts[target.id] !== undefined) {
+          return null;
+        }
         if (target?.kind !== 'free') return target;
         // "Free" (a ready-made group on empty canvas) only counts inside the drawing.
         const r = ref.current?.getBoundingClientRect();
@@ -464,6 +481,8 @@ export function Canvas() {
     });
   }, [
     graph,
+    ghosts,
+    pinRoles,
     fullGraph,
     layout,
     layerLayout,
@@ -597,7 +616,7 @@ export function Canvas() {
           {lblTidy}
         </button>
       )}
-      {!isNeuron && (tab === 'model' || !split) && (
+      {!isNeuron && (tab === 'model' || whole) && (
         <ScalarBar
           graph={fullGraph}
           analysis={analysis}
@@ -672,6 +691,7 @@ export function Canvas() {
               mover={mover}
               moving={moving?.id ?? null}
               ghosts={ghosts}
+              pinRoles={pinRoles}
               onGhost={(id) => {
                 const to = ghosts[id];
                 if (to === undefined || !shownTabs(useStore.getState().show?.ui).includes(to))

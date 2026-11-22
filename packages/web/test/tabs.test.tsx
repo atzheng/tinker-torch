@@ -52,7 +52,7 @@ const press = (el: Element, key: string) =>
 const presetText = (show: unknown) =>
   JSON.stringify({ ...JSON.parse(saveText(false)), title: 'T', show });
 
-test('two tabs, opening on the model tab; each shows its own pieces, panels and palette', () => {
+test('three tabs, opening on the model tab; each shows its own pieces, panels and palette', () => {
   mount();
   expect(q('tab-bar')?.getAttribute('role')).toBe('tablist');
   expect(q('tab-model')?.getAttribute('aria-selected')).toBe('true');
@@ -73,6 +73,18 @@ test('two tabs, opening on the model tab; each shows its own pieces, panels and 
   expect(paletteKeys()).toContain('square');
   expect(paletteKeys()).not.toContain('linear');
   expect(q('grain-toggle')).toBeNull(); // the loss tab is drawn by layer
+
+  // the full tab: the whole graph, every panel and palette entry, no stubs
+  act(() => (q('tab-full') as HTMLElement).click());
+  expect(q('tab-full')?.textContent).toBe('Full graph');
+  for (const id of ['x', 'lin1', 'act1', 'lin2', 'y', 'diff', 'err', 'loss']) {
+    expect(q(`node-${id}`), id).not.toBeNull();
+  }
+  expect(host.querySelector('[data-stub="true"]')).toBeNull();
+  expect(q('fit-plot')).not.toBeNull();
+  expect(q('loss-curves')).not.toBeNull();
+  expect(paletteKeys()).toEqual(expect.arrayContaining(['linear', 'square']));
+  expect(q('grain-toggle')).not.toBeNull();
 });
 
 test('the tabs are a tablist: arrow keys switch and move focus', () => {
@@ -83,17 +95,20 @@ test('the tabs are a tablist: arrow keys switch and move focus', () => {
   press(model, 'ArrowRight');
   expect(s().viewTab).toBe('loss');
   expect(document.activeElement).toBe(q('tab-loss'));
-  press(q('tab-loss') as HTMLElement, 'ArrowRight'); // wraps
+  press(q('tab-loss') as HTMLElement, 'ArrowRight');
+  expect(s().viewTab).toBe('full');
+  press(q('tab-full') as HTMLElement, 'ArrowRight'); // wraps
   expect(s().viewTab).toBe('model');
   press(q('tab-model') as HTMLElement, 'End');
-  expect(s().viewTab).toBe('loss');
+  expect(s().viewTab).toBe('full');
 });
 
-test('a wire across the boundary shows as a stub on both tabs and can be removed from either', () => {
+test('a wire across the boundary shows on the loss and full tabs only and is removed from either', () => {
   mount();
-  // model tab: the prediction wire (edge 3, lin2 -> diff.a) ends at a stub of the Subtract
-  expect(q('ghost-diff')?.getAttribute('data-tab')).toBe('loss');
-  expect(q('wire-3')).not.toBeNull();
+  // model tab: no stub of the Subtract and no wire into it
+  expect(q('ghost-diff')).toBeNull();
+  expect(q('node-diff')).toBeNull();
+  expect(q('wire-3')).toBeNull();
   // loss tab: the same wire starts at a stub of the prediction
   act(() => s().setViewTab('loss'));
   expect(q('ghost-lin2')?.getAttribute('data-tab')).toBe('model');
@@ -102,25 +117,31 @@ test('a wire across the boundary shows as a stub on both tabs and can be removed
   act(() => s().select({ kind: 'wire', from: 'lin2', to: 'diff.a' }));
   act(() => deleteSelection());
   expect(s().graph.edges).toHaveLength(before.edges.length - 1);
-  expect(q('ghost-lin2')).toBeNull();
+  expect(q('ghost-lin2')).not.toBeNull(); // a ŷ node is always a stub on the loss tab
   // one undo history: undo brings the wire back on both tabs
   act(() => s().undo());
   expect(s().graph).toEqual(before);
   expect(q('ghost-lin2')).not.toBeNull();
-  act(() => s().setViewTab('model'));
-  expect(q('ghost-diff')).not.toBeNull();
+  act(() => s().setViewTab('full'));
+  expect(q('wire-3')).not.toBeNull();
+  act(() => s().select({ kind: 'wire', from: 'lin2', to: 'diff.a' }));
+  act(() => deleteSelection());
+  expect(s().graph.edges).toHaveLength(before.edges.length - 1);
+  act(() => s().undo()); // the one undo history
+  expect(s().graph).toEqual(before);
 });
 
 test('tapping a stub goes to the other tab with that piece selected', () => {
   mount();
-  const ghost = q('node-diff') as Element;
+  act(() => s().setViewTab('loss'));
+  const ghost = q('node-lin2') as Element;
   expect(ghost.getAttribute('data-stub')).toBe('true');
   act(
     () => void ghost.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
   );
-  expect(s().viewTab).toBe('loss');
-  expect(s().selection).toEqual({ kind: 'node', id: 'diff' });
-  expect(q('node-diff')?.getAttribute('data-stub')).toBe('false');
+  expect(s().viewTab).toBe('model');
+  expect(s().selection).toEqual({ kind: 'node', id: 'lin2' });
+  expect(q('node-lin2')?.getAttribute('data-stub')).toBe('false');
 });
 
 test('a preset can hide a tab and choose the opening one; neither field shows both, on model', () => {
@@ -138,11 +159,23 @@ test('a preset can hide a tab and choose the opening one; neither field shows bo
 
   act(() => void loadText(presetText({ ui: ['tab-model', 'tab-loss'] })));
   expect(q('tab-model')?.getAttribute('aria-selected')).toBe('true');
+  expect(q('tab-full')).toBeNull(); // listed tabs only: the full graph tab is hidden
+  expect(q('tab-loss')).not.toBeNull();
+
+  // a preset can open on the full tab, or hide everything else
+  act(() => void loadText(presetText({ tab: 'full' })));
+  expect(q('tab-full')?.getAttribute('aria-selected')).toBe('true');
+  expect(q('node-lin1')).not.toBeNull();
+  expect(q('node-y')).not.toBeNull();
+  act(() => void loadText(presetText({ ui: ['tab-full', 'btn-step'] })));
+  expect(q('tab-bar')).toBeNull();
+  expect(s().viewTab).toBe('full');
 
   // a preset that does not mention tabs at all (as every earlier preset)
   act(() => void loadText(presetText({ ui: ['btn-step', 'btn-run', 'panel-fit', 'panel-loss'] })));
   expect(q('tab-model')).not.toBeNull();
   expect(q('tab-loss')).not.toBeNull();
+  expect(q('tab-full')).not.toBeNull();
   expect(q('tab-model')?.getAttribute('aria-selected')).toBe('true');
 });
 
@@ -152,7 +185,7 @@ test('a bad tab in a preset is refused with one plain sentence and leaves the pa
   expect(r.ok).toBe(false);
   expect(r.message).toBe('The preset opens on the loss tab, but its "show.ui" hides that tab.');
   expect(loadText(presetText({ tab: 'both' })).message).toBe(
-    'The preset "show.tab" must be "model" or "loss".',
+    'The preset "show.tab" must be "model", "loss" or "full".',
   );
 });
 
