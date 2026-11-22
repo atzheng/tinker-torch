@@ -57,6 +57,7 @@ export function TargetHistogram() {
   const host = useStore((s) => s.host);
   const pick = useStore((s) => s.plotPrediction);
   const predictGrid = useStore((s) => s.predictGrid);
+  const running = useStore((s) => s.running);
   const [squares, setSquares] = useState(false);
   const showSquaresToggle = useUiShown('histogram-squares');
   const boxRef = useRef<HTMLDivElement>(null);
@@ -68,6 +69,8 @@ export function TargetHistogram() {
   const predNode = (graph.predictions[plotIndex(graph, pick)] ?? '').split('.')[0] ?? '';
   const chain = useMemo(() => predictionChain(graph, predNode), [graph, predNode]);
   const sig = chain.param?.sigmoid ?? false;
+  const locked = useStore((s) => s.preset?.locked?.includes(chain.param?.node ?? '') ?? false);
+  const frozen = running || locked; // a drag would be refused: show it before the press
 
   const bins = useMemo(() => histogramBins(ys, binary), [ys, binary]);
   const dom = useMemo(() => lineDomain(ys, binary), [ys, binary]);
@@ -235,14 +238,17 @@ export function TargetHistogram() {
       <div
         className={styles.plot}
         ref={boxRef}
-        style={{ touchAction: 'none', cursor: chain.param ? 'ew-resize' : 'default' }}
+        style={{ touchAction: 'none', cursor: chain.param && !frozen ? 'ew-resize' : 'default' }}
         onPointerDown={onDown}
         data-testid="histogram-plot"
-        data-draggable={chain.param !== null}
+        data-draggable={chain.param !== null && !frozen}
         data-sigmoid={sig}
       >
         <canvas ref={ref} aria-label="Target histogram" />
-        <AxisLabels x={binary ? '$y$' : target ? axisLabel(target) : '$y$'} y="count" />
+        <AxisLabels
+          x={binary ? '$y$' : target ? axisLabel(target) : '$y$'}
+          y={squares ? 'length' : 'count'}
+        />
       </div>
     </div>
   );

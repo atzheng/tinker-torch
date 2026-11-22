@@ -36,12 +36,15 @@ export function predictionChain(graph: Pick<Graph, 'nodes' | 'edges'>, pred: str
     todo.push(...parents(id));
   }
   // the simple chain: bias, or sigmoid link <- bias
+  // a Bias with an incoming edge outputs parent + b, so the line would not follow the cursor
+  const free = (id: string) => byId.get(id)?.type === 'bias' && parents(id).length === 0;
   const first = byId.get(pred);
-  if (first?.type === 'bias') return { hasInput, param: { node: pred, sigmoid: false } };
+  if (first?.type === 'bias' && free(pred))
+    return { hasInput, param: { node: pred, sigmoid: false } };
   if (first?.type === 'link' && first.fn === 'sigmoid') {
     const ps = parents(pred);
     const only = ps.length === 1 ? ps[0] : undefined;
-    if (only !== undefined && byId.get(only)?.type === 'bias') {
+    if (only !== undefined && free(only)) {
       return { hasInput, param: { node: only, sigmoid: true } };
     }
   }
