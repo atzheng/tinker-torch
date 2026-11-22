@@ -6,6 +6,7 @@
 import type { FC } from 'react';
 import { LINK_FNS, NORM_KINDS, type LinkFn, type NormKind, type PieceType } from '@tinker/core';
 import { NodeShell } from './NodeShell.js';
+import { ProbBarView } from './ProbBarView.js';
 import { NumberField, SelectField, editSetting } from './fields.js';
 import type { LayerProps, WebPiece } from './types.js';
 
@@ -46,7 +47,7 @@ const LINK_GLYPH: Record<LinkFn, string> = {
 };
 
 export const linkPiece: WebPiece<'link'> = {
-  Layer: ({ node, w, h, scale }) => (
+  Layer: ({ node, w, h, scale, probBar }) => (
     <NodeShell
       piece="link"
       w={w}
@@ -56,7 +57,9 @@ export const linkPiece: WebPiece<'link'> = {
       glyph={LINK_GLYPH[node.fn]}
       inPorts={1}
       outPort
-    />
+    >
+      {probBar && <ProbBarView bar={probBar} h={h} />}
+    </NodeShell>
   ),
   Neuron: noNeuron('link'),
   Fields: ({ node }) => (
