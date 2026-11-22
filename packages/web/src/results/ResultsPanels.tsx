@@ -5,6 +5,7 @@ import { twoParams } from '../plot/lossSurface.js';
 import { useStore } from '../state/store.js';
 import { FitPlot } from './FitPlot.js';
 import { LossCurves } from './LossCurves.js';
+import { StepLog } from './StepLog.js';
 import { LossCurve1D } from './LossCurve1D.js';
 import { LossSurface } from './LossSurface.js';
 import { TargetHistogram, useHistogramApplies } from './TargetHistogram.js';
@@ -17,12 +18,14 @@ const TITLES: Record<PanelId, string> = {
   surface: 'Loss surface',
   'loss-1d': 'Loss vs parameter',
   histogram: 'Target',
+  'step-log': 'Steps',
 };
 
 function Panel({ id }: { id: PanelId }) {
   if (id === 'fit') return <FitPlot />;
   if (id === 'loss') return <LossCurves />;
   if (id === 'loss-1d') return <LossCurve1D />;
+  if (id === 'step-log') return <StepLog />;
   if (id === 'histogram') return <TargetHistogram />;
   return <LossSurface />;
 }
@@ -56,7 +59,8 @@ export function ResultsPanels() {
     (p) =>
       isShown(allowed, `panel-${p}`) &&
       (p !== 'surface' || hasSurface) &&
-      (p !== 'loss-1d' || (hasParams && allowed?.includes('panel-loss-1d') === true)) &&
+      ((p !== 'loss-1d' && p !== 'step-log') ||
+        (hasParams && allowed?.includes(`panel-${p}`) === true)) &&
       (p !== 'histogram' || hasHistogram),
   );
   const visibleSet = new Set(visible);
