@@ -81,6 +81,7 @@ test('the loss readout gets a title only when the preset gives one', () => {
   const { q, done } = mount();
   expect(q('[data-testid="loss-readout-title"]')).toBeNull();
   act(() => void loadText(presetText({ 'loss-readout': 'Average surprise' })));
+  act(() => s().setViewTab('loss')); // the loss readout is on the loss tab
   expect(q('[data-testid="loss-readout-title"]')?.textContent).toBe('Average surprise');
   done();
 });

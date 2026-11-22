@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { parseGraph, type Graph } from '@tinker/core';
+import { analyse, parseGraph, partitionNodes, type Graph } from '@tinker/core';
 import { legibleAt } from '../src/canvas/pure.js';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { mlpGraph as initialGraph } from './mlpGraph.js';
@@ -63,6 +63,7 @@ function everyPieceGraph(): Graph {
 
 beforeEach(() => {
   s().loadGraph(everyPieceGraph());
+  s().setViewTab('model');
   s().select(null);
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -82,7 +83,14 @@ const must = (id: string): Element => {
   return el;
 };
 const node = (id: string) => s().graph.nodes.find((n) => n.id === id);
-const pick = (id: string) => act(() => s().select({ kind: 'node', id }));
+// Each piece is on the tab it belongs to (CONTRACTS.md section 9, "Tabs"): show it, then select it.
+const tabOf = (id: string) =>
+  partitionNodes(s().graph, analyse(s().graph, s().dataInfo))[id] ?? 'model';
+const pick = (id: string) =>
+  act(() => {
+    s().setViewTab(tabOf(id));
+    s().select({ kind: 'node', id });
+  });
 
 function setValue(el: Element, value: string, proto: object, event: string) {
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
@@ -205,6 +213,7 @@ test('link inspector: link select is one undo step', () => {
 });
 
 test('the L node carries its role; the node pinned as ŷ carries none', () => {
+  act(() => s().setViewTab('loss'));
   expect(must('node-yhat').getAttribute('data-role')).toBeNull();
   expect(must('node-total').getAttribute('data-role')).toBe('loss');
   expect(must('node-mean').getAttribute('data-role')).toBeNull();

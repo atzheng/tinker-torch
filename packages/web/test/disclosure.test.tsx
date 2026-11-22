@@ -88,12 +88,15 @@ test('stage 0: empty palette and no training-bar controls remove those regions',
 
 test('stage 2: only the listed palette entries and controls', () => {
   const ui = ['btn-step', 'btn-run', 'btn-reset', 'lr-slider', 'panel-loss', 'btn-undo'];
-  loadText(presetText({ palette: ['sigmoid', 'loss_log_loss'], ui }));
+  loadText(presetText({ palette: ['sigmoid', 'loss_log_loss'], ui, tab: 'loss' }));
   const { host, q, done } = mount();
-  const entries = [...host.querySelectorAll('.tk-palette-entry')].map((e) =>
-    e.getAttribute('data-testid'),
-  );
-  expect(entries).toEqual(['palette-sigmoid', 'palette-loss_log_loss']);
+  const entries = () =>
+    [...host.querySelectorAll('.tk-palette-entry')].map((e) => e.getAttribute('data-testid'));
+  // the preset opens on the loss tab, which offers the ready-made loss; the model tab the model piece
+  expect(entries()).toEqual(['palette-loss_log_loss']);
+  act(() => s().setViewTab('model'));
+  expect(entries()).toEqual(['palette-sigmoid']);
+  act(() => s().setViewTab('loss'));
   for (const id of ui.filter((x) => x !== 'panel-loss')) {
     expect(host.querySelector(`[data-testid="${id}"]`)).not.toBeNull();
   }
@@ -145,7 +148,7 @@ test('a results list naming only the surface panel on a model without one remove
 });
 
 test('ids for the panel controls hide them one by one', () => {
-  loadText(presetText({ ui: ['panel-loss', 'loss-log-toggle', 'pins'] }));
+  loadText(presetText({ ui: ['panel-loss', 'loss-log-toggle', 'pins'], tab: 'loss' }));
   const { host, done } = mount();
   expect(host.querySelector('[data-testid="loss-log-toggle"]')).not.toBeNull();
   expect(host.querySelector('[data-testid="pins"]')).not.toBeNull();

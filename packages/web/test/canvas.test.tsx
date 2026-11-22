@@ -15,6 +15,7 @@ let root: Root;
 
 beforeEach(() => {
   s().loadGraph(initialGraph());
+  s().setViewTab('model');
   s().select(null);
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -75,11 +76,17 @@ const fillOpacities = (id: string) =>
   Array.from(must(id).querySelectorAll('rect[fill]')).map((r) => r.getAttribute('fill-opacity'));
 
 test('the SPEC example draws every piece and width labels 1, 4, 4, 1', () => {
-  for (const id of ['x', 'lin1', 'act1', 'lin2', 'y', 'diff', 'err', 'loss']) {
-    expect(q(`node-${id}`)).not.toBeNull();
-  }
+  for (const id of ['x', 'lin1', 'act1', 'lin2']) expect(q(`node-${id}`)).not.toBeNull();
   const label = (i: number) => must(`wire-label-${i}`).textContent;
   expect([0, 1, 2, 3].map(label)).toEqual(['1', '4', '4', '1']);
+  // the model tab ends in a stub for the Subtract; the loss tab has the loss pieces and a stub for the prediction
+  expect(q('ghost-diff')).not.toBeNull();
+  expect(q('node-y')).toBeNull();
+  act(() => s().setViewTab('loss'));
+  for (const id of ['lin2', 'y', 'diff', 'err', 'loss']) expect(q(`node-${id}`)).not.toBeNull();
+  expect(q('ghost-lin2')).not.toBeNull();
+  expect(q('node-lin1')).toBeNull();
+  act(() => s().setViewTab('model'));
   expect(host.querySelectorAll('[data-error="true"]')).toHaveLength(0);
   expect(must('node-lin1').textContent).toContain('1 to 4');
   expect(must('node-lin1').textContent).toContain('8 params');
@@ -92,6 +99,7 @@ test('lin2 out = 2 turns the wire red with the sentence; undo clears it', () => 
   const issue = a.issues[0];
   expect(issue?.message).toContain('same width');
   const edge = s().graph.edges.findIndex((e) => e[0] === 'y'); // the wire into diff.b, where the widths disagree
+  act(() => s().setViewTab('loss'));
   expect(must(`wire-${edge}`).getAttribute('data-error')).toBe('true');
   expect(must(`issue-wire-${edge}`).textContent).toBe(issue?.message);
   act(() => s().undo());
@@ -253,6 +261,7 @@ test('number box: undo while the box has a draft resyncs it to the store value',
 test('wire inspector shows the same sentences as the callout on that wire', () => {
   act(() => void s().apply(setLinearOut(s().graph, 'lin2', 2)));
   const edge = s().graph.edges.findIndex((e) => e[0] === 'y');
+  act(() => s().setViewTab('loss'));
   tap(must(`wire-label-${edge}`));
   expect(must('inspector-issues').textContent).toBe(must(`issue-wire-${edge}`).textContent);
 });

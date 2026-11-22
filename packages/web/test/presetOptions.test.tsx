@@ -42,7 +42,8 @@ function presetText(extra: Record<string, unknown>): string {
   const g = JSON.parse(saveText(false)) as Record<string, unknown>;
   delete g['options'];
   delete g['show'];
-  return JSON.stringify({ ...g, title: 'T', ...extra });
+  // the loss panels (log scale, truth toggle) are on the loss tab
+  return JSON.stringify({ ...g, title: 'T', show: { tab: 'loss' }, ...extra });
 }
 
 test('log scale and truth start on from a preset, off without options', () => {
@@ -53,6 +54,7 @@ test('log scale and truth start on from a preset, off without options', () => {
     () => void loadText(presetText({ options: { 'loss-log-toggle': true, 'truth-toggle': true } })),
   );
   expect(q('[data-testid="loss-log-toggle"]')?.checked).toBe(true);
+  act(() => s().setViewTab('model')); // the truth toggle is on the fit plot
   expect(q('[data-testid="truth-toggle"]')?.checked).toBe(true);
   done();
 });

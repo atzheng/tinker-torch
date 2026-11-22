@@ -9,6 +9,7 @@ import { ResultsPanels } from './results/ResultsPanels.js';
 import { useRegionShown } from './state/disclosure.js';
 import { useLayoutMode } from './layout/useLayoutMode.js';
 import { useStore } from './state/store.js';
+import { TabBar } from './tabs/TabBar.js';
 import { TopBar } from './topbar/TopBar.js';
 import type { LayoutMode } from './layout/layoutMode.js';
 import { TrainingBar } from './trainbar/TrainingBar.js';
@@ -104,6 +105,7 @@ export function App() {
           </nav>
         )}
         <main className={`${styles.region} ${styles.canvas}`} data-region="canvas">
+          <TabBar />
           <PromptLine />
           <InstructionsPanel />
           <SuccessTick />

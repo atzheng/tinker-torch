@@ -12,6 +12,11 @@ export const PANEL_IDS = [
 export type PanelId = (typeof PANEL_IDS)[number];
 export type PanelWeights = Record<PanelId, number>;
 
+/** The tab each panel belongs to (CONTRACTS.md section 9, "Tabs"): the fit and the target histogram describe the model; the rest describe the loss. */
+export function panelTab(id: PanelId): 'model' | 'loss' {
+  return id === 'fit' || id === 'histogram' ? 'model' : 'loss';
+}
+
 export const DEFAULT_ORDER: readonly PanelId[] = PANEL_IDS;
 export const DEFAULT_WEIGHTS: PanelWeights = {
   fit: 1,

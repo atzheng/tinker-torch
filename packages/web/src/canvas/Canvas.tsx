@@ -7,6 +7,7 @@ import {
   layoutLayers,
   layoutNeurons,
   parsePort,
+  viewOfTab,
   type LayerLayout,
 } from '@tinker/core';
 import './canvas.css';
@@ -54,7 +55,7 @@ import {
   type Transform,
 } from './pure.js';
 import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
-import { useUiLabel, useUiShown } from '../state/disclosure.js';
+import { useUiLabel, useUiShown, useViewTab } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 
 /** Pieces snap to this grid (layout units): the `--sp-2` spacing token. */
@@ -137,10 +138,18 @@ function Callout(props: {
 export function Canvas() {
   const ref = useRef<HTMLDivElement>(null);
   const view = useElementSize(ref);
-  const graph = useStore((s) => s.graph);
+  // `fullGraph` is the one graph every edit is computed from; `graph` is what this tab draws (its
+  // own pieces plus stubs for the other tab's, same edge indices; CONTRACTS.md section 9, "Tabs").
+  const fullGraph = useStore((s) => s.graph);
   const select = useStore((s) => s.select);
   const analysis = useAnalysis();
-  const showGrain = useUiShown('grain-toggle');
+  const tab = useViewTab();
+  const setViewTab = useStore((s) => s.setViewTab);
+  const { graph, ghosts } = useMemo(
+    () => viewOfTab(fullGraph, analysis, tab),
+    [fullGraph, analysis, tab],
+  );
+  const showGrain = useUiShown('grain-toggle') && tab === 'model';
   const showFit = useUiShown('fit-view');
   const showTidy = useUiShown('tidy-layout');
   const showResetView = useUiShown('reset-view');
@@ -149,7 +158,9 @@ export function Canvas() {
   const lblFit = useUiLabel('fit-view', 'Fit');
   const lblTidy = useUiLabel('tidy-layout', 'Tidy');
   const lblReset = useUiLabel('reset-view', 'Reset view');
-  const grain = useStore((s) => s.grain);
+  // The loss tab is always drawn by layer (its pieces have no neurons).
+  const storedGrain = useStore((s) => s.grain);
+  const grain = tab === 'loss' ? 'layer' : storedGrain;
   const setGrain = useStore((s) => s.setGrain);
   // Neuron view repaints its edges from `host` itself, so the canvas does not follow it per frame.
   const weights = useWeights(analysis, grain === 'layer');
@@ -251,7 +262,7 @@ export function Canvas() {
   const [userView, setUserViewRaw] = useState<Transform | 'fit' | null>(null);
   const setUserView = (v: Transform | 'fit' | null) => setUserViewRaw(v);
   const loadEpoch = useStore((st) => st.loadEpoch);
-  useEffect(() => setUserViewRaw(null), [grain, loadEpoch]);
+  useEffect(() => setUserViewRaw(null), [grain, loadEpoch, tab]);
   useEffect(() => dnd.arm(null), [graph, grain, loadEpoch, userView]);
   const clampT = (x: Transform) => clampView(x, layout.size, view, HEADER_H);
   // While a piece is moved the view stays exactly as it was, so the piece stays under the pointer
@@ -297,7 +308,7 @@ export function Canvas() {
       // No drag: outline the pieces Group into Linear would replace, while its button is hovered
       // or focused, or while one of them is selected (tinker-9io.7).
       if (drag || isNeuron) return null;
-      const ids = pickGroup(linearGroups(graph, analysis), selection);
+      const ids = pickGroup(linearGroups(fullGraph, analysis), selection);
       const inside = selection?.kind === 'node' && ids?.includes(selection.id) === true;
       if (!ids || !(previewGroup || inside)) return null;
       const set = new Set(ids);
@@ -318,7 +329,7 @@ export function Canvas() {
           .map((n) => n.id),
       ),
     };
-  }, [drag?.payload, armed, graph, analysis, selection, previewGroup, isNeuron]);
+  }, [drag?.payload, armed, graph, fullGraph, analysis, selection, previewGroup, isNeuron]);
   // Tap-to-add: while an entry is armed, a tap on the drawing places it (or cancels when nothing fits).
   const onArmedDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!dnd.armed()) return;
@@ -366,7 +377,9 @@ export function Canvas() {
       setMoving(null);
       if (!m) return;
       if (m.x !== m.from.x || m.y !== m.from.y) {
-        const r = apply(moveNodes(graph, { [id]: [m.x, m.y] }, visibleLimit(tRef.current, view)));
+        const r = apply(
+          moveNodes(fullGraph, { [id]: [m.x, m.y] }, visibleLimit(tRef.current, view)),
+        );
         if (!r.ok) return;
       }
       selectNode(id);
@@ -437,7 +450,7 @@ export function Canvas() {
         return inside ? target : null;
       },
       commit: (payload, target) => {
-        const edit = editForDrop(graph, payload, target, {
+        const edit = editForDrop(fullGraph, payload, target, {
           locked: lockedIds(),
           boxes: layerLayout.nodes,
           limit: visibleLimit(t, view),
@@ -447,7 +460,19 @@ export function Canvas() {
         if (result.ok && result.select !== undefined) selectNode(result.select);
       },
     });
-  }, [graph, layout, layerLayout, analysis, t, view, coarse, apply, selectNode, toAbstract]);
+  }, [
+    graph,
+    fullGraph,
+    layout,
+    layerLayout,
+    analysis,
+    t,
+    view,
+    coarse,
+    apply,
+    selectNode,
+    toAbstract,
+  ]);
 
   const px = (x: number) => x * t.scale + t.tx;
   const py = (y: number) => y * t.scale + t.ty;
@@ -563,7 +588,7 @@ export function Canvas() {
           aria-label={lblTidy}
           title="Put every piece back where the automatic layout puts it"
           onClick={() => {
-            const r = apply(clearPositions(graph));
+            const r = apply(clearPositions(fullGraph, Object.keys(graph.positions ?? {})));
             if (r.ok) setUserView('fit');
           }}
         >
@@ -572,7 +597,7 @@ export function Canvas() {
       )}
       {!isNeuron && (
         <ScalarBar
-          graph={graph}
+          graph={fullGraph}
           analysis={analysis}
           selection={selection}
           onPreview={setPreviewGroup}
@@ -644,6 +669,13 @@ export function Canvas() {
               fresh={fresh}
               mover={mover}
               moving={moving?.id ?? null}
+              ghosts={ghosts}
+              onGhost={(id) => {
+                const to = ghosts[id];
+                if (to === undefined) return;
+                setViewTab(to);
+                selectNode(id);
+              }}
             />
           )}
         </g>
@@ -703,8 +735,8 @@ export function Canvas() {
             : `Tap empty canvas to place ${armed.label}.`}
         </div>
       )}
-      {showEquations && <EquationStrip graph={graph} analysis={analysis} />}
-      {graph.nodes.length === 0 ? (
+      {showEquations && <EquationStrip graph={fullGraph} analysis={analysis} />}
+      {fullGraph.nodes.length === 0 ? (
         <div className="tk-empty" data-testid="empty-hint">
           {HINTS.empty}
         </div>

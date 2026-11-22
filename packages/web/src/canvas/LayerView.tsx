@@ -1,5 +1,13 @@
 import { useRef, useState, type ComponentType } from 'react';
-import type { Analysis, Graph, HostParams, LayerLayout, Node } from '@tinker/core';
+import {
+  PALETTE,
+  type Analysis,
+  type Graph,
+  type HostParams,
+  type LayerLayout,
+  type Node,
+  type ViewTab,
+} from '@tinker/core';
 import { WEB_PIECES } from './drawings/index.js';
 import type { LayerProps } from './drawings/types.js';
 import { dnd, inputEndAt, outputPortAt, wireSource, type DndState } from './dnd.js';
@@ -68,7 +76,38 @@ export type LayerViewProps = {
   };
   /** The piece being moved, drawn lifted. */
   moving?: string | null;
+  /**
+   * Stubs (CONTRACTS.md section 9, "Tabs"): pieces of the other tab that a wire here reaches, by
+   * id, with the tab they live on. Drawn as a labelled dashed box; a tap calls `onGhost` (the
+   * canvas switches to that tab). Their ports still start and take wires.
+   */
+  ghosts?: Readonly<Record<string, ViewTab>>;
+  onGhost?: (id: string) => void;
 };
+
+/** Palette label of each piece type ("Subtract"), for the name on a stub. */
+const TYPE_LABEL: Record<string, string> = {};
+for (const e of PALETTE) {
+  if (e.kind === 'piece') TYPE_LABEL[e.make().type] ??= e.label;
+}
+
+/** A stub: the name of the piece (the y-hat sign for a prediction) and the tab it really lives on. */
+function GhostBody(props: { node: Node; w: number; h: number; pred: boolean; tab: ViewTab }) {
+  const { node, w, h, pred, tab } = props;
+  const where = tab === 'loss' ? 'Loss' : 'Model';
+  return (
+    <g className="tk-ghost-body" data-testid={`ghost-${node.id}`} data-tab={tab}>
+      <rect className="tk-ghost-rect" x={0} y={0} width={w} height={h} rx={NODE_RADIUS} />
+      <text className="tk-ghost-name" x={12} y={h / 2 - 2}>
+        {pred ? 'ŷ' : (TYPE_LABEL[node.type] ?? node.type)}
+      </text>
+      <text className="tk-ghost-note" x={12} y={h / 2 + 16}>
+        {`on the ${where} tab`}
+      </text>
+      <title>{`A piece on the ${where} tab. Tap to go there.`}</title>
+    </g>
+  );
+}
 
 /** Props for a piece's layer drawing, from the analysis and the weights. */
 export function layerProps(
@@ -301,6 +340,7 @@ export function LayerView(p: LayerViewProps) {
         const found = shapes.find((s) => s.kind === 'node' && s.id === node.id);
         const hit = found ?? { x: box.x, y: box.y, w: box.w, h: box.h };
         const Layer = WEB_PIECES[node.type].Layer as ComponentType<LayerProps<typeof node.type>>;
+        const ghost = p.ghosts?.[node.id];
         return (
           <g
             key={node.id}
@@ -320,9 +360,13 @@ export function LayerView(p: LayerViewProps) {
             aria-label={`${node.type} ${node.id}`}
             aria-pressed={selected}
             data-moving={p.moving === node.id}
+            data-ghost={ghost !== undefined}
             onPointerDown={pointerDownWith({
-              onTap: () => p.select({ kind: 'node', id: node.id }),
-              ...(p.mover
+              onTap: () =>
+                ghost !== undefined && p.onGhost
+                  ? p.onGhost(node.id)
+                  : p.select({ kind: 'node', id: node.id }),
+              ...(p.mover && ghost === undefined
                 ? {
                     onStart: () => p.mover?.start(node.id),
                     onMove: (pt) => p.mover?.move(node.id, pt.dx, pt.dy),
@@ -334,7 +378,8 @@ export function LayerView(p: LayerViewProps) {
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                p.select({ kind: 'node', id: node.id });
+                if (ghost !== undefined && p.onGhost) p.onGhost(node.id);
+                else p.select({ kind: 'node', id: node.id });
               }
             }}
           >
@@ -353,8 +398,18 @@ export function LayerView(p: LayerViewProps) {
               height={box.h + 8}
               rx={NODE_RADIUS + 4}
             />
-            <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
-            {p.analysis.inert.includes(node.id) && (
+            {ghost !== undefined ? (
+              <GhostBody
+                node={node}
+                w={box.w}
+                h={box.h}
+                tab={ghost}
+                pred={graph.predictions.some((x) => parsePort(x).node === node.id)}
+              />
+            ) : (
+              <Layer {...layerProps(node, box, analysis, p.weights, scale)} />
+            )}
+            {ghost === undefined && p.analysis.inert.includes(node.id) && (
               <>
                 <title>Not connected: wire it into the model or the loss to use it.</title>
                 {/* Inside the box, under the name: it hides the glyph or heat map and the secondary
@@ -376,7 +431,7 @@ export function LayerView(p: LayerViewProps) {
                 </text>
               </>
             )}
-            {locked.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
+            {ghost === undefined && locked.has(node.id) && <LockBadge x={box.w - 2} y={2} />}
           </g>
         );
       })}

@@ -16,6 +16,7 @@ let host: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
   useStore.getState().loadGraph(initialGraph());
+  useStore.getState().setViewTab('model');
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -34,6 +35,7 @@ test('layer view: each node shows its type, the activation its function', () => 
   expect(nameOf('lin1')).toBe('Linear');
   expect(nameOf('act1')).toBe('ReLU');
   expect(nameOf('lin2')).toBe('Linear');
+  act(() => useStore.getState().setViewTab('loss')); // the loss pieces are on the loss tab
   expect(nameOf('y')).toBe('Target');
   expect(nameOf('diff')).toBe('Subtract');
   expect(nameOf('err')).toBe('Square');

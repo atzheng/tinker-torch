@@ -2,11 +2,30 @@ import { predictionChain } from '../plot/histogramPure.js';
 import { plotIndex } from './plotPrediction.js';
 import { twoParams } from '../plot/lossSurface.js';
 import { useStore } from './store.js';
-import { isShown, UI_IDS, type UiRegion } from '@tinker/core';
+import { panelTab, type PanelId } from '../results/panelLayout.js';
+import {
+  effectiveTab,
+  isShown,
+  shownTabs,
+  UI_IDS,
+  type UiRegion,
+  type ViewTab,
+} from '@tinker/core';
 
 /** Is the control or panel `id` shown by the loaded preset? Hidden ones are not rendered at all. */
 export function useUiShown(id: string): boolean {
   return useStore((s) => isShown(s.show?.ui, id));
+}
+
+/** The tab being drawn: the one asked for (`viewTab`), or a shown one when the preset hides it. */
+export function useViewTab(): ViewTab {
+  return useStore((s) => effectiveTab(s.viewTab, s.show?.ui));
+}
+
+/** The tabs the preset leaves visible, in tab order (a new array each call: compare by `join`). */
+export function useShownTabs(): ViewTab[] {
+  const key = useStore((s) => shownTabs(s.show?.ui).join(','));
+  return key.split(',') as ViewTab[];
 }
 
 /**
@@ -37,7 +56,9 @@ export function useUiOption(id: string): [boolean, (v: boolean) => void] {
 }
 
 /** Is the region on screen: at least one of its ids is shown. */
-export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'canvas'>): boolean {
+export function useRegionShown(
+  region: Exclude<UiRegion, 'panel-controls' | 'canvas' | 'tabs'>,
+): boolean {
   return useStore((s) => {
     if (region === 'results') {
       // Only the panels that actually render count: the loss surface needs a 2-parameter model.
@@ -48,6 +69,7 @@ export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'can
         pred !== undefined &&
         s.dataset.info.kind !== 'multiclass' &&
         !predictionChain(s.graph, pred.split('.')[0] ?? pred).hasInput;
+      const tab = effectiveTab(s.viewTab, s.show?.ui);
       return (
         [
           'panel-fit',
@@ -60,6 +82,7 @@ export function useRegionShown(region: Exclude<UiRegion, 'panel-controls' | 'can
         ] as const
       ).some(
         (id) =>
+          panelTab(id.slice('panel-'.length) as PanelId) === tab &&
           isShown(s.show?.ui, id) &&
           (id !== 'panel-surface' || surface) &&
           (id !== 'panel-histogram' || histogram) &&

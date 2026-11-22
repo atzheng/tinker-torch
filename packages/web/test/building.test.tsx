@@ -2,7 +2,15 @@
 import { afterEach, beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { PALETTE, analyse, connect, layoutLayers, setLoss } from '@tinker/core';
+import {
+  PALETTE,
+  analyse,
+  connect,
+  layoutLayers,
+  paletteTabs,
+  setLoss,
+  viewOfTab,
+} from '@tinker/core';
 import { Canvas } from '../src/canvas/Canvas.js';
 import { fitTransform } from '../src/canvas/pure.js';
 import { layerBaseView } from '../src/canvas/viewport.js';
@@ -32,6 +40,7 @@ beforeEach(() => {
       toJSON: () => ({}),
     }) as DOMRect;
   s().loadGraph(initialGraph());
+  s().setViewTab('model');
   s().select(null);
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -65,8 +74,10 @@ function ptr(el: Element, type: string, x: number, y: number, pointerType = 'tou
 
 /** Where (client px) a layout point lands; the canvas is 800x500 at the origin in jsdom. */
 function screenOf(fn: (l: ReturnType<typeof layoutLayers>) => [number, number]): [number, number] {
-  const g = s().graph;
-  const layout = layoutLayers(g, analyse(g, s().dataInfo));
+  const full = s().graph;
+  const a = analyse(full, s().dataInfo);
+  // the canvas draws the current tab (CONTRACTS.md section 9, "Tabs")
+  const layout = layoutLayers(viewOfTab(full, a, s().viewTab).graph, a);
   const view = { w: 800, h: 500 };
   const f = fitTransform(layout.size, { w: view.w, h: view.h - 44 }); // 44: header strip above the drawing
   const t = layerBaseView({ ...f, ty: f.ty + 44 }, layout.size, view, 44);
@@ -74,7 +85,15 @@ function screenOf(fn: (l: ReturnType<typeof layoutLayers>) => [number, number]):
   return [x * t.scale + t.tx, y * t.scale + t.ty];
 }
 
+/** Shows the tab whose palette offers `key`. */
+function showTabOf(key: string) {
+  const entry = PALETTE.find((e) => e.key === key);
+  const tab = entry ? paletteTabs(entry)[0] : undefined;
+  if (tab) act(() => s().setViewTab(tab));
+}
+
 function dragEntry(key: string, to: [number, number], kind = 'touch') {
+  showTabOf(key);
   const el = must(`palette-${key}`);
   ptr(el, 'pointerdown', 20, 20, kind);
   ptr(el, 'pointermove', 60, 60, kind);
@@ -141,6 +160,7 @@ test.each(ENTRY_KINDS)(
   (entry, kind) => {
     {
       const before = s().graph;
+      showTabOf(entry.key);
       const el = must(`palette-${entry.key}`);
       ptr(el, 'pointerdown', 20, 20, kind);
       ptr(el, 'pointerup', 20, 20, kind);
@@ -224,6 +244,7 @@ test('edits during a run: a drop and a delete do not throw and pause the run; a 
 
   // A Scale onto the Subtract: same family, but its second wire would be lost, so the edit refuses it.
   const before = s().graph;
+  act(() => s().setViewTab('loss'));
   const [yx, yy] = screenOf((l) => {
     const b = l.nodes['diff'];
     return b ? [b.x + b.w / 2, b.y + b.h / 2] : [0, 0];

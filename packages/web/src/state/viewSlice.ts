@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { NodeId, PortRef } from '@tinker/core';
+import type { NodeId, PortRef, ViewTab } from '@tinker/core';
 import { PIN_LIMIT, type Pin } from '../results/pinsModel.js';
 import {
   DEFAULT_ORDER,
@@ -49,6 +49,13 @@ export type ViewSlice = {
    */
   weightsOf: NodeId | null;
   openWeights: (id: NodeId | null) => void;
+  /**
+   * The tab the person asked for (CONTRACTS.md section 9, "Tabs"). A tab the preset hides is
+   * never drawn: read it through `useViewTab`, which falls back to a shown one. View state only.
+   */
+  viewTab: ViewTab;
+  /** Switch tab. The selection is cleared: what was selected may not be on the other tab. */
+  setViewTab: (tab: ViewTab) => void;
   /** Switch grain. A selected edge or unit exists only in neuron view, so it is cleared. */
   setGrain: (grain: Grain) => void;
   /**
@@ -80,6 +87,8 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
   select: (selection) => set({ selection }),
   selectNode: (id) => set({ selection: { kind: 'node', id } }),
   grain: 'layer',
+  viewTab: 'model',
+  setViewTab: (viewTab) => set((s) => (s.viewTab === viewTab ? s : { viewTab, selection: null })),
   plotPrediction: null,
   setPlotPrediction: (plotPrediction) => set({ plotPrediction }),
   weightsOf: null,

@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { PALETTE, isShown, ownsParams, type Node, type PaletteEntry } from '@tinker/core';
+import {
+  PALETTE,
+  isShown,
+  ownsParams,
+  paletteTabs,
+  type Node,
+  type PaletteEntry,
+} from '@tinker/core';
 import { dnd } from '../canvas/dnd.js';
 import { HINTS } from '../hints.js';
 import { startDrag } from '../gestures/drag.js';
 import { useLayoutMode } from '../layout/useLayoutMode.js';
+import { useViewTab } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { Tex } from '../tex/Tex.js';
 import './palette.css';
@@ -128,8 +136,12 @@ export function Palette() {
   // Toggles the person made; a group not toggled is open at its default, or open when the preset narrows the palette.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const isOpen = (g: Group) => toggled[g.id] ?? (allowed !== undefined || g.open);
+  // Model pieces on the model tab, loss and penalty pieces on the loss tab (CONTRACTS.md section 9).
+  const tab = useViewTab();
   const visibleIn = (g: Group) =>
-    PALETTE.filter(g.has).filter((e) => isShown(allowed, g.id) || isShown(allowed, e.key));
+    PALETTE.filter(g.has)
+      .filter((e) => paletteTabs(e).includes(tab))
+      .filter((e) => isShown(allowed, g.id) || isShown(allowed, e.key));
   // Strip: a mouse wheel (vertical delta) scrolls it sideways; a trackpad's horizontal delta already does.
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
