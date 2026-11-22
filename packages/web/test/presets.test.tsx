@@ -7,6 +7,7 @@ import { LAYER_FIT_MIN_SCALE } from '../src/canvas/viewport.js';
 import { initialGraph as defaultGraph } from '../src/state/graphSlice.js';
 import { PRESET_NAMES, bundledPreset } from '../src/presets/index.js';
 import { PromptLine } from '../src/presets/PromptLine.js';
+import { InstructionsPanel } from '../src/presets/InstructionsPanel.js';
 import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { lockedIds } from '../src/state/locks.js';
 import { useStore } from '../src/state/store.js';
@@ -179,6 +180,43 @@ test('the prompt shows verbatim and can be dismissed', () => {
     host.querySelector<HTMLButtonElement>('[data-testid="prompt-dismiss"]')?.click();
   });
   expect(host.querySelector('[data-testid="preset-prompt"]')).toBeNull();
+  act(() => root.unmount());
+});
+
+test('instructions: shown as steps, collapsible, replace the prompt line, saved back', () => {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  const q = (id: string) => host.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+  act(() =>
+    root.render(
+      <>
+        <PromptLine />
+        <InstructionsPanel />
+      </>,
+    ),
+  );
+  expect(q('instructions')).toBeNull();
+  const steps = ['Drag $p$ up.', 'Press Step.'];
+  act(() => {
+    loadText(presetText({ title: 'T', prompt: 'Find the best p.', instructions: steps }));
+  });
+  expect(host.querySelectorAll('[data-step]').length).toBe(2);
+  expect(q('instructions-toggle')?.textContent).toContain('Find the best p.');
+  expect(q('instructions-toggle')?.textContent).toContain('2 steps');
+  expect(q('preset-prompt')).toBeNull();
+  act(() => q('instructions-toggle')?.click());
+  expect(q('instructions-steps')).toBeNull();
+  expect(JSON.parse(saveText(false))).toMatchObject({ instructions: steps });
+  act(() => {
+    loadText(presetText({ title: 'U', instructions: steps }));
+  });
+  expect(q('instructions-steps')).not.toBeNull();
+  act(() => {
+    loadText(presetText({ title: 'V', prompt: 'Only prompt.', instructions: undefined }));
+  });
+  expect(q('instructions')).toBeNull();
+  expect(q('preset-prompt')).not.toBeNull();
   act(() => root.unmount());
 });
 

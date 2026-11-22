@@ -1,23 +1,54 @@
 import { useStore } from '../state/store.js';
 import { isMiniBatch } from '../state/trainSlice.js';
+import { useShallow } from 'zustand/react/shallow';
+import { currentLossMode, shownLossModes } from '../state/lossMode.js';
 import { lossReadout } from './readoutModel.js';
 import styles from './Results.module.css';
 
 /** Large current train loss with the validation loss beside it, above the loss plot. */
 export function LossReadout() {
-  // Selectors return strings and booleans, so this re-renders only when a shown value changes.
-  const train = useStore(
-    (s) =>
-      lossReadout(s.history, isMiniBatch(s.graph.train.batch, s.dataset.nTrain), s.diverged).train,
+  // Selectors return strings, so this re-renders only when a shown value changes.
+  const text = useStore(
+    useShallow((s) => {
+      const r = lossReadout(
+        s.history,
+        isMiniBatch(s.graph.train.batch, s.dataset.nTrain),
+        s.diverged,
+        {
+          live: s.liveLoss,
+          stats: s.exampleStats,
+          mode: currentLossMode(s),
+          nTrain: s.dataset.nTrain,
+          nVal: s.dataset.nVal,
+        },
+      );
+      return [r.train, r.val] as const;
+    }),
   );
-  const val = useStore(
-    (s) =>
-      lossReadout(s.history, isMiniBatch(s.graph.train.batch, s.dataset.nTrain), s.diverged).val,
-  );
+  const [train, val] = text;
+  const modes = useStore(useShallow((s) => shownLossModes(s)));
+  const mode = useStore((s) => currentLossMode(s));
+  const setLossMode = useStore((s) => s.setLossMode);
   const diverged = useStore((s) => s.diverged);
   const probIssue = useStore((s) => s.probIssue);
   return (
     <div className={styles.readout} data-testid="loss-readout">
+      {modes.length > 1 && (
+        <span className={styles.readoutModes} role="group" aria-label="Score">
+          {modes.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={styles.readoutMode}
+              aria-pressed={mode === m}
+              data-testid={`loss-mode-${m}`}
+              onClick={() => setLossMode(m)}
+            >
+              {m}
+            </button>
+          ))}
+        </span>
+      )}
       <span className={styles.readoutGroup}>
         <span className={styles.readoutLabel}>train</span>
         {diverged ? (
