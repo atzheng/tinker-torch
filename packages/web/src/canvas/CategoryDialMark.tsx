@@ -1,6 +1,7 @@
 import type { CategoryDial } from '@tinker/core';
 import { UNIT_R } from './neuronPure.js';
 import { useStore } from '../state/store.js';
+import { fitDialName } from './dialLabelFit.js';
 import './categoryDial.css';
 
 /** `-0.4`, `1.2`, `12`: short enough to sit inside a unit circle. */
@@ -8,10 +9,6 @@ export function dialText(v: number): string {
   if (!Number.isFinite(v)) return '?';
   return Math.abs(v) < 10 ? v.toFixed(1) : String(Math.round(v));
 }
-
-/** Longest category name drawn under a dial before it is cut with an ellipsis. */
-const MAX_NAME = 10;
-const cut = (s: string): string => (s.length > MAX_NAME ? `${s.slice(0, MAX_NAME - 1)}…` : s);
 
 /**
  * The inside of a categorical unit (One-hot or Lookup, neuron view): the category's value in the
@@ -46,7 +43,7 @@ export function CategoryDialMark(p: { dial: CategoryDial | undefined; count: num
           textAnchor="middle"
           y={UNIT_R + 9}
         >
-          {cut(dial.name)}
+          {fitDialName(dial.name)}
           <title>{dial.name}</title>
         </text>
       )}
