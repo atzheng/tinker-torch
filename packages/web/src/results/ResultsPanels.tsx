@@ -10,7 +10,18 @@ import { StepLog } from './StepLog.js';
 import { LossCurve1D } from './LossCurve1D.js';
 import { LossSurface } from './LossSurface.js';
 import { TargetHistogram, useHistogramApplies } from './TargetHistogram.js';
-import { dropIndex, movePanel, resizePair, type PanelId } from './panelLayout.js';
+import { useLayoutMode } from '../layout/useLayoutMode.js';
+import {
+  deltaAlong,
+  dropIndex,
+  extentAlong,
+  midAlong,
+  movePanel,
+  posAlong,
+  resizePair,
+  type Orientation,
+  type PanelId,
+} from './panelLayout.js';
 import styles from './ResultsPanels.module.css';
 
 const TITLES: Record<PanelId, string> = {
@@ -44,6 +55,8 @@ const CONTROLS = 'button, input, select, textarea, label, a, [role="button"]';
  * two parameters. Both gestures are Pointer Events with the usual slop, so they work with touch.
  */
 export function ResultsPanels() {
+  // Portrait: the panels sit side by side in a band under the canvas; landscape: stacked.
+  const orient: Orientation = useLayoutMode() === 'portrait' ? 'row' : 'column';
   const order = useStore((s) => s.panelOrder);
   const weights = useStore((s) => s.panelWeights);
   const setOrder = useStore((s) => s.setPanelOrder);
@@ -55,7 +68,7 @@ export function ResultsPanels() {
   const hasHistogram = useHistogramApplies();
   const columnRef = useRef<HTMLDivElement>(null);
   // The panel being dragged, how far it has moved, and its index among the other visible panels.
-  const [lift, setLift] = useState<{ id: PanelId; dy: number; to: number } | null>(null);
+  const [lift, setLift] = useState<{ id: PanelId; d: number; to: number } | null>(null);
 
   const allowed = useStore((s) => s.show?.ui);
   const labels = useStore((s) => s.preset?.labels);
@@ -82,16 +95,16 @@ export function ResultsPanels() {
       dropIndex(
         others.map((p) => {
           const r = slotOf(p)?.getBoundingClientRect();
-          return r ? (r.top + r.bottom) / 2 : 0;
+          return r ? midAlong(orient, r) : 0;
         }),
         y,
       );
     startDrag(e, {
-      onStart: (p) => setLift({ id, dy: p.dy, to: landing(p.y) }),
-      onMove: (p) => setLift({ id, dy: p.dy, to: landing(p.y) }),
+      onStart: (p) => setLift({ id, d: deltaAlong(orient, p), to: landing(posAlong(orient, p)) }),
+      onMove: (p) => setLift({ id, d: deltaAlong(orient, p), to: landing(posAlong(orient, p)) }),
       onEnd: (p) => {
         setLift(null);
-        const to = landing(p.y);
+        const to = landing(posAlong(orient, p));
         if (to !== visible.indexOf(id)) setOrder(movePanel(order, visibleSet, id, to));
       },
       onCancel: () => setLift(null),
@@ -101,9 +114,12 @@ export function ResultsPanels() {
   const onSplitDown = (a: PanelId, b: PanelId, e: ReactPointerEvent<HTMLElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const start = { ...weights };
-    const height = columnRef.current?.getBoundingClientRect().height ?? 1;
+    const extent = extentAlong(
+      orient,
+      columnRef.current?.getBoundingClientRect() ?? { width: 1, height: 1 },
+    );
     startDrag(e, {
-      onMove: (p) => setWeights(resizePair(start, visible, a, b, p.dy, height)),
+      onMove: (p) => setWeights(resizePair(start, visible, a, b, deltaAlong(orient, p), extent)),
     });
   };
 
@@ -111,7 +127,12 @@ export function ResultsPanels() {
   const before = lift ? others[lift.to] : undefined; // the panel it lands above; none: the end
   const last = others[others.length - 1];
   return (
-    <div className={styles.column} ref={columnRef} data-testid="results-panels">
+    <div
+      className={styles.column}
+      data-orientation={orient}
+      ref={columnRef}
+      data-testid="results-panels"
+    >
       {visible.map((id, i) => {
         const prev = visible[i - 1];
         const dragged = lift?.id === id;
@@ -122,7 +143,7 @@ export function ResultsPanels() {
                 className={styles.splitter}
                 data-testid={`splitter-${prev}-${id}`}
                 role="separator"
-                aria-orientation="horizontal"
+                aria-orientation={orient === 'row' ? 'vertical' : 'horizontal'}
                 aria-label={`Resize ${labels?.[`panel-${prev}`] ?? TITLES[prev]} and ${labels?.[`panel-${id}`] ?? TITLES[id]}`}
                 onPointerDown={(e) => onSplitDown(prev, id, e)}
               />
@@ -135,7 +156,9 @@ export function ResultsPanels() {
               data-drop-after={lift !== null && before === undefined && last === id}
               style={{
                 flexGrow: weights[id],
-                ...(dragged && lift ? { transform: `translateY(${lift.dy}px)` } : {}),
+                ...(dragged && lift
+                  ? { transform: `${orient === 'row' ? 'translateX' : 'translateY'}(${lift.d}px)` }
+                  : {}),
               }}
               onPointerDown={(e) => onHeadDown(id, e)}
             >

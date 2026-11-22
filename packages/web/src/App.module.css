@@ -57,12 +57,39 @@
   background: var(--bg);
 }
 
-/* Narrower than 1024 px, or portrait: only the notice. */
-@media (max-width: 1023px), (orientation: portrait) {
-  .app {
-    display: none;
-  }
-  .notice {
-    display: grid;
-  }
+/* Portrait or narrow windows (layout/layoutMode.ts): one column. gridFor sets the rows. */
+.app[data-layout='portrait'] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(48px, auto) auto minmax(0, 1fr) clamp(180px, 34%, 380px) minmax(
+      56px,
+      auto
+    );
+  grid-template-areas: 'top' 'palette' 'canvas' 'results' 'train';
+}
+.app[data-layout='portrait'] .results {
+  flex-direction: row;
+}
+
+/* Too small for either layout (below 600 px wide or tall): only the notice. */
+.app[data-layout='notice'] {
+  display: none;
+}
+.notice[data-active='true'] {
+  display: grid;
+}
+
+/* Portrait: the top bar (inline styles, hence !important) and the training bar wrap onto more rows. */
+.app[data-layout='portrait'] .top > div {
+  flex-wrap: wrap;
+  height: auto !important;
+  min-height: 48px;
+  padding: 4px 8px !important;
+}
+.app[data-layout='portrait'] .train > div {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 56px;
+  padding: 6px 10px;
+  white-space: normal;
+  overflow: visible;
 }
