@@ -178,7 +178,7 @@ test('stage 3: squared error, the histogram view and its squares option', () => 
   expect(1 / (1 + Math.exp(-(bias()[0] as number)))).toBeCloseTo(1 / 3, 2);
 });
 
-test('stage 4: Input, Weight, Bias, categories, fit plot and the 2-parameter surface', () => {
+test('stage 4: Input, Weight, Bias and a zone Lookup, fit plot, one dial per zone, trains', () => {
   load(NAMES[4] as string);
   const m = mount();
   expect(m.region('palette')).toBe(true);
@@ -198,11 +198,15 @@ test('stage 4: Input, Weight, Bias, categories, fit plot and the 2-parameter sur
   expect(m.has('btn-random-start')).toBe(true);
   expect(m.has('data-standardize')).toBe(false);
   expect(m.host.querySelector('[data-panel="fit"]')).not.toBeNull();
-  act(() => s().setViewTab('loss'));
-  expect(m.host.querySelector('[data-panel="surface"]')).not.toBeNull();
+  act(() => s().setGrain('neuron'));
+  for (let k = 0; k < 4; k++) expect(m.has(`dial-label-zone-${k}`), `zone ${k}`).toBe(true);
+  expect(m.has('dial-label-zone-4')).toBe(false);
   m.done();
   expect(s().graph.data.standardize).toBe(true);
   train(300);
+  const zones = Array.from(s().host?.zone?.W ?? []);
+  expect(zones).toHaveLength(4);
+  expect(zones.some((v) => Math.abs(v) > 0.05)).toBe(true); // the zone numbers moved
   expect(s().diverged).toBe(false);
   const w = s().host?.w?.W?.[0] as number;
   expect(w).toBeGreaterThan(0.2); // longer distance, more likely late

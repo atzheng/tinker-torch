@@ -2,11 +2,11 @@
   "kind": "tinker",
   "version": 2,
   "title": "Lecture 1, stage 4: a number that depends on the distance",
-  "prompt": "Now the chance of being late depends on distance. Train the Weight and Bias, then add the zone as a category.",
+  "prompt": "Now the chance of being late depends on distance and on the zone of the city. Train the Weight, the Bias and one number for each zone.",
   "instructions": [
-    "Press Run. The fit plot colours the area by the chance of late; the loss surface shows how the score changes with the Weight and Bias.",
-    "Add an Input for the zone column and put a Lookup after it. Join it into the Sum.",
-    "Switch to Neurons to see one dial for each zone. Run again: which zone is later?"
+    "Press Run. The fit plot colours the area by the chance of late.",
+    "Switch to Neurons to see one dial for each zone.",
+    "Which zone is later than the others? Press Reset and Run again to check."
   ],
   "show": {
     "palette": ["inputs", "categories", "scalew", "sum", "bias", "sigmoid"],
@@ -91,6 +91,16 @@
       {
         "id": "loss",
         "type": "mean"
+      },
+      {
+        "id": "z",
+        "type": "input",
+        "columns": ["x4"]
+      },
+      {
+        "id": "zone",
+        "type": "lookup",
+        "width": 1
       }
     ],
     "edges": [
@@ -100,7 +110,9 @@
       ["bias", "yhat"],
       ["yhat", "err.pred"],
       ["y", "err.target"],
-      ["err", "loss"]
+      ["err", "loss"],
+      ["z", "zone"],
+      ["zone", "sum"]
     ],
     "predictions": ["yhat"],
     "loss": "loss",
@@ -121,6 +133,9 @@
   },
   "params": {
     "w": 0,
-    "bias": 0
+    "bias": 0,
+    "zone": {
+      "W": [0, 0, 0, 0]
+    }
   }
 }
