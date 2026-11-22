@@ -117,7 +117,7 @@ test('a wire across the boundary shows on the loss and full tabs only and is rem
   act(() => s().select({ kind: 'wire', from: 'lin2', to: 'diff.a' }));
   act(() => deleteSelection());
   expect(s().graph.edges).toHaveLength(before.edges.length - 1);
-  expect(q('ghost-lin2')).toBeNull();
+  expect(q('ghost-lin2')).not.toBeNull(); // a ŷ node is always a stub on the loss tab
   // one undo history: undo brings the wire back on both tabs
   act(() => s().undo());
   expect(s().graph).toEqual(before);

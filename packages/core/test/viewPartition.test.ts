@@ -152,6 +152,15 @@ describe('viewOfTab', () => {
     expect(v.graph.edges[2]).toEqual(['', '']);
   });
 
+  test('loss tab: a ŷ node is a stub even with no wire into the loss', () => {
+    const graph = mlp();
+    graph.edges = graph.edges.filter((e) => e[0] !== 'lin2');
+    const v = viewOfTab(graph, analyse(graph, info), 'loss');
+    expect(v.ghosts['lin2']).toBe('model');
+    expect(ids(v.graph)).toContain('lin2');
+    expect(viewOfTab(graph, analyse(graph, info), 'model').ghosts).toEqual({});
+  });
+
   test('a Weights tap makes its Linear a stub on the loss tab, not the model tab', () => {
     const graph = withPenalty();
     const a = analyse(graph, info);

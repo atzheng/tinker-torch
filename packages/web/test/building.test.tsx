@@ -279,3 +279,50 @@ test('edits during a run: a drop and a delete do not throw and pause the run; a 
   expect(s().graph).toBe(before);
   expect(must('toast').textContent?.length).toBeGreaterThan(5);
 });
+
+test('loss tab: a ŷ node with no wire into the loss is still a stub, and a wire from it into a loss piece is one undo step', () => {
+  const g = s().graph;
+  const i = g.edges.findIndex((e) => e[0] === 'lin2' && e[1] === 'diff.a');
+  act(
+    () => void s().apply({ ok: true, graph: { ...g, edges: g.edges.filter((_, k) => k !== i) } }),
+  );
+  act(() => s().setViewTab('loss'));
+  expect(must('node-lin2').getAttribute('data-stub')).toBe('true');
+  expect(must('pin-pred-lin2')).not.toBeNull();
+  const before = s().graph;
+  const [fx, fy] = screenOf((l) => {
+    const b = l.nodes['lin2'];
+    return b ? [b.x + b.w - 28, b.y + b.h / 2] : [0, 0];
+  });
+  const [tx, ty] = screenOf((l) => {
+    const b = l.nodes['diff'];
+    return b ? [b.x + b.w / 2, b.y + b.h * 0.2] : [0, 0];
+  });
+  const port = must('port-out-lin2');
+  ptr(port, 'pointerdown', fx, fy);
+  ptr(port, 'pointermove', fx + 20, fy + 20);
+  ptr(port, 'pointermove', tx, ty);
+  ptr(port, 'pointerup', tx, ty);
+  expect(s().graph.edges).toHaveLength(before.edges.length + 1);
+  expect(s().graph.edges.some((e) => e[0] === 'lin2' && e[1].startsWith('diff'))).toBe(true);
+  act(() => s().undo());
+  expect(s().graph).toEqual(before);
+});
+
+test('model tab: dropping the L pin on a model piece is refused (role gate); a ŷ pin resolves', () => {
+  const over = (id: string) =>
+    screenOf((l) => {
+      const b = l.nodes[id];
+      return b ? [b.x + b.w / 2, b.y + b.h / 2] : [0, 0];
+    });
+  const [x, y] = over('lin1');
+  act(() => dnd.begin({ kind: 'pin', role: 'loss', node: 'loss' }, x, y));
+  act(() => dnd.move(x + 1, y + 1));
+  expect(dnd.get()?.target ?? null).toBeNull();
+  dnd.cancel();
+  const [ax, ay] = over('act1');
+  act(() => dnd.begin({ kind: 'pin', role: 'pred', node: 'lin2' }, ax, ay));
+  act(() => dnd.move(ax + 1, ay + 1));
+  expect(dnd.get()?.target).toEqual({ kind: 'node', id: 'act1' });
+  dnd.cancel();
+});

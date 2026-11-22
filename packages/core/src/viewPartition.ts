@@ -127,7 +127,7 @@ export type TabView = {
 /**
  * What `tab` draws. The full tab (and `whole`) draws everything, no stubs. The model tab draws only
  * its own pieces and the wires between them: no stubs of loss pieces, no wires into them. The loss
- * tab also draws a stub for each model piece a wire joins to a piece here, or the Linear a Weights
+ * tab also draws a stub for each ŷ-pinned node and each model piece a wire joins to a piece here, or the Linear a Weights
  * tap here reads. A wire is drawn when at least one end is a piece of this tab and both ends are on
  * screen.
  */
@@ -155,6 +155,14 @@ export function viewOfTab(
     const pb = part[b];
     if (mine(a) && pb !== undefined && !mine(b)) ghosts[b] = pb;
     if (mine(b) && pa !== undefined && !mine(a)) ghosts[a] = pa;
+  }
+  // Every node carrying a ŷ pin is a stub on the loss tab, wired or not, so a wire from it into a
+  // loss piece can be started there.
+  if (tab === 'loss') {
+    for (const id of analysis.predictions) {
+      const pid = part[id];
+      if (pid !== undefined && !mine(id)) ghosts[id] = pid;
+    }
   }
   for (const n of graph.nodes) {
     if (tab === 'model' || n.type !== 'weights' || !mine(n.id)) continue;
