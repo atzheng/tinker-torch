@@ -8,6 +8,8 @@ import scalar from './scalar.json';
 import mlp from './mlp.json';
 import softmax from './softmax.json';
 import iris from './iris.json';
+import interceptProb from './intercept-prob.json';
+import interceptMean from './intercept-mean.json';
 
 /** Bundled presets by the name used in `?preset=<name>`, in menu order. Imported, never fetched. */
 export const PRESET_SOURCES: Record<string, unknown> = {
@@ -20,6 +22,8 @@ export const PRESET_SOURCES: Record<string, unknown> = {
   scalar,
   mlp,
   iris,
+  'intercept-prob': interceptProb,
+  'intercept-mean': interceptMean,
 };
 
 export const PRESET_NAMES: string[] = Object.keys(PRESET_SOURCES);
