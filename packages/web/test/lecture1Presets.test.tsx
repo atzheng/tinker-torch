@@ -84,14 +84,19 @@ test('every lecture 1 stage is a titled preset with a prompt, steps, a valid gra
   }
 });
 
-test('stage 0: the loss tab only, the score and data, no palette and no training bar', () => {
+function tabsShown(m: ReturnType<typeof mount>): string[] {
+  return ['tab-model', 'tab-loss', 'tab-full'].filter((id) => m.has(id));
+}
+
+test('stage 0: model and loss tabs (no full graph), opening on loss, the score and data, no palette and no training bar', () => {
   load(NAMES[0] as string);
   const m = mount();
   expect(m.region('palette')).toBe(false);
   expect(m.region('training-bar')).toBe(false);
   expect(m.region('results')).toBe(true);
   expect(s().show?.tab).toBe('loss');
-  expect(m.has('tab-bar')).toBe(false); // one tab: no tab bar, the whole graph is drawn
+  expect(tabsShown(m)).toEqual(['tab-model', 'tab-loss']);
+  expect(s().viewTab).toBe('loss');
   for (const id of ['loss-readout', 'loss-mode-likelihood', 'loss-1d']) {
     // the 1-D panel has no test id of its own; it is found by its data-panel attribute below
     if (id !== 'loss-1d') expect(m.has(id), id).toBe(true);
@@ -102,7 +107,12 @@ test('stage 0: the loss tab only, the score and data, no palette and no training
   expect(m.host.querySelector('[data-panel="loss"]')).not.toBeNull();
   expect(m.host.querySelector('[aria-label="Loss curves"]')).toBeNull();
   expect(m.has('loss-log-toggle')).toBe(false);
+  // the model tab holds the Bias and the class bars; the loss panels are not there
+  expect(m.host.querySelector('[data-panel="class-bars"]')).toBeNull();
+  act(() => s().setViewTab('model'));
   expect(m.host.querySelector('[data-panel="class-bars"]')).not.toBeNull();
+  expect(m.host.querySelector('[data-panel="loss-1d"]')).toBeNull();
+  act(() => s().setViewTab('loss'));
   for (const id of ['btn-step', 'btn-run', 'btn-reset', 'btn-random-start', 'lr-slider']) {
     expect(m.has(id), id).toBe(false);
   }
@@ -118,6 +128,8 @@ test('stage 1: Step, Reset and step size, no Run; the first step from 0.5 lands 
   for (const id of ['btn-run', 'btn-random-start', 'optimizer']) expect(m.has(id), id).toBe(false);
   expect(m.region('palette')).toBe(false);
   expect(m.host.querySelector('[data-panel="step-log"]')).not.toBeNull();
+  expect(tabsShown(m)).toEqual(['tab-model', 'tab-loss']);
+  expect(s().viewTab).toBe('loss');
   m.done();
   // hand calculation: 10 of the 30 deliveries are late, so the mean log loss has slope
   // -(1/3)/p + (2/3)/(1-p) = 2/3 at p = 0.5; with step size 0.15 one step is 0.5 - 0.15 * 2/3 = 0.4
