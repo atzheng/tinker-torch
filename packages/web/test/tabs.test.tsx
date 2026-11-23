@@ -5,6 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { App } from '../src/App.js';
 import { deleteSelection } from '../src/canvas/actions.js';
 import { mlpGraph } from './mlpGraph.js';
+import { RESULTS_PANEL_IDS } from '@tinker/core';
+import { PANEL_IDS } from '../src/results/panelLayout.js';
 import { useStore } from '../src/state/store.js';
 import { loadText, saveText } from '../src/topbar/FileMenu.js';
 
@@ -255,4 +257,8 @@ test('show.panelTabs is saved back with the preset', () => {
   mount();
   loadText(presetText({ panelTabs: { loss: ['model', 'loss'] } }));
   expect(JSON.parse(saveText(false)).show).toEqual({ panelTabs: { loss: ['model', 'loss'] } });
+});
+
+test('core RESULTS_PANEL_IDS equals the web PANEL_IDS', () => {
+  expect([...RESULTS_PANEL_IDS]).toEqual([...PANEL_IDS]);
 });
