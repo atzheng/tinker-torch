@@ -137,6 +137,10 @@ export function layerProps(
   if (inWidth !== undefined) props['inWidth'] = inWidth;
   if (outWidth !== undefined) props['outWidth'] = outWidth;
   if (node.type === 'link' && probBar) props['probBar'] = probBar;
+  if (node.type === 'bias') {
+    const b = weights?.[node.id]?.b;
+    if (b?.length === 1) props['biasValue'] = b[0];
+  }
   if (node.type === 'linear' && inWidth !== undefined) {
     const entry = weights?.[node.id]; // undefined for a Linear off the loss path
     if (entry?.W && entry.W.length === inWidth * node.out) {
