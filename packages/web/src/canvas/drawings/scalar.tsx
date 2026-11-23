@@ -3,9 +3,9 @@ import { useAnalysis, useWeights } from '../../state/derived.js';
 import { ValueField } from '../ValueField.js';
 import { featureName, fitText } from '../../state/names.js';
 import { NodeShell } from './NodeShell.js';
-import { ScalarValuePill, useBiasValue } from '../ScalarValuePill.js';
+import { ScalarValuePill } from '../ScalarValuePill.js';
 import { SelectField, editSetting } from './fields.js';
-import type { NodeOf, WebPiece } from './types.js';
+import type { LayerProps, NodeOf, WebPiece } from './types.js';
 
 const NoSettings = () => <p className="tk-muted">No settings.</p>;
 const noNeuron = (name: string) => () => <g data-placeholder={`${name}-neuron`} />;
@@ -93,8 +93,8 @@ export const scalewPiece: WebPiece<'scalew'> = {
   Fields: ScalarValue,
 };
 /** A Bias shows its live value on the piece, as a pill that can be dragged (tinker-gw6). */
-function BiasLayer(p: { node: NodeOf<'bias'>; w: number; h: number; scale?: number }) {
-  const known = useBiasValue(p.node.id) !== undefined;
+function BiasLayer(p: LayerProps<'bias'>) {
+  const known = p.biasValue !== undefined;
   return (
     <NodeShell
       piece="bias"
@@ -106,7 +106,7 @@ function BiasLayer(p: { node: NodeOf<'bias'>; w: number; h: number; scale?: numb
       inPorts={1}
       outPort
     >
-      <ScalarValuePill node={p.node.id} w={p.w} h={p.h} scale={p.scale} />
+      <ScalarValuePill node={p.node.id} w={p.w} h={p.h} scale={p.scale} value={p.biasValue} />
     </NodeShell>
   );
 }

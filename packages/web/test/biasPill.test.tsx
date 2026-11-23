@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from '../src/App.js';
 import { loadEngine } from '../src/engine.js';
+import { pillHit } from '../src/canvas/ScalarValuePill.js';
 import { beginWeightEdit, PAUSE_FIRST } from '../src/canvas/weightEdit.js';
 import { useStore } from '../src/state/store.js';
 import { loadBundled } from '../src/topbar/PresetMenu.js';
@@ -112,4 +113,13 @@ test('a vertical drag on the pill sets the value as one undo step; refused while
   expect(s().host?.bias?.b?.[0]).toBeCloseTo(start, 4);
   useStore.setState({ running: false, error: null });
   m.done();
+});
+
+test('the pill press rectangle keeps the upper half of the body free at the floor scale', () => {
+  for (const scale of [0.733, 1, 2]) {
+    const r = pillHit(112, 56, scale);
+    expect(r.y).toBeGreaterThanOrEqual(28); // below the middle of the 56-unit box
+    expect(r.h * scale).toBeGreaterThanOrEqual(32 - 1e-9);
+    expect(r.x + r.w).toBeLessThanOrEqual(112 - 16); // clear of the output handle
+  }
 });

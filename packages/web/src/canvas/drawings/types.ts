@@ -24,6 +24,8 @@ export type LayerProps<T extends PieceType> = {
   /** Current probability (Link on a ŷ pin only), drawn as a filled bar; see `probBarPure`. */
   probBar?: ProbBar;
   /** Weights to draw as a heat map (Linear only); read only, never write into the arrays. */
+  /** Current value of a Bias (`b[0]`), when the model has one; shown as its pill. */
+  biasValue?: number;
   weights?: { W: Float32Array; rows: number; cols: number };
 };
 

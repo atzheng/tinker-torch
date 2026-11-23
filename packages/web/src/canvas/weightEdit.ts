@@ -45,7 +45,8 @@ const clamp = (v: number): number => Math.max(-WEIGHT_LIMIT, Math.min(WEIGHT_LIM
 
 /**
  * Start a hand edit of one weight or bias. Refuses (null, with the toast sentence) while running,
- * for a locked piece, or when the model has no value for it. Hand edits are one undo step per
+ * for a locked Linear or Lookup (a free Weight or Bias may be set when locked: a lock protects what
+ * a piece computes, not the number it has learned), or when the model has no value for it. Hand edits are one undo step per
  * drag or typed value, in the ordinary undo stack (see `state/weightHistory.ts`); the loss
  * history and the step counter are kept; the optimizer state is kept too. They need a paused run
  * because a running loop would overwrite the value on its next step.
