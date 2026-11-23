@@ -93,3 +93,22 @@
   white-space: normal;
   overflow: visible;
 }
+
+/* Resize handles for the main regions (tinker-9qh): zero-thickness grid items on the results
+   region's near edge, above the regions. */
+.app > .resizeWidth {
+  grid-area: results;
+  justify-self: start;
+  align-self: stretch;
+  margin-left: -1px;
+  background: transparent;
+  z-index: 5;
+}
+.app > .resizeBand {
+  grid-area: results;
+  align-self: start;
+  justify-self: stretch;
+  margin-top: -1px;
+  background: transparent;
+  z-index: 5;
+}

@@ -7,6 +7,7 @@ import {
   type PanelId,
   type PanelWeights,
 } from '../results/panelLayout.js';
+import { DEFAULT_REGION_SIZES, type RegionKey, type RegionSizes } from '../layout/regionSizes.js';
 
 /**
  * What the inspector shows. A wire is identified by its endpoints, not its edge index: indices
@@ -75,6 +76,13 @@ export type ViewSlice = {
   setPanelOrder: (order: PanelId[]) => void;
   setPanelWeights: (weights: PanelWeights) => void;
   /**
+   * Sizes of the main regions the user dragged (tinker-9qh): results width (landscape), results
+   * band height (portrait), instructions steps cap; fractions of the window, null = default.
+   * Session view state like `panelWeights`.
+   */
+  regionSizes: RegionSizes;
+  setRegionSize: (key: RegionKey, value: number | null) => void;
+  /**
    * Pieces that a Group / Expand just created: they fade in for 300 ms (tinker-9io.7). Cleared by
    * a timer; empty with prefers-reduced-motion. Not part of the graph or its history.
    */
@@ -116,6 +124,8 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
   panelWeights: { ...DEFAULT_WEIGHTS },
   setPanelOrder: (panelOrder) => set({ panelOrder }),
   setPanelWeights: (panelWeights) => set({ panelWeights }),
+  regionSizes: { ...DEFAULT_REGION_SIZES },
+  setRegionSize: (key, value) => set((s) => ({ regionSizes: { ...s.regionSizes, [key]: value } })),
   fresh: new Set(),
   setFresh: (fresh) => set({ fresh }),
 });

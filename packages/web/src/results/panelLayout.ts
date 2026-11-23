@@ -147,3 +147,40 @@ export function deltaAlong(o: Orientation, p: { dx: number; dy: number }): numbe
 export function extentAlong(o: Orientation, r: { width: number; height: number }): number {
   return o === 'row' ? r.width : r.height;
 }
+
+/** Arrow key step between two panels, and the Shift+arrow step, as a share of the visible total. */
+export const KEY_STEP_SHARE = 0.05;
+export const KEY_STEP_SHARE_BIG = 0.15;
+
+/**
+ * One arrow key press on the separator between `a` and `b`: `dir` is the way the separator moves
+ * (-1 up or left, +1 down or right). Same rules as a drag: the pair keeps its sum, neither goes
+ * under `MIN_SHARE`.
+ */
+export function stepPair(
+  start: Readonly<PanelWeights>,
+  visible: readonly PanelId[],
+  a: PanelId,
+  b: PanelId,
+  dir: -1 | 1,
+  big: boolean,
+): PanelWeights {
+  return resizePair(start, visible, a, b, dir * (big ? KEY_STEP_SHARE_BIG : KEY_STEP_SHARE), 1);
+}
+
+/** The upper panel's share of the pair in percent, with the bounds `MIN_SHARE` allows (aria-value*). */
+export function pairValues(
+  weights: Readonly<PanelWeights>,
+  visible: readonly PanelId[],
+  a: PanelId,
+  b: PanelId,
+): { now: number; min: number; max: number } {
+  const total = visible.reduce((s, p) => s + weights[p], 0);
+  const pair = weights[a] + weights[b];
+  const min = MIN_SHARE * total;
+  return {
+    now: Math.round((weights[a] / pair) * 100),
+    min: Math.round((min / pair) * 100),
+    max: Math.round(((pair - min) / pair) * 100),
+  };
+}

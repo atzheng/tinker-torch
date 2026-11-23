@@ -1,0 +1,95 @@
+/* Resize handle (tinker-9qh): a 1 px line with a grip mark centred on it. A control: raised grip,
+   --ctl-border outline, accent on hover, press and focus. ::before is the grab strip (8 px, 32 px
+   on touch), ::after the grip, which takes no presses. */
+.handle {
+  flex: none;
+  position: relative;
+  z-index: 3;
+  background: var(--border);
+  touch-action: none;
+  outline: none;
+}
+.handle[data-axis='y'] {
+  height: 1px;
+  cursor: row-resize;
+}
+.handle[data-axis='x'] {
+  width: 1px;
+  cursor: col-resize;
+}
+.handle::before {
+  content: '';
+  position: absolute;
+}
+.handle[data-axis='y'][data-strip='before']::before {
+  inset: -8px 0 0;
+}
+.handle[data-axis='y'][data-strip='centered']::before {
+  inset: -4px 0;
+}
+.handle[data-axis='x'][data-strip='before']::before {
+  inset: 0 0 0 -8px;
+}
+.handle[data-axis='x'][data-strip='centered']::before {
+  inset: 0 -4px;
+}
+@media (pointer: coarse) {
+  .handle[data-axis='y'][data-strip='before']::before {
+    inset: -31px 0 0;
+  }
+  .handle[data-axis='y'][data-strip='centered']::before {
+    inset: -16px 0;
+  }
+  .handle[data-axis='x'][data-strip='before']::before {
+    inset: 0 0 0 -31px;
+  }
+  .handle[data-axis='x'][data-strip='centered']::before {
+    inset: 0 -16px;
+  }
+}
+
+.handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  border: 1px solid var(--ctl-border);
+  border-radius: 5px;
+  pointer-events: none;
+  background-color: var(--ctl-fill);
+  background-image: radial-gradient(circle, var(--ctl-border) 1px, transparent 1.6px);
+}
+.handle[data-axis='y']::after {
+  width: 40px;
+  height: 10px;
+  background-size: 7px 100%;
+}
+.handle[data-axis='x']::after {
+  width: 10px;
+  height: 40px;
+  background-size: 100% 7px;
+}
+
+.handle:hover,
+.handle:focus-visible,
+.handle[data-dragging='true'] {
+  background: var(--accent);
+}
+.handle:hover::after,
+.handle[data-dragging='true']::after {
+  border-color: var(--accent);
+  background-color: var(--ctl-fill-hover);
+}
+.handle[data-dragging='true']::after {
+  background-color: var(--ctl-fill-press);
+}
+.handle:focus-visible {
+  outline: none;
+}
+.handle:focus-visible::after {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}

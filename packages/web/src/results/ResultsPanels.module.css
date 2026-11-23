@@ -33,32 +33,6 @@
   cursor: grabbing;
 }
 
-/* Resize bar: 1 px line; the strip to grab lies above it, over the panel's plot, never over the
-   next panel's header (8 px, 32 px on touch). */
-.splitter {
-  flex: none;
-  height: 1px;
-  background: var(--border);
-  position: relative;
-  z-index: 1;
-  touch-action: none;
-  cursor: row-resize;
-}
-.splitter::before {
-  content: '';
-  position: absolute;
-  inset: -8px 0 0;
-}
-.splitter:hover,
-.splitter:active {
-  background: var(--accent);
-}
-@media (pointer: coarse) {
-  .splitter::before {
-    inset: -31px 0 0;
-  }
-}
-
 /* Portrait (tinker-2xj): side by side in a band under the canvas; each panel the band's full height. */
 .column[data-orientation='row'] {
   flex: 1 1 0;
@@ -77,17 +51,4 @@
 }
 .column[data-orientation='row'] .slot[data-drop-after='true'] {
   box-shadow: inset -3px 0 0 var(--accent);
-}
-.column[data-orientation='row'] .splitter {
-  width: 1px;
-  height: auto;
-  cursor: col-resize;
-}
-.column[data-orientation='row'] .splitter::before {
-  inset: 0 0 0 -8px;
-}
-@media (pointer: coarse) {
-  .column[data-orientation='row'] .splitter::before {
-    inset: 0 0 0 -31px;
-  }
 }

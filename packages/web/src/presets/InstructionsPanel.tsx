@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { TexText } from '../tex/Tex.js';
 import { Tick, useCheckResults } from './SuccessTick.js';
+import { ResizeHandle } from '../layout/ResizeHandle.js';
+import { REGION_LIMITS, clampSize, dragSize, percent, stepSize } from '../layout/regionSizes.js';
 import styles from './InstructionsPanel.module.css';
 
 /**
@@ -22,6 +24,16 @@ export function InstructionsPanel() {
 function Panel({ title, steps }: { title: string | undefined; steps: string[] }) {
   const [open, setOpen] = useState(true);
   const { steps: done, general } = useCheckResults();
+  const cap = useStore((s) => s.regionSizes.instructions);
+  const setSize = useStore((s) => s.setRegionSize);
+  const listRef = useRef<HTMLOListElement>(null);
+  const lim = REGION_LIMITS.instructions;
+  // The cap on the steps list, a fraction of the window height (dragged by the handle below it).
+  const current = (): number => {
+    if (cap !== null) return cap;
+    const h = listRef.current?.clientHeight ?? 0;
+    return h > 0 ? clampSize('instructions', h / window.innerHeight) : lim.def;
+  };
   return (
     <section className={styles.panel} data-testid="instructions" aria-label="Instructions">
       <button
@@ -41,7 +53,14 @@ function Panel({ title, steps }: { title: string | undefined; steps: string[] })
         </span>
       </button>
       {open && (
-        <ol className={styles.steps} data-testid="instructions-steps">
+        <ol
+          className={styles.steps}
+          data-testid="instructions-steps"
+          ref={listRef}
+          style={
+            cap === null ? undefined : { height: `${cap * 100}vh`, maxHeight: `${cap * 100}vh` }
+          }
+        >
           {steps.map((step, i) => (
             // One slot per step; a check naming this step puts its tick here.
             <li key={i} className={styles.step} data-step={i}>
@@ -52,6 +71,26 @@ function Panel({ title, steps }: { title: string | undefined; steps: string[] })
             </li>
           ))}
         </ol>
+      )}
+      {open && (
+        <ResizeHandle
+          axis="y"
+          strip="centered"
+          className={styles.resize}
+          testId="resize-instructions"
+          label="Resize the instructions"
+          now={percent(cap ?? lim.def)}
+          min={percent(lim.min)}
+          max={percent(lim.max)}
+          begin={() => {
+            const start = current();
+            return (d) =>
+              setSize('instructions', dragSize('instructions', start, d, window.innerHeight, 1));
+          }}
+          onStep={(dir, big) =>
+            setSize('instructions', stepSize('instructions', current(), dir, big, 1))
+          }
+        />
       )}
     </section>
   );
