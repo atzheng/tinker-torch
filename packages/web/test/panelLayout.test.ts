@@ -2,7 +2,12 @@ import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_ORDER,
   DEFAULT_WEIGHTS,
+  KEY_STEP_SHARE,
+  KEY_STEP_SHARE_BIG,
   MIN_SHARE,
+  pairValues,
+  stepPair,
+  type PanelWeights,
   dropIndex,
   movePanel,
   resizePair,
@@ -70,6 +75,28 @@ describe('resizePair', () => {
     const start = { ...DEFAULT_WEIGHTS };
     resizePair(start, vis, 'fit', 'loss', 50, 400);
     expect(start).toEqual(DEFAULT_WEIGHTS);
+  });
+});
+
+describe('stepPair and pairValues (keyboard resize, aria values)', () => {
+  const vis: PanelId[] = ['fit', 'loss'];
+  test('an arrow key moves a fixed share of the total, Shift a bigger one', () => {
+    const down = stepPair(DEFAULT_WEIGHTS, vis, 'fit', 'loss', 1, false);
+    expect(down.fit).toBeCloseTo(1 + KEY_STEP_SHARE * 2);
+    expect(down.fit + down.loss).toBeCloseTo(2);
+    const bigUp = stepPair(DEFAULT_WEIGHTS, vis, 'fit', 'loss', -1, true);
+    expect(bigUp.fit).toBeCloseTo(1 - KEY_STEP_SHARE_BIG * 2);
+    expect(bigUp.surface).toBe(1);
+  });
+  test('repeated key presses stop at the minimum share', () => {
+    let w: PanelWeights = { ...DEFAULT_WEIGHTS };
+    for (let i = 0; i < 40; i++) w = stepPair(w, vis, 'fit', 'loss', -1, true);
+    expect(w.fit).toBeCloseTo(MIN_SHARE * 2);
+    for (let i = 0; i < 40; i++) w = stepPair(w, vis, 'fit', 'loss', 1, true);
+    expect(w.loss).toBeCloseTo(MIN_SHARE * 2);
+  });
+  test('pairValues gives the upper share and the bounds the minimum allows', () => {
+    expect(pairValues(DEFAULT_WEIGHTS, vis, 'fit', 'loss')).toEqual({ now: 50, min: 15, max: 85 });
   });
 });
 
