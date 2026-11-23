@@ -626,7 +626,7 @@ function effectiveTab(want: ViewTab, ui: readonly string[] | undefined): ViewTab
 `App` puts a `TabBar` (a `role="tablist"`: ArrowLeft/Right/Up/Down wrap, Home, End, roving tabindex; `data-testid` `tab-model`, `tab-loss`, `tab-full`) at the top of the canvas region. `viewSlice.viewTab` is the tab asked for; read it through `useViewTab()` (`state/disclosure.ts`), which is never a hidden tab (`effectiveTab`). Switching clears the selection and the canvas view (pan and zoom). A load (a new `loadEpoch`) opens the preset's `show.tab`, else `model`. With one tab shown the bar is not drawn.
 - Canvas: draws `viewOfTab(graph, analysis, tab).graph`; edits always use the real graph (section 9, "Tabs").
 - Palette: `paletteTabs(entry)` includes the tab; a preset's `show.palette` filters further.
-- Results panels by tab (`PANEL_TAB: Record<PanelId, SplitTab>` in `results/panelLayout.ts`, so a new panel must be assigned; `panelOnTab`): full tab: every panel the preset lists; model tab: `fit`, `histogram`; loss tab: `loss`, `surface`, `loss-1d`, `examples`, `step-log`. The results region is on screen only when a panel of the tab on screen is shown (`useRegionShown('results')`). Portrait layout: the tab bar sits above the prompt line in the canvas region; nothing else changes.
+- Results panels by tab (`PANEL_TAB: Record<PanelId, SplitTab>` in `results/panelLayout.ts`, so a new panel must be assigned; `panelOnTab`): full tab: every panel the preset lists; model tab: `fit`, `histogram`; loss tab: `loss`, `surface`, `loss-1d`, `examples`, `step-log` (the defaults; a preset's `show.panelTabs` overrides them per panel, section 12). The results region is on screen only when a panel of the tab on screen is shown (`useRegionShown('results')`). Portrait layout: the tab bar sits above the prompt line in the canvas region; nothing else changes.
 
 ## 11. PyTorch reference fixtures
 
@@ -734,7 +734,7 @@ When they are cleared or ignored: loading a file replaces them (a file without `
 ### Progressive disclosure (`show`, tinker-6t7.1)
 
 ```ts
-type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' | 'full' };   // Preset gains: show?: Show (tab: see "Tabs" below)
+type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' | 'full'; panelTabs?: ... };   // panelTabs: see "Panels on more than one tab";    // Preset gains: show?: Show (tab: see "Tabs" below)
 const PALETTE_GROUP_IDS: readonly string[];            // core/file.ts, palette order (now with 'categories' after 'inputs', tinker-6t7.7); web Palette GROUPS uses the same ids
 const UI_IDS: Record<'top-bar' | 'canvas' | 'results' | 'panel-controls' | 'tabs' | 'training-bar', readonly string[]>; // core/file.ts
 const ALL_UI_IDS: readonly string[];                   // every id in UI_IDS
@@ -761,6 +761,15 @@ UI_IDS.tabs = ['tab-model', 'tab-loss', 'tab-full'];               // also in LA
 ```
 
 Tab ids are not a region (they never make a region visible). `shownTabs(show.ui)`: when `ui` lists no tab id (or is absent) all three tabs show (Model, Loss, Full graph), so every preset without tab ids gains the full tab; when it lists some, exactly those show (so a preset listing `tab-model` and `tab-loss`, such as `lecture1-stage2` to `5`, stays two-tab; `lecture1-stage0` and `1` list them too, so they are two-tab as well). A hidden tab's pieces and panels are not reachable through it; the graph is unchanged. With exactly one tab shown, it draws the whole graph. `show.tab` is the tab the page opens on; absent: `model`. Validation, one plain sentence each: `The preset "show.tab" must be "model", "loss" or "full".`, and `The preset opens on the loss tab, but its "show.ui" hides that tab.` (likewise for model). There is no way to hide both tabs. `show.tab` travels with `show` (undo of a load, Save).
+
+### Panels on more than one tab (`show.panelTabs`, tinker-x6k)
+
+```ts
+type Show = { /* ... */ panelTabs?: Partial<Record<ResultsPanelId, ('model' | 'loss')[]>> };   // core/file.ts; RESULTS_PANEL_IDS = the web PANEL_IDS
+panelOnTab(id: PanelId, tab: ViewTab, split: boolean, panelTabs?: Show['panelTabs']): boolean;   // web/results/panelLayout.ts
+```
+
+A preset may override the tab(s) a results panel appears on. A panel not listed keeps `PANEL_TAB`; absent field: nothing changes. The list replaces the default (`{ fit: ['loss'] }` moves the fit off the model tab). The full tab and a single-tab preset (`split` false) still show every panel `show.ui` allows. `panelTabs` only chooses tabs: `show.ui` still decides whether a panel exists, and `panel-score` vs `panel-loss` still decides how much of the Loss panel draws. Validation, one plain sentence each: `The preset "show.panelTabs" must be an object from panel ids to lists of tabs.`, `... names "<id>", which is not a results panel.`, `... gives "<id>" no tabs; list "model", "loss" or both.` (empty or not a list), `... gives "<id>" the tab "<t>", but only "model" and "loss" are known.`. Duplicates in a list are dropped. It travels with `show` (undo of a load, Save, share link). A panel on two tabs is the same panel component, drawn on whichever tab is showing; `viewSlice.panelOrder` and `panelWeights` are one session-wide state, so its place relative to the other visible panels and its weight carry across tabs (order and resize act on the panels visible on the tab showing; the weights are shares of that tab's visible total). `lecture1-stage0` to `5` use `{ "loss": ["model", "loss"] }`: the score panel on stages 0 and 1, the full Loss panel on 2 to 5, now also on the model tab (checked at 1280x720 and 1024x768 touch: no page scroll, panels at least 200 px tall).
 
 ### Label overrides (`labels`, tinker-6t7.11)
 

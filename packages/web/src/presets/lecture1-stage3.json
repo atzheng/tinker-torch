@@ -39,7 +39,10 @@
       "btn-undo",
       "btn-redo",
       "pins"
-    ]
+    ],
+    "panelTabs": {
+      "loss": ["model", "loss"]
+    }
   },
   "labels": {
     "loss-readout": "Score",
