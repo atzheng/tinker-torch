@@ -12,6 +12,7 @@ import { LossSurface } from './LossSurface.js';
 import { TargetHistogram, useHistogramApplies } from './TargetHistogram.js';
 import { useSplitTabs, useViewTab } from '../state/disclosure.js';
 import { useLayoutMode } from '../layout/useLayoutMode.js';
+import { ResizeHandle } from '../layout/ResizeHandle.js';
 import {
   deltaAlong,
   dropIndex,
@@ -20,7 +21,9 @@ import {
   movePanel,
   panelOnTab,
   posAlong,
+  pairValues,
   resizePair,
+  stepPair,
   type Orientation,
   type PanelId,
   panelListed,
@@ -122,16 +125,14 @@ export function ResultsPanels() {
     });
   };
 
-  const onSplitDown = (a: PanelId, b: PanelId, e: ReactPointerEvent<HTMLElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+  /** Pointer down on the separator between `a` and `b`: the move function for the drag. */
+  const beginSplit = (a: PanelId, b: PanelId) => {
     const start = { ...weights };
     const extent = extentAlong(
       orient,
       columnRef.current?.getBoundingClientRect() ?? { width: 1, height: 1 },
     );
-    startDrag(e, {
-      onMove: (p) => setWeights(resizePair(start, visible, a, b, deltaAlong(orient, p), extent)),
-    });
+    return (delta: number) => setWeights(resizePair(start, visible, a, b, delta, extent));
   };
 
   const others = lift ? visible.filter((p) => p !== lift.id) : [];
@@ -150,13 +151,13 @@ export function ResultsPanels() {
         return (
           <Fragment key={id}>
             {prev !== undefined && (
-              <div
-                className={styles.splitter}
-                data-testid={`splitter-${prev}-${id}`}
-                role="separator"
-                aria-orientation={orient === 'row' ? 'vertical' : 'horizontal'}
-                aria-label={`Resize ${labels?.[`panel-${prev}`] ?? TITLES[prev]} and ${labels?.[`panel-${id}`] ?? TITLES[id]}`}
-                onPointerDown={(e) => onSplitDown(prev, id, e)}
+              <ResizeHandle
+                axis={orient === 'row' ? 'x' : 'y'}
+                testId={`splitter-${prev}-${id}`}
+                label={`Resize ${labels?.[`panel-${prev}`] ?? TITLES[prev]} and ${labels?.[`panel-${id}`] ?? TITLES[id]}`}
+                {...pairValues(weights, visible, prev, id)}
+                begin={() => beginSplit(prev, id)}
+                onStep={(dir, big) => setWeights(stepPair(weights, visible, prev, id, dir, big))}
               />
             )}
             <div

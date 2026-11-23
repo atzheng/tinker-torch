@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import styles from './App.module.css';
 import { Canvas } from './canvas/Canvas.js';
 import { Palette } from './palette/Palette.js';
@@ -14,6 +14,16 @@ import { TopBar } from './topbar/TopBar.js';
 import type { LayoutMode } from './layout/layoutMode.js';
 import { TrainingBar } from './trainbar/TrainingBar.js';
 import { useEngine } from './engine.js';
+import { ResizeHandle } from './layout/ResizeHandle.js';
+import {
+  REGION_LIMITS,
+  clampSize,
+  dragSize,
+  pctCss,
+  percent,
+  stepSize,
+  type RegionSizes,
+} from './layout/regionSizes.js';
 
 export const NOTICE = 'Tinker needs a larger screen. Use a tablet or a laptop.';
 
@@ -30,8 +40,13 @@ export function gridFor(
     train: boolean;
   },
   mode: LayoutMode = 'landscape',
+  sizes: Pick<RegionSizes, 'resultsWidth' | 'resultsBand'> = {
+    resultsWidth: null,
+    resultsBand: null,
+  },
 ): CSSProperties | undefined {
-  if (on.top && on.palette && on.results && on.train) return undefined;
+  const custom = mode === 'portrait' ? sizes.resultsBand !== null : sizes.resultsWidth !== null;
+  if (on.top && on.palette && on.results && on.train && !custom) return undefined;
   if (mode === 'portrait') {
     // One column, top to bottom: top bar, palette strip, canvas, results band, training bar.
     const rows: string[] = [];
@@ -43,7 +58,14 @@ export function gridFor(
     if (on.top) add('top', 'minmax(48px, auto)');
     if (on.palette) add('palette', 'auto');
     add('canvas', 'minmax(0, 1fr)');
-    if (on.results) add('results', PORTRAIT_RESULTS);
+    if (on.results) {
+      add(
+        'results',
+        sizes.resultsBand === null
+          ? PORTRAIT_RESULTS
+          : `clamp(120px, ${pctCss(sizes.resultsBand)}, 50%)`,
+      );
+    }
     if (on.train) add('train', 'minmax(56px, auto)');
     return {
       gridTemplateColumns: 'minmax(0, 1fr)',
@@ -54,8 +76,10 @@ export function gridFor(
   // The canvas keeps the 55% share only when both side regions are there; otherwise it takes the rest.
   const cols = [
     on.palette ? 'minmax(140px, 15%)' : null,
-    on.palette && on.results ? 'minmax(0, 55%)' : 'minmax(0, 1fr)',
-    on.results ? 'minmax(0, 30%)' : null,
+    on.palette && on.results && sizes.resultsWidth === null ? 'minmax(0, 55%)' : 'minmax(0, 1fr)',
+    on.results
+      ? `minmax(0, ${sizes.resultsWidth === null ? '30%' : pctCss(sizes.resultsWidth)})`
+      : null,
   ].filter((c) => c !== null);
   const mid = [on.palette ? 'palette' : null, 'canvas', on.results ? 'results' : null].filter(
     (a) => a !== null,
@@ -89,12 +113,32 @@ export function App() {
   const results = useRegionShown('results');
   const train = useRegionShown('training-bar');
   const palette = useStore((s) => s.show?.palette?.length !== 0);
+  const sizes = useStore((s) => s.regionSizes);
+  const setSize = useStore((s) => s.setRegionSize);
+  const appRef = useRef<HTMLDivElement>(null);
+  // The results region's size is a drag handle's value: the width of the column (landscape) or the
+  // height of the band (portrait), as a fraction of the app grid.
+  const portrait = mode === 'portrait';
+  const key = portrait ? 'resultsBand' : 'resultsWidth';
+  const extent = (): number => {
+    const r = appRef.current?.getBoundingClientRect();
+    const e = portrait ? r?.height : r?.width;
+    return e && e > 0 ? e : portrait ? window.innerHeight : window.innerWidth;
+  };
+  const current = (): number => {
+    const set = sizes[key];
+    if (set !== null) return set;
+    const r = appRef.current?.querySelector('[data-region="results"]')?.getBoundingClientRect();
+    const px = portrait ? r?.height : r?.width;
+    return px && px > 0 ? clampSize(key, px / extent()) : REGION_LIMITS[key].def;
+  };
   return (
     <>
       <div
         className={styles.app}
         data-layout={mode}
-        style={gridFor({ top, palette, results, train }, mode)}
+        ref={appRef}
+        style={gridFor({ top, palette, results, train }, mode, sizes)}
       >
         {top && (
           <header className={`${styles.region} ${styles.top}`} data-region="top-bar">
@@ -119,6 +163,24 @@ export function App() {
           <section className={`${styles.region} ${styles.results}`} data-region="results">
             <ResultsPanels />
           </section>
+        )}
+        {results && (
+          <ResizeHandle
+            axis={portrait ? 'y' : 'x'}
+            strip="centered"
+            className={portrait ? styles.resizeBand : styles.resizeWidth}
+            testId="resize-results"
+            label={portrait ? 'Resize the results band' : 'Resize the results column'}
+            now={percent(sizes[key] ?? REGION_LIMITS[key].def)}
+            min={percent(REGION_LIMITS[key].min)}
+            max={percent(REGION_LIMITS[key].max)}
+            begin={() => {
+              const start = current();
+              const ext = extent();
+              return (d) => setSize(key, dragSize(key, start, d, ext, -1));
+            }}
+            onStep={(dir, big) => setSize(key, stepSize(key, current(), dir, big, -1))}
+          />
         )}
         {train && (
           <footer className={`${styles.region} ${styles.train}`} data-region="training-bar">
