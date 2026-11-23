@@ -27,7 +27,10 @@
       "loss-mode-likelihood",
       "loss-mode-total",
       "loss-mode-mean"
-    ]
+    ],
+    "panelTabs": {
+      "loss": ["model", "loss"]
+    }
   },
   "labels": {
     "loss-readout": "Score",

@@ -168,6 +168,35 @@ describe('preset show (progressive disclosure)', () => {
     expect(r.error).toMatch(re);
     expect(r.error).toMatch(/^[A-Z].*\.$/);
   });
+  test('panelTabs is kept and survives a save round trip', () => {
+    const show = { panelTabs: { loss: ['model', 'loss', 'model'], fit: ['loss'] } };
+    const r = parseFile({ ...base(), show });
+    const kept = r.ok && 'show' in r.file ? r.file.show : undefined;
+    expect(kept).toEqual({ panelTabs: { loss: ['model', 'loss'], fit: ['loss'] } });
+    const r2 = parseFile(JSON.parse(JSON.stringify({ ...base(), show: kept })));
+    expect(r2.ok && 'show' in r2.file && r2.file.show).toEqual(kept);
+  });
+  test.each([
+    [
+      'unknown panel',
+      { panelTabs: { chart: ['model'] } },
+      /names "chart", which is not a results panel\.$/,
+    ],
+    [
+      'unknown tab',
+      { panelTabs: { loss: ['full'] } },
+      /the tab "full", but only "model" and "loss"/,
+    ],
+    ['empty list', { panelTabs: { loss: [] } }, /gives "loss" no tabs/],
+    ['not a list', { panelTabs: { loss: 'model' } }, /gives "loss" no tabs/],
+    ['not an object', { panelTabs: ['loss'] }, /must be an object from panel ids/],
+  ])('panelTabs: %s gives one sentence', (_n, show, re) => {
+    const r = parseFile({ ...base(), show });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.error).toMatch(re);
+    expect(r.error).toMatch(/^[A-Z].*\.$/);
+  });
   test('show must be an object', () => {
     expect(parseFile({ ...base(), show: [] }).ok).toBe(false);
   });

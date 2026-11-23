@@ -80,9 +80,10 @@ export function ResultsPanels() {
   const labels = useStore((s) => s.preset?.labels);
   const tab = useViewTab();
   const split = useSplitTabs();
+  const panelTabs = useStore((s) => s.show?.panelTabs);
   const visible = order.filter(
     (p) =>
-      panelOnTab(p, tab, split) &&
+      panelOnTab(p, tab, split, panelTabs) &&
       panelListed(allowed, p) &&
       (p !== 'surface' || hasSurface) &&
       ((p !== 'loss-1d' && p !== 'step-log') ||

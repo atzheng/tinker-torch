@@ -43,7 +43,10 @@
       "btn-reset",
       "lr-slider",
       "step-count"
-    ]
+    ],
+    "panelTabs": {
+      "loss": ["model", "loss"]
+    }
   },
   "labels": {
     "loss-readout": "Score",

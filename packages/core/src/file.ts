@@ -24,7 +24,24 @@ export type Show = {
   ui?: string[];
   /** The tab the page opens on (CONTRACTS.md section 9, "Tabs"). Default `model`; never a tab `ui` hides. */
   tab?: 'model' | 'loss' | 'full';
+  /**
+   * Which of the model and loss tabs each results panel appears on (CONTRACTS.md section 12,
+   * "Panels on more than one tab"). A panel not listed keeps its default tab.
+   */
+  panelTabs?: Partial<Record<ResultsPanelId, ('model' | 'loss')[]>>;
 };
+/** The results panel ids (`data-panel` values): the web `PANEL_IDS`, listed here so a preset can be validated in core. */
+export const RESULTS_PANEL_IDS = [
+  'fit',
+  'loss',
+  'surface',
+  'histogram',
+  'loss-1d',
+  'step-log',
+  'examples',
+  'class-bars',
+] as const;
+export type ResultsPanelId = (typeof RESULTS_PANEL_IDS)[number];
 export type Preset = SaveFile & {
   title: string;
   prompt?: string;
@@ -364,9 +381,27 @@ function parseShow(v: unknown): Show | string | undefined {
     }
     out.tab = tab;
   }
+  const pt = v['panelTabs'];
+  if (pt !== undefined) {
+    if (!isRecord(pt))
+      return 'The preset "show.panelTabs" must be an object from panel ids to lists of tabs.';
+    const tabs: Partial<Record<ResultsPanelId, ('model' | 'loss')[]>> = {};
+    for (const [id, list] of Object.entries(pt)) {
+      if (!(RESULTS_PANEL_IDS as readonly string[]).includes(id))
+        return `The preset "show.panelTabs" names "${id}", which is not a results panel.`;
+      if (!Array.isArray(list) || list.length === 0)
+        return `The preset "show.panelTabs" gives "${id}" no tabs; list "model", "loss" or both.`;
+      for (const t of list) {
+        if (t !== 'model' && t !== 'loss')
+          return `The preset "show.panelTabs" gives "${id}" the tab ${JSON.stringify(t)}, but only "model" and "loss" are known.`;
+      }
+      tabs[id as ResultsPanelId] = [...new Set(list as ('model' | 'loss')[])];
+    }
+    out.panelTabs = tabs;
+  }
   for (const k of Object.keys(v)) {
-    if (k !== 'palette' && k !== 'ui' && k !== 'tab') {
-      return `The preset "show" has "${k}", but only "palette", "ui" and "tab" are known.`;
+    if (k !== 'palette' && k !== 'ui' && k !== 'tab' && k !== 'panelTabs') {
+      return `The preset "show" has "${k}", but only "palette", "ui", "tab" and "panelTabs" are known.`;
     }
   }
   return out;
