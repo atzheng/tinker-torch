@@ -3,6 +3,7 @@ import { useAnalysis, useWeights } from '../../state/derived.js';
 import { ValueField } from '../ValueField.js';
 import { featureName, fitText } from '../../state/names.js';
 import { NodeShell } from './NodeShell.js';
+import { ScalarValuePill, useBiasValue } from '../ScalarValuePill.js';
 import { SelectField, editSetting } from './fields.js';
 import type { NodeOf, WebPiece } from './types.js';
 
@@ -91,10 +92,26 @@ export const scalewPiece: WebPiece<'scalew'> = {
   Neuron: noNeuron('scalew'),
   Fields: ScalarValue,
 };
+/** A Bias shows its live value on the piece, as a pill that can be dragged (tinker-gw6). */
+function BiasLayer(p: { node: NodeOf<'bias'>; w: number; h: number; scale?: number }) {
+  const known = useBiasValue(p.node.id) !== undefined;
+  return (
+    <NodeShell
+      piece="bias"
+      w={p.w}
+      h={p.h}
+      scale={p.scale}
+      name="Bias"
+      {...(known ? {} : { glyph: '+b' })}
+      inPorts={1}
+      outPort
+    >
+      <ScalarValuePill node={p.node.id} w={p.w} h={p.h} scale={p.scale} />
+    </NodeShell>
+  );
+}
 export const biasPiece: WebPiece<'bias'> = {
-  Layer: ({ w, h, scale }) => (
-    <NodeShell piece="bias" w={w} h={h} scale={scale} name="Bias" glyph="+b" inPorts={1} outPort />
-  ),
+  Layer: BiasLayer,
   Neuron: noNeuron('bias'),
   Fields: ScalarValue,
 };

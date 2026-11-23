@@ -60,7 +60,10 @@ export function beginWeightEdit(t: WeightTarget): WeightEdit | null {
     useStore.setState({ error: DIVERGED_FIRST });
     return null;
   }
-  if (lockedIds().includes(t.node)) {
+  // A lock protects what a piece computes (settings, wires, pins), not the number a free Weight or
+  // Bias has learned: a lesson locks its Bias and still has the student set it (tinker-gw6).
+  const scalar = t.kind === 'scalew' || t.kind === 'bias';
+  if (!scalar && lockedIds().includes(t.node)) {
     useStore.setState({ error: LOCKED_MESSAGE });
     return null;
   }
