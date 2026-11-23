@@ -4,8 +4,8 @@
   "title": "Lecture 1, stage 1: stepping downhill",
   "prompt": "Start at 0.5. Each Step moves the number a little in the direction that lowers the surprise.",
   "instructions": [
-    "Read the start value (0.5) and the slope on the curve. Predict where one Step takes you: new value = old value minus step size times slope.",
-    "Press Step once and check your prediction in the log.",
+    "On the Loss tab, read the slope on the curve at the start value (0.5). Predict where one Step takes you: new value = old value minus step size times slope.",
+    "Press Step once and check your prediction in the log. The number itself is on the Model tab.",
     "Keep pressing Step. Where does the number settle? Press Reset to go back to 0.5."
   ],
   "checks": [
@@ -24,6 +24,7 @@
     "tab": "loss",
     "ui": [
       "preset-menu",
+      "tab-model",
       "tab-loss",
       "instructions",
       "preset-prompt",

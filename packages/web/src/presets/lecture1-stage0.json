@@ -4,8 +4,8 @@
   "title": "Lecture 1, stage 0: one number, how likely is the data?",
   "prompt": "Each delivery is on time or late. Pick one number, the chance a delivery is late, so that these 30 deliveries look as likely as possible.",
   "instructions": [
-    "Set the number to 0.5 and read the score. Then try 0.2, 0.4 and 0.7.",
-    "Watch the curve: the dot is where you are. Which value of the number gives the highest likelihood?",
+    "On the Model tab, tap the number and set it to 0.5. On the Loss tab, read the score. Then try 0.2, 0.4 and 0.7.",
+    "On the Loss tab, watch the curve: the dot is where you are. Which value of the number gives the highest likelihood?",
     "Switch the score to Total surprise and to Average surprise. Which direction is better for each?"
   ],
   "locked": ["bias", "y", "err", "loss"],
@@ -14,6 +14,7 @@
     "tab": "loss",
     "ui": [
       "preset-menu",
+      "tab-model",
       "tab-loss",
       "instructions",
       "preset-prompt",
