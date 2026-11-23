@@ -5,6 +5,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { App } from '../src/App.js';
 import { deleteSelection } from '../src/canvas/actions.js';
 import { mlpGraph } from './mlpGraph.js';
+import { RESULTS_PANEL_IDS } from '@tinker/core';
+import { PANEL_IDS } from '../src/results/panelLayout.js';
 import { useStore } from '../src/state/store.js';
 import { loadText, saveText } from '../src/topbar/FileMenu.js';
 
@@ -222,4 +224,41 @@ test('an unwired Add dropped on either tab stays in view on both', () => {
   expect(q('node-free-add')).not.toBeNull();
   act(() => s().setViewTab('loss'));
   expect(q('node-free-add')?.getAttribute('data-stub')).toBe('false');
+});
+
+test('show.panelTabs puts a panel on several tabs; unlisted panels keep their default tab', () => {
+  mount();
+  act(() => void loadText(presetText({ panelTabs: { loss: ['model', 'loss'] } })));
+  expect(s().show?.panelTabs).toEqual({ loss: ['model', 'loss'] });
+  expect(q('fit-plot')).not.toBeNull();
+  expect(q('loss-curves')).not.toBeNull(); // the loss panel on the model tab as well
+  act(() => (q('tab-loss') as HTMLElement).click());
+  expect(q('loss-curves')).not.toBeNull();
+  expect(q('fit-plot')).toBeNull();
+  act(() => (q('tab-full') as HTMLElement).click());
+  expect(q('loss-curves')).not.toBeNull();
+  expect(q('fit-plot')).not.toBeNull();
+
+  // moving a panel off its default tab
+  act(() => void loadText(presetText({ panelTabs: { fit: ['loss'] } })));
+  act(() => (q('tab-model') as HTMLElement).click());
+  expect(q('fit-plot')).toBeNull();
+  act(() => (q('tab-loss') as HTMLElement).click());
+  expect(q('fit-plot')).not.toBeNull();
+
+  // absent: as before
+  act(() => void loadText(presetText({})));
+  act(() => (q('tab-model') as HTMLElement).click());
+  expect(q('fit-plot')).not.toBeNull();
+  expect(q('loss-curves')).toBeNull();
+});
+
+test('show.panelTabs is saved back with the preset', () => {
+  mount();
+  loadText(presetText({ panelTabs: { loss: ['model', 'loss'] } }));
+  expect(JSON.parse(saveText(false)).show).toEqual({ panelTabs: { loss: ['model', 'loss'] } });
+});
+
+test('core RESULTS_PANEL_IDS equals the web PANEL_IDS', () => {
+  expect([...RESULTS_PANEL_IDS]).toEqual([...PANEL_IDS]);
 });

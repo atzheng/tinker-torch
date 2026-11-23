@@ -272,3 +272,21 @@ test('score readout without the chart on stages 0 and 1; stages that list panel-
     m.done();
   }
 });
+
+test('the loss panel is also on the model tab (show.panelTabs): score on stages 0 and 1, the chart on stages 2 to 5', () => {
+  for (const i of [0, 1, 2, 3, 4, 5]) {
+    load(NAMES[i] as string);
+    const m = mount();
+    act(() => s().setViewTab('model'));
+    expect(m.host.querySelector('[data-panel="loss"]'), `stage ${i} model tab`).not.toBeNull();
+    expect(m.has('loss-readout'), `stage ${i} readout`).toBe(true);
+    expect(m.host.querySelector('[aria-label="Loss curves"]') !== null, `stage ${i} chart`).toBe(
+      i >= 2,
+    );
+    if (i === 0) expect(m.host.querySelector('[data-panel="class-bars"]')).not.toBeNull();
+    act(() => s().setViewTab('loss'));
+    expect(m.host.querySelector('[data-panel="loss"]'), `stage ${i} loss tab`).not.toBeNull();
+    if (i <= 1) expect(m.host.querySelector('[data-panel="loss-1d"]')).not.toBeNull();
+    m.done();
+  }
+});

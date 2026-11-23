@@ -103,7 +103,7 @@ export function useRegionShown(
       const tab = effectiveTab(s.viewTab, s.show?.ui);
       return PANEL_IDS.map((p) => [p, `panel-${p}`] as const).some(
         ([p, id]) =>
-          panelOnTab(p, tab, tabsSplit(s.show?.ui)) &&
+          panelOnTab(p, tab, tabsSplit(s.show?.ui), s.show?.panelTabs) &&
           panelListed(s.show?.ui, p) &&
           (id !== 'panel-surface' || surface) &&
           (id !== 'panel-histogram' || histogram) &&

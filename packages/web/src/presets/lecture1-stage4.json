@@ -45,7 +45,10 @@
       "btn-run",
       "btn-random-start",
       "param-count"
-    ]
+    ],
+    "panelTabs": {
+      "loss": ["model", "loss"]
+    }
   },
   "labels": {
     "loss-readout": "Score",
