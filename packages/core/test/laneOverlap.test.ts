@@ -70,14 +70,18 @@ function overlaps(g: Graph): string[] {
           const o = overlap(p, q);
           // Vertical runs must also keep `laneClear` apart end to end; horizontal ones only must not overlap.
           const vertical = p[0] === p[2];
-          if (o > (vertical ? -LAYOUT.laneClear : 0)) found.push(`${wi.edge}/${wj.edge}: ${p.join(',')} ~ ${q.join(',')} (${o})`);
+          if (o > (vertical ? -LAYOUT.laneClear : 0))
+            found.push(`${wi.edge}/${wj.edge}: ${p.join(',')} ~ ${q.join(',')} (${o})`);
         }
     }
   }
   return found;
 }
 
-type Before = Record<string, { size: [number, number]; wires: [number, [number, number][], [number, number]][] }>;
+type Before = Record<
+  string,
+  { size: [number, number]; wires: [number, [number, number][], [number, number]][] }
+>;
 const before = JSON.parse(
   readFileSync(new URL('./fixtures/preset-wires-before-lanes.json', import.meta.url), 'utf8'),
 ) as Before;
@@ -120,12 +124,17 @@ describe('layouts without overlaps are unchanged', () => {
     }
   });
 
-  test('the skip preset: lin1 -> add.b no longer continues lin2 -> add.a\'s vertical', () => {
+  test("the skip preset: lin1 -> add.b no longer continues lin2 -> add.a's vertical", () => {
     const r = parseFile(JSON.parse(readFileSync(new URL('skip.json', dir), 'utf8')));
     if (!r.ok) throw new Error(r.error);
     const g = r.file.graph;
     const L = layoutLayers(g, analyse(g, infoOf(g)));
-    const xs = (edge: number) => new Set(segs(L.wires.find((w) => w.edge === edge)?.points ?? []).filter((s) => s[0] === s[2] && s[1] !== s[3]).map((s) => s[0]));
+    const xs = (edge: number) =>
+      new Set(
+        segs(L.wires.find((w) => w.edge === edge)?.points ?? [])
+          .filter((s) => s[0] === s[2] && s[1] !== s[3])
+          .map((s) => s[0]),
+      );
     const skipEdge = g.edges.findIndex((e) => e[1] === 'add1.a');
     const nearEdge = g.edges.findIndex((e) => e[1] === 'add1.b');
     const common = [...xs(skipEdge)].filter((x) => xs(nearEdge).has(x));
@@ -168,10 +177,22 @@ describe('lanes with several skip wires into one variadic port', () => {
       const b = L.nodes[graph.edges[w.edge]?.[1].split('.')[0] ?? ''];
       const last = w.points[w.points.length - 1];
       expect(last?.[0]).toBe(b?.x);
-      const onRun = segs(w.points).some((s) => s[1] === s[3] && w.labelAt[1] === s[1] && w.labelAt[0] >= Math.min(s[0], s[2]) && w.labelAt[0] <= Math.max(s[0], s[2]));
+      const onRun = segs(w.points).some(
+        (s) =>
+          s[1] === s[3] &&
+          w.labelAt[1] === s[1] &&
+          w.labelAt[0] >= Math.min(s[0], s[2]) &&
+          w.labelAt[0] <= Math.max(s[0], s[2]),
+      );
       expect(onRun).toBe(true);
     }
-    const lanes = new Set(L.wires.flatMap((w) => segs(w.points).filter((s) => s[0] === s[2] && s[1] !== s[3]).map((s) => s[0])));
+    const lanes = new Set(
+      L.wires.flatMap((w) =>
+        segs(w.points)
+          .filter((s) => s[0] === s[2] && s[1] !== s[3])
+          .map((s) => s[0]),
+      ),
+    );
     expect(lanes.size).toBeGreaterThan(3);
   });
 });

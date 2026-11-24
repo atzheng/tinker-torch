@@ -468,7 +468,8 @@ function layoutCore(
       points,
       labelAt,
     });
-    if (!isManual) autoWires.push({ wire: wires.length - 1, from: e.from, relabel: !(fanned && cb - ca === 1) });
+    if (!isManual)
+      autoWires.push({ wire: wires.length - 1, from: e.from, relabel: !(fanned && cb - ca === 1) });
   }
   separateLanes(wires, autoWires);
   if (manual.size === 0) return { boxes, wires, size: [width, height] };
