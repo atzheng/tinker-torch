@@ -12,6 +12,8 @@ import { CORE_PIECES, type CorePiece, type TorchCtx } from './registry.js';
 
 export type TorchSpan = { node: NodeId; from: number; to: number };
 export type TorchFold = { from: number; to: number; label: string };
+/** Current parameter values as plain host data, keyed like `analysis.paramShapes` (CONTRACTS.md section 14). */
+export type TorchParams = Record<NodeId, Record<string, ArrayLike<number>>>;
 export type TorchCode = { text: string; spans: TorchSpan[]; folds: TorchFold[] };
 
 const PY_KEYWORDS = [
@@ -53,10 +55,10 @@ export function torchScript(
   graph: Graph,
   analysis: Analysis,
   dataset: Dataset,
-  opts?: { steps?: number },
+  opts?: { steps?: number; params?: TorchParams },
 ): TorchCode | null {
   try {
-    return build(graph, analysis, dataset, opts?.steps ?? 1000);
+    return build(graph, analysis, dataset, opts?.steps ?? 1000, opts?.params);
   } catch {
     return null;
   }
@@ -69,6 +71,7 @@ function build(
   analysis: Analysis,
   dataset: Dataset,
   steps: number,
+  params?: TorchParams,
 ): TorchCode | null {
   if (!analysis.trainable || analysis.lossNode === null) return null;
   const lossNode = analysis.lossNode;
@@ -308,6 +311,15 @@ function build(
     out.blank();
   }
 
+  // parameters: the current values as a state dict, kept apart from the model code
+  const state = params === undefined ? null : stateEntries(analysis, byId, params, name);
+  if (state !== null && state.length > 0) {
+    out.line('state = {');
+    for (const e of state) out.entry(e);
+    out.line('}');
+    out.blank();
+  }
+
   // Model
   const forward: Stmt[] = modelIds.map((id) => ({
     nodes: [id],
@@ -339,6 +351,7 @@ function build(
   const tr = graph.train;
   const lr = pyFloat(tr.lr);
   out.line('model = Model()');
+  if (state !== null && state.length > 0) out.line('model.load_state_dict(state)');
   out.line(
     tr.optimizer === 'adam'
       ? `optimizer = torch.optim.Adam(model.parameters(), lr=${lr})`
@@ -385,6 +398,88 @@ function build(
   return out.result();
 }
 
+type StateEntry = {
+  node: NodeId;
+  key: string;
+  /** Row-major values in torch's layout. */
+  values: number[];
+  rows: number;
+  cols: number;
+  /** A matrix is `rows` bracketed lines; a vector one bracketed line; a scalar is `[[v]]`. */
+  kind: 'matrix' | 'vector' | 'scalar';
+  label: string;
+};
+
+/**
+ * The state dict entries (torch layout) for every parameter node, or null unless `params` covers all
+ * of `analysis.paramNodes` with exactly the analysed sizes and finite values.
+ */
+function stateEntries(
+  analysis: Analysis,
+  byId: ReadonlyMap<NodeId, Node>,
+  params: TorchParams,
+  name: (id: NodeId) => string,
+): StateEntry[] | null {
+  const entries: StateEntry[] = [];
+  const get = (id: NodeId, field: string, size: number): number[] | null => {
+    const v = params[id]?.[field];
+    if (v === undefined || v.length !== size) return null;
+    const a = Array.from(v);
+    return a.every(Number.isFinite) ? a : null;
+  };
+  for (const id of analysis.paramNodes) {
+    const node = byId.get(id);
+    const shapes = analysis.paramShapes[id];
+    if (node === undefined || shapes === undefined) return null;
+    const n = name(id);
+    if (node.type === 'linear') {
+      const [inW, outW] = shapes['W'] ?? [];
+      if (inW === undefined || outW === undefined) return null;
+      const w = get(id, 'W', inW * outW);
+      if (w === null) return null;
+      const t: number[] = [];
+      for (let o = 0; o < outW; o++)
+        for (let i = 0; i < inW; i++) t.push(w[i * outW + o] as number);
+      entries.push({
+        node: id, key: `${n}.weight`, values: t, rows: outW, cols: inW, kind: 'matrix',
+        label: `${outW} × ${inW}`,
+      }); // prettier-ignore
+      if (node.bias) {
+        const b = get(id, 'b', outW);
+        if (b === null) return null;
+        entries.push({
+          node: id, key: `${n}.bias`, values: b, rows: 1, cols: outW, kind: 'vector',
+          label: `${outW}`,
+        }); // prettier-ignore
+      }
+    } else if (node.type === 'lookup') {
+      const [k, width] = shapes['W'] ?? [];
+      if (k === undefined || width === undefined) return null;
+      const w = get(id, 'W', k * width);
+      if (w === null) return null;
+      entries.push({
+        node: id, key: `${n}.weight`, values: w, rows: k, cols: width, kind: 'matrix',
+        label: `${k} × ${width}`,
+      }); // prettier-ignore
+    } else if (node.type === 'scalew' || node.type === 'bias') {
+      const v = get(id, node.type === 'scalew' ? 'W' : 'b', 1);
+      if (v === null) return null;
+      entries.push({
+        node: id,
+        key: n,
+        values: v,
+        rows: 1,
+        cols: 1,
+        kind: 'scalar',
+        label: '1 × 1',
+      });
+    } else {
+      return null; // a parameter piece this script does not know how to load
+    }
+  }
+  return entries;
+}
+
 /** Builds the text with offsets, so spans and folds are exact. */
 class Writer {
   private text = '';
@@ -421,6 +516,32 @@ class Writer {
     this.text += ']';
     this.folds.push({ from, to: this.text.length, label: `${rows} rows` });
     this.text += ', dtype=torch.float32)\n';
+  }
+
+  /** One state dict entry (indent 1): `'key': torch.tensor(<values>),`; the values are a fold unless a scalar. */
+  entry(e: StateEntry): void {
+    const start = this.text.length;
+    this.text += `    '${e.key}': torch.tensor(`;
+    const from = this.text.length;
+    const v = (i: number): string => num(e.values[i] as number);
+    if (e.kind === 'scalar') {
+      this.text += `[[${v(0)}]]`;
+    } else if (e.kind === 'vector') {
+      this.text += `[${e.values.map((_, i) => v(i)).join(', ')}]`;
+    } else {
+      this.text += '[\n';
+      for (let r = 0; r < e.rows; r++) {
+        const row: string[] = [];
+        for (let c = 0; c < e.cols; c++) row.push(v(r * e.cols + c));
+        this.text += `        [${row.join(', ')}],\n`;
+      }
+      this.text += '    ]';
+    }
+    if (e.kind !== 'scalar') this.folds.push({ from, to: this.text.length, label: e.label });
+    this.text += '),\n';
+    const lineStart = start + 4;
+    const nl = this.text.indexOf('\n', lineStart);
+    this.spans.push({ node: e.node, from: lineStart, to: nl });
   }
 
   result(): TorchCode {

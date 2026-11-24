@@ -5,6 +5,7 @@ import { useAnalysis, useSelection } from '../state/derived.js';
 import { useUiShown } from '../state/disclosure.js';
 import type { Selection } from '../state/viewSlice.js';
 import { buildRows, firstSpan, lineOf, lineStarts, nodeAt, nodeOnLine } from './codeModel.js';
+import { useCodeParams } from './useCodeParams.js';
 import styles from './CodeView.module.css';
 
 /** The piece a selection is about, for highlighting its spans (a wire is about none). */
@@ -69,9 +70,10 @@ export function CodeView() {
   const selected = selectedNode(sel);
   const showCopy = useUiShown('code-copy');
   const showDownload = useUiShown('code-download');
+  const params = useCodeParams(analysis);
   const code: TorchCode | null = useMemo(
-    () => torchScript(graph, analysis, dataset),
-    [graph, analysis, dataset],
+    () => torchScript(graph, analysis, dataset, params ? { params } : undefined),
+    [graph, analysis, dataset, params],
   );
   const [open, setOpen] = useState<ReadonlySet<number>>(() => new Set());
   const [copied, setCopied] = useState<'yes' | 'no' | null>(null);

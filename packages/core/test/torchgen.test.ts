@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   analyse,
   fitTrees,
+  initParams,
   sample,
   torchScript,
   treeLeafCounts,
@@ -1037,5 +1038,131 @@ describe('torchScript', () => {
     const texts = l1.map((s) => code?.text.slice(s.from, s.to));
     expect(texts[0]).toBe('self.l1 = nn.Linear(1, 4, bias=True)');
     expect(texts[1]).toBe('l1 = self.l1(in_)');
+  });
+});
+
+/** Ramp values 1..n (times `k`), so a transpose is visible in the text. */
+const ramp = (n: number, k = 1): number[] => Array.from({ length: n }, (_, i) => (i + 1) * k);
+
+function genWith(g: Graph, params: Record<string, Record<string, ArrayLike<number>>>): TorchCode {
+  const ds = sample(g.data);
+  const a = analyse(g, ds.info, treeLeafCounts(fitTrees(g, ds)));
+  const code = torchScript(g, a, ds, { params });
+  if (code === null) throw new Error('expected a script');
+  return code;
+}
+
+describe('torchScript parameters (state dict)', () => {
+  const g = mlp();
+  const params = {
+    l1: { W: ramp(4), b: ramp(4, 0.5) },
+    l2: { W: ramp(4, 10), b: [0.25] },
+  };
+
+  test('MLP: a state dict before the Model class, loaded after model = Model()', () => {
+    const code = genWith(g, params);
+    const t = code.text;
+    expect(t.slice(t.indexOf('state = {'), t.indexOf('class Model'))).toMatchInlineSnapshot(`
+      "state = {
+          'l1.weight': torch.tensor([
+              [1],
+              [2],
+              [3],
+              [4],
+          ]),
+          'l1.bias': torch.tensor([0.5, 1, 1.5, 2]),
+          'l2.weight': torch.tensor([
+              [10, 20, 30, 40],
+          ]),
+          'l2.bias': torch.tensor([0.25]),
+      }
+
+      "
+    `);
+    expect(t).toContain('model = Model()\nmodel.load_state_dict(state)\noptimizer');
+    expect(t.indexOf('state = {')).toBeGreaterThan(t.indexOf('x_val = '));
+  });
+
+  test('Linear weight is transposed to torch [out, in]', () => {
+    const [n, e] = sq();
+    const g2 = graphOf(
+      [
+        { id: 'in', type: 'input', columns: ['x1', 'x2'] },
+        { id: 'lin', type: 'linear', out: 3, bias: false },
+        { id: 'top', type: 'linear', out: 1, bias: false },
+        { id: 'tgt', type: 'target' },
+        ...n,
+      ],
+      [['in', 'lin'], ['lin', 'top'], ['top', 'diff.a'], ['tgt', 'diff.b'], ...e],
+      { predictions: ['top'], loss: 'loss', set: 'plane' },
+    );
+    const code = genWith(g2, { lin: { W: [1, 2, 3, 4, 5, 6] }, top: { W: [7, 8, 9] } }); // lin: [in=2, out=3] row-major
+    expect(code.text).toContain('[1, 4],\n        [2, 5],\n        [3, 6],');
+    expect(code.text).not.toContain('lin.bias');
+  });
+
+  test('spans and folds: one span per entry on its first line, each fold is a bracketed literal', () => {
+    const code = genWith(g, params);
+    const entry = (key: string) => {
+      const from = code.text.indexOf(`'${key}'`);
+      return code.spans.find((s) => s.from === from);
+    };
+    expect(entry('l1.weight')?.node).toBe('l1');
+    expect(entry('l1.bias')?.node).toBe('l1');
+    expect(entry('l2.weight')?.node).toBe('l2');
+    const sp = entry('l2.weight');
+    expect(code.text.slice(sp?.from, sp?.to)).toBe("'l2.weight': torch.tensor([");
+    for (const s of code.spans) expect(code.text.slice(s.from, s.to)).not.toContain('\n');
+    const labels = code.folds.map((f) => f.label);
+    expect(labels).toContain('4 × 1');
+    expect(labels).toContain('1 × 4');
+    for (const f of code.folds) {
+      expect(code.text[f.from]).toBe('[');
+      expect(code.text[f.to - 1]).toBe(']');
+    }
+  });
+
+  test('scalar Weight and Bias load as (1, 1) tensors under the piece name', () => {
+    const [n, e] = sq();
+    const g3 = graphOf(
+      [
+        { id: 'c1', type: 'column', name: 'x1' },
+        { id: 'w1', type: 'scalew' },
+        { id: 'b', type: 'bias' },
+        { id: 'tgt', type: 'target' },
+        ...n,
+      ],
+      [['c1', 'w1'], ['w1', 'b'], ['b', 'diff.a'], ['tgt', 'diff.b'], ...e],
+      { predictions: ['b'], loss: 'loss' },
+    );
+    const code = genWith(g3, { w1: { W: [0.123456789] }, b: { b: [-2] } });
+    expect(code.text).toContain(
+      "    'w1': torch.tensor([[0.1234568]]),\n    'b': torch.tensor([[-2]]),\n",
+    );
+    expect(code.text).toContain('model.load_state_dict(state)');
+  });
+
+  test('missing, mismatched or non-finite params: no section and no load', () => {
+    const base = gen(g)?.text;
+    const bads: Record<string, Record<string, ArrayLike<number>>>[] = [
+      {},
+      { l1: params.l1 },
+      { ...params, l2: { W: ramp(3), b: [1] } },
+      { ...params, l1: { W: ramp(4) } },
+      { ...params, l2: { W: [1, 2, 3, NaN], b: [1] } },
+    ];
+    for (const bad of bads) {
+      expect(genWith(g, bad).text).toBe(base);
+    }
+    expect(base).not.toContain('state');
+    expect(base).not.toContain('load_state_dict');
+  });
+
+  test('initParams gives a section', () => {
+    const ds = sample(g.data);
+    const a = analyse(g, ds.info, treeLeafCounts(fitTrees(g, ds)));
+    const text = torchScript(g, a, ds, { params: initParams(a, g.train.seed) })?.text ?? '';
+    expect(text).toContain("'l1.weight'");
+    expect(text).toContain('model.load_state_dict(state)');
   });
 });

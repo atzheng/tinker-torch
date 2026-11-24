@@ -10,6 +10,7 @@ import {
   analyse,
   classCount,
   fitTrees,
+  initParams,
   isBundled,
   loadRealSet,
   parseFile,
@@ -31,13 +32,22 @@ const out = process.env.SMOKE_OUT ?? '';
 const EXPECTED_NAN: Record<string, string> = {
   'lecture1-stage2':
     'bias straight into log loss at lr 0.5; the lesson has the student add a sigmoid',
+  'lecture1-stage0':
+    'the app starts the bias outside (0, 1) for a raw log loss: step 0 is NaN there too',
+  'lecture1-stage1':
+    'the app starts the weight outside (0, 1) for a raw log loss: step 0 is NaN there too',
+  prob_direct_log_loss:
+    'the app starts a raw probability outside (0, 1) for a raw log loss: NaN there too',
 };
 
 type Entry = { name: string; script: string | null; skip?: string; expectedNaN?: string };
 
 function scriptOf(graph: Graph, ds: Dataset): string | null {
   const a = analyse(graph, ds.info, treeLeafCounts(fitTrees(graph, ds)));
-  return torchScript(graph, a, ds, { steps: 50 })?.text ?? null;
+  // the engine's initial parameters (initParams), so the strict load_state_dict is exercised for every case
+  return (
+    torchScript(graph, a, ds, { steps: 50, params: initParams(a, graph.train.seed) })?.text ?? null
+  );
 }
 
 type Fixture = {
@@ -135,12 +145,18 @@ test('dump scripts', async () => {
     .filter((f) => f.endsWith('.json'))
     .sort()) {
     const name = f.replace(/\.json$/, '');
-    await add('fixture', name, () => {
-      const fx = JSON.parse(readFileSync(join(fixtureDir, f), 'utf8')) as Fixture;
-      const p = parseGraph(fx.graph); // version 1 fixtures are migrated
-      if (!p.ok) throw new Error(p.error);
-      return scriptOf(p.graph, fixtureDataset(fx, p.graph));
-    });
+    const nan = EXPECTED_NAN[name];
+    await add(
+      'fixture',
+      name,
+      () => {
+        const fx = JSON.parse(readFileSync(join(fixtureDir, f), 'utf8')) as Fixture;
+        const p = parseGraph(fx.graph); // version 1 fixtures are migrated
+        if (!p.ok) throw new Error(p.error);
+        return scriptOf(p.graph, fixtureDataset(fx, p.graph));
+      },
+      nan ? { expectedNaN: nan } : {},
+    );
   }
   writeFileSync(join(out, 'manifest.json'), JSON.stringify(entries, null, 1));
 });
