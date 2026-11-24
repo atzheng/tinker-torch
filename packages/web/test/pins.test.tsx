@@ -8,6 +8,7 @@ import { mlpGraph as initialGraph } from './mlpGraph.js';
 import { useStore } from '../src/state/store.js';
 import { Pins } from '../src/results/Pins.js';
 import { PIN_LIMIT } from '../src/results/pinsModel.js';
+import { GRID_N } from '../src/results/FitPlot.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -73,8 +74,8 @@ test('a 1-D pin stores a copy of the model curve on the fixed grid', () => {
   runSome();
   click(q('pin-add')[0]);
   const fit = s().pins[0]?.fit;
-  expect(fit?.x.length).toBe(200);
-  expect(fit?.y.length).toBe(200);
+  expect(fit?.x.length).toBe(GRID_N);
+  expect(fit?.y.length).toBe(GRID_N);
   expect(Array.from(fit?.y ?? []).every(Number.isFinite)).toBe(true);
   const y0 = fit?.y[100];
   act(() => s().stepOnce());
