@@ -64,6 +64,7 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
   const predictions = useStore((s) => s.graph.predictions);
   const [showTruthOpt, setShowTruth] = useUiOption('truth-toggle');
   const showTruth = showTruthOpt && !categorical;
+  const [showVal, setShowVal] = useUiOption('val-points-toggle', true);
   const overlay0 = useOverlay1D();
   const overlay = categorical ? null : overlay0;
   const pins = useStore((s) => s.pins);
@@ -142,7 +143,7 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
       if (v > hi) hi = v;
     };
     for (let i = 0; i < dataset.nTrain; i++) see(pointY(dataset.yTrain[i] ?? Number.NaN));
-    for (let i = 0; i < dataset.nVal; i++) see(pointY(dataset.yVal[i] ?? Number.NaN));
+    if (showVal) for (let i = 0; i < dataset.nVal; i++) see(pointY(dataset.yVal[i] ?? Number.NaN));
     if (showTruth) for (let i = 0; i < fixed.f.length; i++) see(fixed.f[i] ?? Number.NaN);
     if (overlay) for (let i = 0; i < overlay.mean.length; i++) see(overlay.mean[i] ?? Number.NaN);
     if (!(hi >= lo)) [lo, hi] = [-1, 1];
@@ -167,11 +168,9 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
     );
     // category index plus a fixed per-point offset (the points of a category spread sideways)
     const at = (v: number, i: number) => xs.px(categorical ? v + categoryJitter(i) : v);
-    const legend: LegendItem[] = [
-      { label: 'train', color: c.train, kind: 'dot' },
-      { label: 'val', color: c.val, kind: 'ring' },
-      { label: 'model', color: c.text, kind: 'line' },
-    ];
+    const legend: LegendItem[] = [{ label: 'train', color: c.train, kind: 'dot' }];
+    if (showVal) legend.push({ label: 'val', color: c.val, kind: 'ring' });
+    legend.push({ label: 'model', color: c.text, kind: 'line' });
     if (classCurves) {
       legend.length = 0;
       classCurves.forEach((_, i) =>
@@ -281,7 +280,7 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
     ctx.strokeStyle = c.val;
     ctx.lineWidth = 1.8;
     ctx.beginPath();
-    for (let i = 0; i < dataset.nVal; i++) {
+    for (let i = 0; i < (showVal ? dataset.nVal : 0); i++) {
       const px = at(fixed.xv[i] ?? 0, i);
       const py = ys.px(pointY(dataset.yVal[i] ?? 0));
       if (kind === 'multiclass') {
@@ -323,12 +322,15 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
     curve,
     classCurves,
     showTruth,
+    showVal,
     overlay,
     pins,
     col,
     categorical,
   ]);
   const showTruthToggle = useUiShown('truth-toggle');
+  const showValToggle = useUiShown('val-points-toggle');
+  const lblVal = useUiLabel('val-points-toggle', 'Validation points');
   const showResample = useUiShown('resample-run');
   const showPicker = useUiShown('prediction-picker');
   const lblTruth = useUiLabel('truth-toggle', 'True function');
@@ -347,6 +349,18 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
               aria-label={lblTruth}
             />
             {lblTruth}
+          </label>
+        )}
+        {showValToggle && (
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={showVal}
+              onChange={(e) => setShowVal(e.target.checked)}
+              data-testid="val-points-toggle"
+              aria-label={lblVal}
+            />
+            {lblVal}
           </label>
         )}
         {showPicker && <PredictionPicker />}

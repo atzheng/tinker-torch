@@ -64,6 +64,7 @@ export const OPTION_BOOL_IDS = [
   'loss-1d-explored',
   'loss-log-toggle',
   'truth-toggle',
+  'val-points-toggle',
 ] as const;
 /** The loss readout mode option key and its values. */
 export const OPTION_LOSS_MODE = 'loss-mode';
@@ -139,6 +140,8 @@ export const UI_IDS = {
   // Controls inside the results panels; they never make the results region itself visible.
   'panel-controls': [
     'truth-toggle',
+    // Validation points on the fit plot (tinker-xe9). Unlike other toggles it starts on; a preset turns it off with options.
+    'val-points-toggle',
     'resample-run',
     'prediction-picker',
     'loss-readout',
@@ -201,6 +204,7 @@ export const LABEL_IDS: readonly string[] = [
   'reset-view',
   ...UI_IDS.results,
   'truth-toggle',
+  'val-points-toggle',
   'loss-readout',
   'loss-mode-likelihood',
   'loss-mode-total',

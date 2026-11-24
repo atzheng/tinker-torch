@@ -83,7 +83,14 @@ test('stage 1: depth only, training curve without validation, no data controls b
   const m = mount();
   expect(m.has('tree-depth')).toBe(false); // the inspector opens on a selection
   for (const id of ['btn-run', 'btn-reset', 'data-resample']) expect(m.has(id), id).toBe(true);
-  for (const id of ['data-n', 'data-noise', 'data-seed', 'truth-toggle', 'loss-readout-val']) {
+  for (const id of [
+    'data-n',
+    'data-noise',
+    'data-seed',
+    'truth-toggle',
+    'val-points-toggle',
+    'loss-readout-val',
+  ]) {
     expect(m.has(id), id).toBe(false);
   }
   expect(m.has('tab-loss')).toBe(false);
@@ -104,6 +111,8 @@ test('stage 2: validation curve, n, noise, seed and the truth toggle; validation
   for (const id of ['data-n', 'data-noise', 'data-seed', 'truth-toggle', 'loss-readout-val']) {
     expect(m.has(id), id).toBe(true);
   }
+  expect(m.has('val-points-toggle')).toBe(false); // hidden and fixed off: no validation points
+  expect(s().preset?.options?.['val-points-toggle']).toBe(false);
   expect(m.has('tab-loss')).toBe(false);
   m.done();
   const rows = [1, 2, 3, 4, 5, 6, 7, 8].map(runDepth);
@@ -119,7 +128,14 @@ test('stage 2: validation curve, n, noise, seed and the truth toggle; validation
 test('stage 3: minimum leaf size and Resample x20 and pins; depth and min leaf edit through the real lock list', () => {
   load(NAMES[2] as string);
   const m = mount();
-  for (const id of ['truth-toggle', 'data-n', 'loss-readout-val', 'resample-run', 'pins']) {
+  for (const id of [
+    'truth-toggle',
+    'val-points-toggle',
+    'data-n',
+    'loss-readout-val',
+    'resample-run',
+    'pins',
+  ]) {
     expect(m.has(id), id).toBe(true);
   }
   expect(m.has('tab-loss')).toBe(false);
