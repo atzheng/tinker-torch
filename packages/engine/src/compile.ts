@@ -23,7 +23,8 @@ import {
   type Node,
   resolveEdge,
 } from '@tinker/core';
-import type { Batch, DataInfo, HostParams } from '@tinker/core';
+import { treeLeafCounts, treeLeafIndex } from '@tinker/core';
+import type { Batch, DataInfo, HostParams, TreeFits } from '@tinker/core';
 import { treeToHost } from './convert.js';
 import type { Layer, LayerShape, ParamTree } from './convert.js';
 import { OPTIMIZERS } from './optim.js';
@@ -61,10 +62,24 @@ type StepFn = (
   | [ParamTree, optax.OptState, JArray, JArray, JArray]
   | [ParamTree, optax.OptState, JArray, JArray, JArray, JArray];
 
+/**
+ * One fitted Tree of a model. Its one-hot is computed on the host from the batch rows and travels
+ * as columns `[off, off + leaves)` of the extra block after the `dataColumns` data columns of x.
+ */
+export type TreeSlot = { id: NodeId; off: number; leaves: number };
+
 /** Private compiled state behind a Model. */
 export type Internals = {
   graph: Graph;
   analysis: Analysis;
+  /** The dataset description the model was compiled for (trainMany refits trees with it). */
+  data: DataInfo;
+  /** The tree fits the model was compiled with (empty for a model without Trees). */
+  fits: TreeFits;
+  /** The fitted Trees read by some plan, with their column blocks (see `augment`). */
+  trees: TreeSlot[];
+  /** Total width of the one-hot block, the sum of `trees[i].leaves`. */
+  treeWidth: number;
   dataColumns: readonly string[];
   /** Shapes of the Linears with live parameters (`analysis.paramNodes`). */
   shapes: Map<NodeId, LayerShape>;
@@ -152,9 +167,32 @@ function makePlan(
   return { steps, uses, outputs, fused, layerUses };
 }
 
-/** Throws Error(first issue) when the graph is not trainable. Borrows its arguments. */
-export function compile(graph: Graph, data: DataInfo): Model {
-  const analysis = analyse(graph, data);
+/**
+ * Throws Error(first issue) when the graph is not trainable. Borrows its arguments.
+ * `fits`: the tree fits of `core.fitTrees(graph, dataset)`, needed for a graph with Tree nodes
+ * (their leaf counts give the widths; without a fit the analysis says "Tree has not been fitted to
+ * data yet."). Every batch the model sees has its one-hot computed from these fits on the host.
+ */
+export function compile(graph: Graph, data: DataInfo, fits: TreeFits = {}): Model {
+  return build(graph, data, fits, treeLeafCounts(fits));
+}
+
+/**
+ * The same model with every Tree's one-hot padded to `leaves[id]` columns (zero columns for the
+ * missing leaves) and the downstream widths following. Used by trainMany to train copies whose
+ * trees have different leaf counts in one vmapped step. The caller disposes it (`disposeCompiled`).
+ */
+export function compilePadded(m: Internals, leaves: Record<NodeId, number>): Model {
+  return build(m.graph, m.data, m.fits, leaves);
+}
+
+function build(
+  graph: Graph,
+  data: DataInfo,
+  fits: TreeFits,
+  treeLeaves: Record<NodeId, number>,
+): Model {
+  const analysis = analyse(graph, data, treeLeaves);
   if (!analysis.trainable || analysis.lossNode === null) {
     throw new Error(analysis.issues[0]?.message ?? 'This graph cannot be trained.');
   }
@@ -231,6 +269,18 @@ export function compile(graph: Graph, data: DataInfo): Model {
   for (const id of analysis.paramNodes) {
     const s = analysis.paramShapes[id];
     if (s) shapes.set(id, s);
+  }
+
+  // Fitted Trees that some plan runs, in graph order; their one-hots are columns after the data columns of x.
+  const trees: TreeSlot[] = [];
+  const inPlans = new Set([...analysis.order, ...analysis.modelOrder]);
+  let treeWidth = 0;
+  for (const n of graph.nodes) {
+    const w = treeLeaves[n.id];
+    if (n.type !== 'tree' || w === undefined || !inPlans.has(n.id)) continue;
+    if (trees.some((t) => t.id === n.id)) continue;
+    trees.push({ id: n.id, off: treeWidth, leaves: w });
+    treeWidth += w;
   }
 
   let predictFn: PredictFn | null = null;
@@ -313,6 +363,10 @@ export function compile(graph: Graph, data: DataInfo): Model {
   const self: Internals = {
     graph,
     analysis,
+    data,
+    fits,
+    trees,
+    treeWidth,
     dataColumns: data.columns,
     shapes,
     lossNode: analysis.lossNode,
@@ -415,10 +469,14 @@ function walk(
   const values = new Map<NodeId, JArray>();
   const remaining = new Map(plan.uses);
   const layerLeft = new Map(plan.layerUses);
+  const d = m.dataColumns.length;
+  // x holds the data columns, then the tree one-hot block: every reader of x takes one reference
+  // of the whole array and slices its part (data readers [0, d), a Tree its own block).
   let xLeft = plan.steps.filter(
     (s) =>
       s.node.type === 'input' ||
       s.node.type === 'column' ||
+      s.node.type === 'tree' ||
       (s.node.type === 'bias' && s.ports.length === 0),
   ).length;
   let yLeft = plan.steps.filter((s) => s.node.type === 'target').length;
@@ -428,7 +486,16 @@ function walk(
     train: opts.train,
     dataColumns: m.dataColumns,
     fused: (id) => plan.fused.has(id),
-    takeX: () => (--xLeft > 0 ? x.ref : x),
+    takeX: () => {
+      const full = --xLeft > 0 ? x.ref : x;
+      return m.treeWidth > 0 ? full.slice([], [0, d]) : full;
+    },
+    takeTree: (id) => {
+      const t = m.trees.find((s) => s.id === id);
+      if (!t) throw new Error('Internal error: this Tree has no fit.');
+      const full = --xLeft > 0 ? x.ref : x;
+      return full.slice([], [d + t.off, d + t.off + t.leaves]);
+    },
     takeY: () => {
       if (!y) return np.zeros([n]);
       return --yLeft > 0 ? y.ref : y;
@@ -586,9 +653,8 @@ export function checkBatch(m: Internals, x: Float32Array, y: Float32Array | null
 
 /** Builds the jax arrays of a batch (copies). The caller passes them to a jitted function, which consumes them. */
 export function batchArrays(m: Internals, b: Batch): { x: JArray; y: JArray } {
-  const d = m.dataColumns.length;
   return {
-    x: np.array(Float32Array.from(b.x), { shape: [b.n, d], dtype: np.float32 }),
+    x: xArray(m, b.x, b.n),
     y: np.array(Float32Array.from(b.y), { shape: [b.n], dtype: np.float32 }),
   };
 }
@@ -629,4 +695,40 @@ export function guarded<T>(held: unknown[], fn: () => T): T {
     }
     throw e;
   }
+}
+
+/**
+ * The x the jitted functions take: the batch rows `[n, d]` followed, when the model has Trees, by
+ * each tree's one-hot of the leaf of each row (`[n, leaves]` per tree, in `m.trees` order), computed
+ * on the host in float64 from `fits` (default: the model's own). A tree with fewer leaves than its
+ * slot (a padded trainMany copy) leaves the extra columns zero. Allocates the array; the caller
+ * passes it to a jitted function, which consumes it. `x` is borrowed.
+ */
+export function xArray(m: Internals, x: Float32Array, n: number, fits: TreeFits = m.fits): JArray {
+  return np.array(xHost(m, x, n, fits), {
+    shape: [n, m.dataColumns.length + m.treeWidth],
+    dtype: np.float32,
+  });
+}
+
+/** The values of `xArray` as a new row-major Float32Array `[n, d + treeWidth]`. Borrows `x`. */
+export function xHost(
+  m: Internals,
+  x: Float32Array,
+  n: number,
+  fits: TreeFits = m.fits,
+): Float32Array {
+  const d = m.dataColumns.length;
+  const w = d + m.treeWidth;
+  if (m.treeWidth === 0) return Float32Array.from(x);
+  const out = new Float32Array(n * w);
+  for (let i = 0; i < n; i++) for (let c = 0; c < d; c++) out[i * w + c] = x[i * d + c] ?? 0;
+  for (const t of m.trees) {
+    const fit = Object.hasOwn(fits, t.id) ? fits[t.id] : undefined;
+    if (!fit) throw new Error('A Tree has not been fitted to data yet.');
+    if (fit.leaves > t.leaves) throw new Error('A Tree has more leaves than the model expects.');
+    const leaf = treeLeafIndex(fit, x, n, d);
+    for (let i = 0; i < n; i++) out[i * w + d + t.off + (leaf[i] ?? 0)] = 1;
+  }
+  return out;
 }

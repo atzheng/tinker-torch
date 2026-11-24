@@ -2,12 +2,21 @@
 // not implemented yet are skipped by name; the bead that implements them moves the name from PENDING
 // to IMPLEMENTED. Gradients are not part of the Engine interface, so they are read from one SGD
 // step with learning rate 1: grad = (W before - W after).
+import { treeLeafIndex } from '@tinker/core';
 import { beforeAll, describe, expect, test } from 'vitest';
 import { debugTrainPass } from '../src/compile.js';
 import { peekParams } from '../src/convert.js';
 import { createEngine } from '../src/index.js';
 import type { Engine } from '../src/index.js';
-import { compare, fixtureNames, loadFixture, toBatch, toHostParams, withLr } from './util.js';
+import {
+  compare,
+  fitFixtureTrees,
+  fixtureNames,
+  loadFixture,
+  toBatch,
+  toHostParams,
+  withLr,
+} from './util.js';
 import type { JsonParams } from './util.js';
 
 /** Compared now. Value: tolerance overrides (CONTRACTS.md section 11, "Engine exceptions"). */
@@ -72,6 +81,9 @@ const IMPLEMENTED: Record<string, { tol?: number }> = {
   categorical_onehot_linear: {},
   categorical_lookup_logloss: {},
   categorical_lookup_width3: {},
+  // Input -> Tree -> Linear: the one-hot comes from the host (tinker-6h1.3)
+  tree_linear_sgd: {},
+  tree_linear_adam: {},
 };
 
 /** Skipped until the named bead lands. */
@@ -107,7 +119,17 @@ describe('fixtures', () => {
       const batch = toBatch(fx);
       const report: string[] = [];
 
-      const model = engine.compile(graph, data);
+      // Tree cases: core fits the tree on the batch; it must agree with scikit-learn's leaves
+      const fits = fitFixtureTrees(graph, data, batch);
+      for (const [id, want] of Object.entries(fx.trees ?? {})) {
+        expect(fits[id]?.leaves, `leaves of ${id}`).toBe(want.leaves);
+        const fit = fits[id];
+        if (fit) {
+          const leaf = treeLeafIndex(fit, batch.x, batch.n, data.columns.length);
+          expect(Array.from(leaf), `leaf of each row of ${id}`).toEqual(want.leaf);
+        }
+      }
+      const model = engine.compile(graph, data, fits);
       const params = engine.fromHost(model, toHostParams(fx.params));
 
       // Dropout cases: pred, loss and grads are the dropout-ON pass with the fixture's mask
@@ -157,7 +179,11 @@ describe('fixtures', () => {
 
       // grads, from one plain SGD step with lr 1 (borrows `params`; startTraining consumes a clone)
       const sgd1 = withLr(graph, 1);
-      const m1 = engine.compile({ ...sgd1, train: { ...sgd1.train, optimizer: 'sgd' } }, data);
+      const m1 = engine.compile(
+        { ...sgd1, train: { ...sgd1.train, optimizer: 'sgd' } },
+        data,
+        fits,
+      );
       const p1 = engine.fromHost(m1, toHostParams(fx.params));
       const s1 = engine.startTraining(m1, p1, 0);
       const r1 = engine.step(m1, s1, batch);

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { analyse, initParams, parseFile, sample } from '@tinker/core';
 import { expect, test } from 'vitest';
 import { installProbe } from '../src/probe.js';
-import { fixtureNames, loadFixture, toBatch, toHostParams } from './util.js';
+import { fitFixtureTrees, fixtureNames, loadFixture, toBatch, toHostParams } from './util.js';
 import type { ParamAxis } from '../src/types.js';
 
 installProbe();
@@ -57,7 +57,7 @@ const NO_DROPOUT = fixtureNames().filter(
 test.each(NO_DROPOUT)('%s: lossSlope equals the PyTorch gradient of every entry', (name) => {
   const { fx, graph, data } = loadFixture(name);
   const batch = toBatch(fx);
-  const model = engine.compile(graph, data);
+  const model = engine.compile(graph, data, fitFixtureTrees(graph, data, batch));
   const params = engine.fromHost(model, toHostParams(fx.params));
   for (const [node, g] of Object.entries(fx.expect.grads)) {
     for (const tensor of ['W', 'b'] as const) {

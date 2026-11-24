@@ -3,7 +3,15 @@
  * (resampleWorker.ts) and in Node tests. No jax array leaves this function: every model and Params
  * it makes is disposed before it returns, also when something throws.
  */
-import { grid1d, grid2dSlice, heldValues, makeRng, sample, type Graph } from '@tinker/core';
+import {
+  fitTrees,
+  grid1d,
+  grid2dSlice,
+  heldValues,
+  makeRng,
+  sample,
+  type Graph,
+} from '@tinker/core';
 import type { Engine } from '@tinker/engine';
 
 export type ResampleRequest = {
@@ -36,7 +44,9 @@ export type ResampleResponse =
  * Trains `k` copies of the graph, each on a fresh training set from the same generator (a forked
  * data seed, same n) and a new initialisation, then predicts each on the fixed grid. Each copy is
  * standardised with its own training set, the grid with the same numbers, so every curve is the
- * model as a function of the raw x. Borrows the engine.
+ * model as a function of the raw x. A graph with Tree nodes fits each copy's own trees (trainMany does it,
+ * on that copy's training rows) and each copy is predicted with ITS OWN tree: a model compiled with the
+ * copy's fits. Borrows the engine.
  */
 export function runResample(engine: Engine, req: ResampleRequest): ResampleResponse {
   const { graph, steps, k, seed, gridN } = req;
@@ -50,7 +60,8 @@ export function runResample(engine: Engine, req: ResampleRequest): ResampleRespo
   const d = first.info.columns.length;
   let model: ReturnType<Engine['compile']> | null = null;
   try {
-    model = engine.compile(graph, first.info);
+    // the first copy's fits give the Tree widths of the model that trainMany pads; the copies refit their own
+    model = engine.compile(graph, first.info, fitTrees(graph, first));
     const results = engine.trainMany(
       model,
       seeds,
@@ -69,12 +80,18 @@ export function runResample(engine: Engine, req: ResampleRequest): ResampleRespo
         d === 1
           ? grid1d(ds.domain, gridN, ds.standardization)
           : grid2dSlice(ds.domain, req.held ?? heldValues(ds), 0, 1, gridN, ds.standardization);
-      const params = engine.fromHost(model, r.params);
+      // with trees the params have this copy's leaf counts: predict with a model made from its fits
+      const own = Object.keys(r.fits).length > 0 ? engine.compile(graph, ds.info, r.fits) : model;
       let out: Float32Array | undefined;
       try {
-        out = engine.predict(model, params, grid.xStd, grid.n)[req.prediction ?? 0];
+        const params = engine.fromHost(own, r.params);
+        try {
+          out = engine.predict(own, params, grid.xStd, grid.n)[req.prediction ?? 0];
+        } finally {
+          engine.dispose(params);
+        }
       } finally {
-        engine.dispose(params);
+        if (own !== model) engine.disposeModel(own);
       }
       if (!out) throw new Error('No prediction selected.');
       const width = Math.max(1, Math.round(out.length / grid.n));

@@ -20,6 +20,11 @@ export type PieceCtx = {
   takeX(): JArray;
   takeY(): JArray;
   /**
+   * The one-hot `[n, leaves]` of a Tree node's fitted tree for this batch (computed on the host and
+   * passed in with x, never captured by the jitted function). The caller consumes it.
+   */
+  takeTree(nodeId: string): JArray;
+  /**
    * The 0/1 keep mask [n, width] of a Dropout node for this pass (sampled by the step, or injected by
    * the test-only `debugTrainPass`, CONTRACTS.md section 11). The caller consumes it.
    */

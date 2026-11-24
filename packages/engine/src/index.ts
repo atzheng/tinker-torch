@@ -4,7 +4,7 @@ import { init, numpy as np, random, tree } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import type * as optax from '@jax-js/optax';
 import { CORE_NAME, type Graph, initParams } from '@tinker/core';
-import type { Batch, DataInfo, HostParams, NodeId } from '@tinker/core';
+import type { Batch, DataInfo, HostParams, NodeId, TreeFits } from '@tinker/core';
 import {
   batchArrays,
   checkBatch,
@@ -14,6 +14,7 @@ import {
   guarded,
   internals,
   probabilityRange,
+  xArray,
 } from './compile.js';
 import type { ParamTree } from './convert.js';
 import {
@@ -63,8 +64,8 @@ export function createEngine(): Promise<Engine> {
 
 function makeEngine(): Engine {
   const engine: Engine = {
-    compile(graph: Graph, data: DataInfo): Model {
-      return compile(graph, data);
+    compile(graph: Graph, data: DataInfo, fits?: TreeFits): Model {
+      return compile(graph, data, fits);
     },
 
     init(model, seed) {
@@ -211,10 +212,7 @@ function makeEngine(): Engine {
       checkBatch(m, x, null, n);
       checkTree(m, t);
       if (m.plans.predict.outputs.length === 0) return [];
-      const xa = np.array(Float32Array.from(x), {
-        shape: [n, m.dataColumns.length],
-        dtype: np.float32,
-      });
+      const xa = xArray(m, x, n);
       const pRef = tree.ref(t);
       const outs = guarded([pRef, xa], () => m.predictFn()(pRef, xa));
       return outs.map((o) => Float32Array.from(o.dataSync() as Float32Array));
@@ -318,4 +316,4 @@ function makeEngine(): Engine {
   return engine;
 }
 
-export type { Batch, HostParams };
+export type { Batch, HostParams, TreeFits };

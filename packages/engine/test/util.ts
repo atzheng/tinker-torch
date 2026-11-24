@@ -1,6 +1,6 @@
 /// <reference types="node" />
-import { type Graph, SETS, classCount, parseGraph } from '@tinker/core';
-import type { DataInfo, HostParams } from '@tinker/core';
+import { type Graph, SETS, classCount, fitTrees, parseGraph } from '@tinker/core';
+import type { DataInfo, HostParams, TreeFits } from '@tinker/core';
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,8 @@ export type Fixture = {
   graph: unknown;
   /** Categorical columns: column id -> number of categories (tinker-6t7.7). */
   categories?: Record<string, number>;
+  /** Tree cases (tinker-6h1.3): scikit-learn's fit of each Tree node: leaf count and leaf (left to right) of each row. */
+  trees?: Record<string, { leaves: number; leaf: number[] }>;
   params: JsonParams;
   batch: { x: number[]; y: number[]; n: number };
   expect: {
@@ -63,6 +65,15 @@ export function loadFixture(name: string): { fx: Fixture; graph: Graph; data: Da
       : {}),
   };
   return { fx, graph: parsed.graph, data };
+}
+
+/** Fits the Tree nodes of `graph` on the fixture batch with core (float32 rows, as the app does). */
+export function fitFixtureTrees(
+  graph: Graph,
+  data: DataInfo,
+  b: { x: Float32Array; y: Float32Array; n: number },
+): TreeFits {
+  return fitTrees(graph, { info: data, nTrain: b.n, xTrain: b.x, yTrain: b.y });
 }
 
 export function toHostParams(p: JsonParams): HostParams {
