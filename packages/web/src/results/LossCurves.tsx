@@ -40,12 +40,13 @@ function LossChartPanel() {
   const miniBatch = useStore((s) => isMiniBatch(s.graph.train.batch, s.dataset.nTrain));
   const pins = useStore((s) => s.pins);
   const [log, setLog] = useUiOption('loss-log-toggle');
+  const showVal = useUiShown('loss-val');
 
   const draw: DrawFn = (ctx, w, h, c) => {
     const m = MARGINS;
-    let r = lossRange(history, log, best?.val);
+    let r = lossRange(history, log, showVal ? best?.val : undefined, showVal);
     // Pinned runs (tinker-iej.2) widen the axes so their curves are not clipped.
-    for (const p of pins) r = mergeBounds(r, lossRange(p.history, log), log);
+    for (const p of pins) r = mergeBounds(r, lossRange(p.history, log, undefined, showVal), log);
     const xs = linearScale(0, r.stepMax, m.l, w - m.r);
     const ys = log ? logScale(r.lo, r.hi, h - m.b, m.t) : linearScale(r.lo, r.hi, h - m.b, m.t);
     const yTicks = log ? logTicks(r.lo, r.hi) : niceTicks(r.lo, r.hi, 4);
@@ -53,8 +54,8 @@ function LossChartPanel() {
     drawLegend(ctx, c, m, [
       { label: 'train', color: c.train, kind: 'line' },
       ...(miniBatch ? [{ label: 'batch', color: c.train, kind: 'line' as const, alpha: 0.3 }] : []),
-      { label: 'val', color: c.val, kind: 'line' },
-      ...(best ? [{ label: 'best', color: c.val, kind: 'ring' as const }] : []),
+      ...(showVal ? [{ label: 'val', color: c.val, kind: 'line' as const }] : []),
+      ...(best && showVal ? [{ label: 'best', color: c.val, kind: 'ring' as const }] : []),
     ]);
 
     ctx.save();
@@ -92,15 +93,15 @@ function LossChartPanel() {
       ctx.globalAlpha = 0.3;
       series((i) => p.history[i]?.train ?? Number.NaN, col, p.history);
       ctx.globalAlpha = 0.7;
-      series((i) => p.history[i]?.val ?? Number.NaN, col, p.history);
+      if (showVal) series((i) => p.history[i]?.val ?? Number.NaN, col, p.history);
     }
     ctx.globalAlpha = miniBatch ? 0.3 : 0.75;
     series((i) => history[i]?.train ?? Number.NaN, c.train);
     ctx.globalAlpha = 1;
     if (miniBatch) series((i) => history[i]?.trainFull ?? Number.NaN, c.train);
-    series((i) => history[i]?.val ?? Number.NaN, c.val);
+    if (showVal) series((i) => history[i]?.val ?? Number.NaN, c.val);
 
-    if (best && (!log || best.val > 0)) {
+    if (showVal && best && (!log || best.val > 0)) {
       const bx = xs.px(best.step);
       const by = ys.px(best.val);
       ctx.strokeStyle = c.val;
@@ -121,7 +122,7 @@ function LossChartPanel() {
     ctx.restore();
   };
 
-  const ref = usePlotCanvas(draw, [history, best, log, miniBatch, pins]);
+  const ref = usePlotCanvas(draw, [history, best, log, miniBatch, pins, showVal]);
   const showLog = useUiShown('loss-log-toggle');
   const showRestore = useUiShown('loss-restore-best');
   const showReadout = useUiShown('loss-readout');

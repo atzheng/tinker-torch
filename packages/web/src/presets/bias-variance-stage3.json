@@ -1,0 +1,109 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Bias and variance, stage 3: how much does the tree change?",
+  "prompt": "Train the same tree on 20 different samples of the data and see how much the curves differ.",
+  "instructions": [
+    "Press Resample x20 at depth 2 and at depth 8. Compare the bias squared and the variance.",
+    "Raise the smallest leaf size and Resample x20 again. What happens to the variance and to the bias squared?"
+  ],
+  "locked": ["x", "tree", "lin1", "y", "diff", "err", "loss"],
+  "show": {
+    "palette": [],
+    "tab": "model",
+    "ui": [
+      "preset-menu",
+      "btn-undo",
+      "btn-redo",
+      "instructions",
+      "preset-prompt",
+      "tab-model",
+      "panel-fit",
+      "panel-loss",
+      "loss-readout",
+      "tree-depth",
+      "btn-run",
+      "btn-reset",
+      "step-count",
+      "data-resample",
+      "loss-val",
+      "truth-toggle",
+      "data-n",
+      "data-noise",
+      "data-seed",
+      "tree-min-leaf",
+      "resample-run",
+      "pins",
+      "loss-log-toggle"
+    ]
+  },
+  "labels": {
+    "loss-readout": "Score",
+    "data-resample": "New sample"
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "x",
+        "type": "input",
+        "columns": ["x1"]
+      },
+      {
+        "id": "tree",
+        "type": "tree",
+        "criterion": "squared_error",
+        "depth": 1,
+        "minSplit": 2,
+        "minLeaf": 1,
+        "minDecrease": 0
+      },
+      {
+        "id": "lin1",
+        "type": "linear",
+        "out": 1,
+        "bias": true
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "diff",
+        "type": "subtract"
+      },
+      {
+        "id": "err",
+        "type": "square"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["x", "tree"],
+      ["tree", "lin1"],
+      ["lin1", "diff.a"],
+      ["y", "diff.b"],
+      ["diff", "err"],
+      ["err", "loss"]
+    ],
+    "predictions": ["lin1"],
+    "loss": "loss",
+    "data": {
+      "set": "trend_sine",
+      "n": 43,
+      "noise": 0.6466,
+      "val": 0.3,
+      "seed": 5,
+      "standardize": true
+    },
+    "train": {
+      "optimizer": "adam",
+      "lr": 0.1,
+      "batch": "full",
+      "seed": 11
+    }
+  }
+}

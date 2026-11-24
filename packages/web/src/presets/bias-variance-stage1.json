@@ -1,0 +1,101 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Bias and variance, stage 1: how flexible should the tree be?",
+  "prompt": "A tree chops the input into pieces and predicts one number for each piece. Make it deeper and watch the training loss.",
+  "instructions": [
+    "Press Run. The training loss falls and the curve follows the points.",
+    "Raise the depth, press Reset and Run again. Where does the training loss stop improving?",
+    "Does a deeper tree always fit the data better?"
+  ],
+  "locked": ["x", "tree", "lin1", "y", "diff", "err", "loss"],
+  "show": {
+    "palette": [],
+    "tab": "model",
+    "ui": [
+      "preset-menu",
+      "btn-undo",
+      "btn-redo",
+      "instructions",
+      "preset-prompt",
+      "tab-model",
+      "panel-fit",
+      "panel-loss",
+      "loss-readout",
+      "tree-depth",
+      "btn-run",
+      "btn-reset",
+      "step-count",
+      "data-resample"
+    ]
+  },
+  "labels": {
+    "loss-readout": "Score",
+    "data-resample": "New sample"
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "x",
+        "type": "input",
+        "columns": ["x1"]
+      },
+      {
+        "id": "tree",
+        "type": "tree",
+        "criterion": "squared_error",
+        "depth": 1,
+        "minSplit": 2,
+        "minLeaf": 1,
+        "minDecrease": 0
+      },
+      {
+        "id": "lin1",
+        "type": "linear",
+        "out": 1,
+        "bias": true
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "diff",
+        "type": "subtract"
+      },
+      {
+        "id": "err",
+        "type": "square"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["x", "tree"],
+      ["tree", "lin1"],
+      ["lin1", "diff.a"],
+      ["y", "diff.b"],
+      ["diff", "err"],
+      ["err", "loss"]
+    ],
+    "predictions": ["lin1"],
+    "loss": "loss",
+    "data": {
+      "set": "trend_sine",
+      "n": 43,
+      "noise": 0.6466,
+      "val": 0.3,
+      "seed": 5,
+      "standardize": true
+    },
+    "train": {
+      "optimizer": "adam",
+      "lr": 0.1,
+      "batch": "full",
+      "seed": 11
+    }
+  }
+}

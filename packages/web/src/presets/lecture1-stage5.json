@@ -45,6 +45,7 @@
       "loss-mode-total",
       "loss-mode-mean",
       "loss-log-toggle",
+      "loss-val",
       "truth-toggle",
       "prediction-picker",
       "btn-step",
