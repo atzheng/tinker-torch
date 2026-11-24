@@ -309,7 +309,7 @@ All data sampling, initialisation and mini-batch shuffling use `core/rng.ts`, ne
 ## 6. Data (`core/data/*`)
 
 ```ts
-type DatasetName = 'line' | 'quadratic' | 'sine' | 'step' | 'wiggle'
+type DatasetName = 'line' | 'quadratic' | 'sine' | 'step' | 'wiggle' | 'trend_sine'
                  | 'plane' | 'bowl' | 'saddle'
                  | 'blobs' | 'circle' | 'xor' | 'moons'
                  | 'delivery_late' | 'delivery_time' | 'delivery_lateness'  // the delivery story, generated (tinker-6t7.4)
@@ -336,6 +336,7 @@ function classCount(set: DatasetName): number;                // 1, 2 or k
 | sine | 1 | [-3, 3] | sin(1.5x) |
 | step | 1 | [-3, 3] | x < 0 ? −1 : 1 |
 | wiggle | 1 | [-3, 3] | 0.5 sin(3x) + 0.3x |
+| trend_sine | 1 | [0, 10] | 0.5x + sin x; x ~ Normal(5, 2) clipped to the domain (point masses at 0 and 10), not uniform: `SetSpec.xDist` (tinker-6h1.1) |
 | plane | 2 | [-2, 2]² | 0.6x₁ − 0.4x₂ |
 | bowl | 2 | [-2, 2]² | 0.5(x₁² + x₂²) − 1 |
 | saddle | 2 | [-2, 2]² | 0.5(x₁² − x₂²) |

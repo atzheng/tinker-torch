@@ -16,6 +16,7 @@ const GROUPS: { label: string; sets: { name: DatasetName; label: string }[] }[] 
       { name: 'sine', label: 'Sine' },
       { name: 'step', label: 'Step' },
       { name: 'wiggle', label: 'Wiggle' },
+      { name: 'trend_sine', label: 'Trend + sine' },
     ],
   },
   {
