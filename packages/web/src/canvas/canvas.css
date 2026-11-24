@@ -287,6 +287,16 @@ path.tk-hit {
 .tk-inspector-pos {
   position: absolute;
   z-index: 2;
+  /* max-height comes from fitInspector: the panel scrolls here when the canvas is too short */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+}
+.tk-inspector-pos .tk-inspector {
+  max-height: none;
+  overflow: visible;
+  box-shadow: none;
 }
 .tk-inspector {
   position: relative;
