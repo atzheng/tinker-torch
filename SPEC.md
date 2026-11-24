@@ -24,7 +24,7 @@ Not in scope at any version: showing intermediate activations or the backward pa
 2. **The slide notation is the interface.** A blue edge is one parameter. A circle applies a function. A plus circle sums its inputs. The loss is a node that takes the prediction and the target. A student who has seen the lecture slides should recognise the canvas without instruction.
 3. **Everything swappable is a piece.** Activations, losses, penalties and feature transforms are parts on the canvas. Swapping one is the same gesture for all of them: drop the new piece on the old one.
 4. **One model, several grains.** The neuron view and the layer view are two drawings of the same stored graph. Zooming changes the picture and never the model.
-5. **Generic tool, no lesson text.** The tool contains no explanations or tasks. A lesson is a preset loaded from outside: a graph, a dataset, a list of locked pieces and a prompt.
+5. **Generic tool, no lesson text.** The tool contains no explanations or tasks. A lesson is a preset loaded from outside: a graph, a dataset, a list of locked pieces and a prompt. The one exception is a reference card per piece: what it computes, its shapes, parameters, settings and torch form, never why or when to use it (CONTRACTS.md section 15).
 6. **Small and immediate.** Models stay under roughly 10,000 parameters in version 1, and a training run finishes in seconds on a student laptop. The page works offline once loaded.
 7. **Ready for the code view.** Each piece corresponds to exactly one torch module or function, recorded in the piece registry now, so that code generation later is a lookup and not a redesign.
 

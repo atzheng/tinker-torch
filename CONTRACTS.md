@@ -8,6 +8,7 @@ The interfaces that beads share. SPEC.md says what the tool does; this file fixe
 packages/core/src/            pure TypeScript, no DOM, no jax-js
   graph.ts        Graph v2, Node, Edge types and zod schema; parseGraph (also reads version 1) / serializeGraph (section 2)
   registry.ts     PieceType, CORE_PIECES, PALETTE (section 3)
+  pieceDocs.ts    PIECE_DOCS, docView, docViewFor (section 15)
   macros.ts       ready-made loss and penalty groups as primitive subgraphs (section 2)
   torchgen.ts     torchScript: the whole PyTorch script and its span map (section 14)
   migrate.ts      version 1 -> 2 migration (section 2)
@@ -915,3 +916,41 @@ The idiom is the Mean's statement; the covered pieces get no statement of their 
 **Names.** A node's id is its variable. An id that is a Python keyword or soft keyword, a name the script uses (`x`, `y`, `self`, `model`, `torch`, `nn`, `F`, `np`, `optimizer`, `step`, `steps`, `loader`, `batches`, `cycle`, `xb`, `yb`, `x_train`, `y_train`, `x_val`, `y_val`, `x_mean`, `x_std`, `objective`, `Model`, `batch_loss`, `train_loss`, `val_loss`, `DataLoader`, `TensorDataset`, the two `DecisionTree*` classes, `print`, `range`, `iter`, `next`, `super`) or an `nn.Module` attribute (`training`, `forward`, `train`, `eval`, `parameters`, `apply`, `to`, ...) gets a trailing `_`, repeated until it collides with no other id or name; ids that need no change are kept first, so renaming never takes another node's id. A Tree adds `<var>_tree` and `<var>_leaves` (also made unique). Inert pieces get no code.
 
 **Spans.** One per statement, over its text without indentation. A parameter-owning piece has two (its `__init__` line and its forward or objective line); a Tree's `pre` lines each have one; a Linear read only by a live Weights tap has the `__init__` line. Every node in `analysis.order` or `analysis.paramNodes` has at least one span, and each span's text contains the node's variable or an idiom call (`F.`). For an idiom, the Mean's span comes first among spans with the same range. Tested in `test/torchgen.test.ts` (golden text for the cases in the bead, plus the span-coverage check over all of them).
+
+## 15. Piece docs (`core/pieceDocs.ts`, tinker-32v)
+
+Every palette entry has a reference card. A card states what the piece computes, its shapes, parameters, settings and torch form. It never gives advice, reasons or tasks (SPEC principle 5). Plain one-sentence strings; TeX only in `equation` and `variants[*].equation` (rendered with `Tex`).
+
+```ts
+type PieceDoc = {
+  summary: string;                                   // one sentence, at most 100 characters; also the palette's accessible description (replaces ENTRY_TITLES)
+  equation: string;                                  // TeX without dollars, same symbols as the equation strip (x, h, W, b, \hat{y}, y, L)
+  settings?: Record<string, string>;                 // keyed by the node's setting field (a key of that type's defaults()); one sentence each
+  variants?: Record<string, { equation: string; summary?: string }>; // per value of the setting that changes the maths: activation by `fn`
+  notes?: string[];                                  // at most 3, one sentence each, facts only ("Off during evaluation.")
+  seeAlso?: string[];                                // other palette keys
+};
+const PIECE_DOCS: Record<string, PieceDoc>;          // one entry per PALETTE key, no others
+
+type DocView = {                                     // what the card shows; resolved, nothing left to compute in web
+  key: string; label: string; summary: string; equation: string;
+  shapes?: { in: Record<string, string>; out: string }; // TeX: 'n \times 3', 'n \times d' (symbolic), '1' for a scalar
+  params?: string;                                   // TeX: '3 \cdot 8 + 8 = 32' (live), 'd \cdot m + m' (symbolic); absent for a piece that owns none
+  settings: { field: string; text: string }[];
+  torch?: string;                                    // one line: the emitter's `init` when present, else its `expr` (live: the node's real form; symbolic: d, m)
+  notes: string[]; seeAlso: { key: string; label: string }[];
+};
+function paletteKeyOf(node: Node): string;           // node -> palette key: link by kind (sigmoid, softmax), norm by p (l2, l1), else the type
+function docView(key: string): DocView;              // symbolic, from the palette
+function docViewFor(node: Node, analysis: Analysis, data: DataInfo): DocView; // live, for a node on the canvas; never throws (unknown widths fall back to symbols)
+```
+
+- Derived, not written: `shapes` from `outShape`, `params` from `paramShapes`, `torch` from the registry emitter (section 3, "Torch emitters"). An Activation's view uses `variants[node.fn]` for its equation (and summary when given).
+- Macros (`loss_*`, `weight_penalty`) have cards from the palette only. On the canvas they are their pieces (Subtract, Square, Mean, ...), each with its own card. Their `torch` is the idiom from section 14 (`F.mse_loss(\hat{y}, y)` etc.).
+- Tests (core): every `PALETTE` key has a doc and there are no extra keys; `settings` keys are fields of that type's `defaults()`; `seeAlso` keys exist; length caps above; no string contains "you", "your", "should", "try" or "helps" (reference voice); `docViewFor` gives the live numbers for a Linear 3 → 8 with bias (`3 \cdot 8 + 8 = 32`, `nn.Linear(3, 8)`).
+
+**UI** (`palette/PieceCard.tsx`, one component for both entry points). Non-modal popover, `--surface` card with the panel border, at most 320 px wide; it closes on Escape (focus returns to its "?"), on an outside pointerdown and on its ×. Only one card is open at a time. Test ids `piece-card`, `piece-card-close`, `piece-doc-<key>` on the "?" buttons.
+
+- *Palette.* Each entry has a "?" button (`aria-label` "About <label>") at its right edge. On mouse it shows while the entry is hovered or focused; on touch (`pointer: coarse`) and for keyboard it shows on the armed entry. Hit target at least 32 px on touch. Clicking it opens `docView(key)` beside the palette, aligned with the entry, and does not arm or start a drag. The entry's native `title` goes away; `summary` becomes its `aria-description`.
+- *Inspector.* A "?" button in the title row, always visible, next to ×, for a piece (not for a wire, weight or unit inspector). It opens `docViewFor(node, ...)` as a popover beside the inspector, on the side away from the piece, kept inside the canvas (same rules as `inspectorPlacement`). The card follows live changes (width edits) while open and closes when the selection changes.
+- *Presets.* `Show.docs?: boolean` (default true; `false` removes both "?" buttons). `parseFile` refuses a non-boolean with one sentence. It is a separate key rather than a `UI_IDS` id so that presets that already have a `ui` list keep their docs.
