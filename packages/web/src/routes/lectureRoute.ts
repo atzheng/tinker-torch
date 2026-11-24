@@ -46,3 +46,21 @@ export function stageNeighbours(
     k === undefined ? null : { kind: 'stage', lecture: info.slug, stage: k };
   return { prev: i > 0 ? at(info.stages[i - 1]) : null, next: at(info.stages[i + 1]) };
 }
+
+/**
+ * What the router does when the hash or the loaded preset changes. `matches` says whether the
+ * loaded preset is the route's stage; `armed` is true once that stage has been loaded under this
+ * route. A stage route whose stage is not loaded (and not armed) loads it; once armed, a mismatch
+ * (another preset or file, or Undo past the load) clears the hash instead, so the URL never names
+ * a stage that is not open. Other routes reset `armed`.
+ */
+export function routeStep(
+  route: Route,
+  matches: boolean,
+  armed: boolean,
+): { load: boolean; clear: boolean; armed: boolean } {
+  if (route.kind !== 'stage') return { load: false, clear: false, armed: false };
+  if (matches) return { load: false, clear: false, armed: true };
+  if (armed) return { load: false, clear: true, armed: false };
+  return { load: true, clear: false, armed: false };
+}

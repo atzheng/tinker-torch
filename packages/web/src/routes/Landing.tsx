@@ -1,5 +1,4 @@
-import { LECTURES, stagePresetName } from '../presets/lectures.js';
-import { presetTitle } from '../presets/index.js';
+import { LECTURES } from '../presets/lectures.js';
 import { formatRoute } from './lectureRoute.js';
 import styles from './Landing.module.css';
 
@@ -28,9 +27,6 @@ export function Landing() {
                     data-testid={`landing-${l.slug}-stage${k}`}
                   >
                     <span className={styles.num}>Stage {k}</span>
-                    <span className={styles.sub}>
-                      {presetTitle(stagePresetName(l.slug, k)).replace(/^[^:]*:\s*/, '')}
-                    </span>
                   </a>
                 </li>
               ))}

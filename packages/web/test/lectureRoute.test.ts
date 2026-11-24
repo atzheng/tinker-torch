@@ -3,6 +3,7 @@ import {
   formatRoute,
   parseRoute,
   routePreset,
+  routeStep,
   stageNeighbours,
 } from '../src/routes/lectureRoute.js';
 import { LECTURES, lecturePresetNames, stagePresetName } from '../src/presets/lectures.js';
@@ -56,4 +57,13 @@ test('the presets menu lists no lecture stage, and every other preset', () => {
   expect(MENU_PRESET_NAMES.some((n) => lec.has(n))).toBe(false);
   expect(MENU_PRESET_NAMES).toHaveLength(PRESET_NAMES.length - lec.size);
   expect(MENU_PRESET_NAMES).toContain('scalar');
+});
+
+test('routeStep loads once, then clears the hash when the stage is replaced', () => {
+  const stage = { kind: 'stage', lecture: 'lecture1', stage: 2 } as const;
+  expect(routeStep(stage, false, false)).toEqual({ load: true, clear: false, armed: false });
+  expect(routeStep(stage, true, false)).toEqual({ load: false, clear: false, armed: true });
+  expect(routeStep(stage, false, true)).toEqual({ load: false, clear: true, armed: false });
+  expect(routeStep({ kind: 'lectures' }, false, true).armed).toBe(false);
+  expect(routeStep({ kind: 'free' }, false, true).clear).toBe(false);
 });

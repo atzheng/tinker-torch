@@ -1,7 +1,7 @@
 import { useStore } from '../state/store.js';
 import { presetTitle } from '../presets/index.js';
 import { LECTURES } from '../presets/lectures.js';
-import { LANDING_HASH, formatRoute, routePreset, stageNeighbours } from '../routes/lectureRoute.js';
+import { formatRoute, routePreset, stageNeighbours } from '../routes/lectureRoute.js';
 import { useRoute } from '../routes/useRoute.js';
 import styles from './LectureNav.module.css';
 
@@ -19,9 +19,6 @@ export function LectureNav() {
   const lecture = LECTURES.find((l) => l.slug === route.lecture);
   return (
     <nav className={styles.nav} aria-label="Lecture" data-testid="lecture-nav">
-      <a className={styles.link} href={LANDING_HASH} data-testid="lecture-nav-lectures">
-        Lectures
-      </a>
       <span className={styles.here} aria-current="page">
         {lecture?.title}, stage {route.stage}
       </span>
