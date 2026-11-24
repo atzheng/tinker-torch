@@ -13,7 +13,7 @@ import { biasAt, weightAt } from './neuronPure.js';
 
 /**
  * What a hand edit can set: a weight `W[i][j]` or a bias `b[j]` of a Linear, the one value of a
- * Weight piece (`scalew`, `W` of shape [1, 1]: the weight on a weight wire) or of a Bias piece
+ * Weight piece (`scalew`, `W` of shape [1, 1], shown on its box) or of a Bias piece
  * (`bias`, `b` of shape [1]).
  */
 export type WeightTarget =
