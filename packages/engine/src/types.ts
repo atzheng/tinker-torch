@@ -1,5 +1,5 @@
 // Public engine types (CONTRACTS.md section 7). No jax array type is exported from the package.
-import type { Analysis, Batch, DataInfo, Graph, HostParams, NodeId } from '@tinker/core';
+import type { Analysis, Batch, DataInfo, Graph, HostParams, NodeId, TreeFits } from '@tinker/core';
 
 export type { Batch };
 
@@ -22,13 +22,22 @@ export type StepResult = {
   diverged: boolean;
   ranges?: { node: NodeId; min: number; max: number }[];
 };
-/** One trained copy of `trainMany`: its parameters, and whether it diverged (then `params` are its last finite ones). */
-export type ManyResult = { params: HostParams; diverged: boolean };
+/**
+ * One trained copy of `trainMany`: its parameters, and whether it diverged (then `params` are its last
+ * finite ones). With Tree nodes the copy's own tree fits (`fits`, fitted on that copy's data) and
+ * `params` has the shapes of a model compiled with them (the padding is stripped); `fits` is `{}`
+ * without Trees. Predict a copy with `compile(graph, info, result.fits)`.
+ */
+export type ManyResult = { params: HostParams; diverged: boolean; fits: TreeFits };
 export type ParamAxis = { node: NodeId; tensor: 'W' | 'b'; index: number };
 
 export interface Engine {
-  /** Throws Error(first issue) when the analysis is not trainable. */
-  compile(graph: Graph, data: DataInfo): Model;
+  /**
+   * Throws Error(first issue) when the analysis is not trainable. `fits`: `core.fitTrees(graph, dataset)`,
+   * required for a graph with Tree nodes. Every batch has the tree's one-hot computed on the host from
+   * these fits; refit and recompile (and re-init the params) when the data or a tree setting changes.
+   */
+  compile(graph: Graph, data: DataInfo, fits?: TreeFits): Model;
   init(model: Model, seed: number): Params;
   fromHost(model: Model, host: HostParams): Params;
   toHost(params: Params): HostParams;

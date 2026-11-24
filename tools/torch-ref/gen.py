@@ -25,6 +25,11 @@ Conventions (fixed by CONTRACTS.md):
   losses are built from primitives (a log loss takes probabilities, so a sigmoid link in front is
   evaluated literally here and fused by the engine). `expect.pred` is the first prediction pin
   (empty with none) and `expect.predictions` has every pin in order.
+- cases named tree_* (tinker-6h1.3) have a Tree node (input -> tree -> linear): the tree is fitted by
+  scikit-learn's DecisionTreeRegressor on the batch, the fixture's top-level `trees` maps the node id to
+  `{ leaves, leaf }` (leaf rank in left-to-right order of each row; sklearn's `apply` returns node ids,
+  which are ranked among the leaf node ids), and the node outputs F.one_hot(leaf, leaves). The engine
+  test fits the same tree with core and checks `leaves` and `leaf` before comparing numbers.
 - cases named categorical_* (tinker-6t7.7) have categorical dataset columns: the case's `cats` maps a
   column index to its number of categories K, the column of x holds the category index as a float,
   and the fixture's top-level `categories` maps the column id (`x2`) to K. onehot is
@@ -338,7 +343,31 @@ def category_counts(nodes, src, cats):
     return ck
 
 
-def widths_v2(nodes, edges, d, cats=None):
+def fit_trees(nodes, edges, x, y):
+    """scikit-learn fit of every tree node on the batch (x rounded to float32 like the app).
+    Returns {node id: {"leaves": int, "leaf": [rank of the leaf of each row, left to right]}}."""
+    from sklearn.tree import DecisionTreeRegressor
+
+    src = src_of(edges)
+    by_id = {n["id"]: n for n in nodes}
+    out = {}
+    for nd in nodes:
+        if nd["type"] != "tree":
+            continue
+        cols = [int(c[1:]) - 1 for c in by_id[src[(nd["id"], "in")]]["columns"]]
+        xs = x[:, cols].astype(np.float32).astype(np.float64)
+        t = DecisionTreeRegressor(
+            criterion=nd["criterion"], max_depth=nd["depth"], min_samples_split=nd["minSplit"],
+            min_samples_leaf=nd["minLeaf"], min_impurity_decrease=nd["minDecrease"],
+            random_state=0).fit(xs, y[:, 0])
+        tr = t.tree_
+        leaves = [i for i in range(tr.node_count) if tr.children_left[i] == -1]
+        rank = {a: r for r, a in enumerate(leaves)}
+        out[nd["id"]] = {"leaves": len(leaves), "leaf": [rank[int(a)] for a in t.apply(xs)]}
+    return out
+
+
+def widths_v2(nodes, edges, d, cats=None, trees=None):
     """Example width per node (None for scalars and weight matrices)."""
     src = src_of(edges)
     ck = category_counts(nodes, src, cats or {})
@@ -351,6 +380,8 @@ def widths_v2(nodes, edges, d, cats=None):
             w[i] = ck[src[(i, "in")]]
         elif t == "lookup":
             w[i] = n["width"]
+        elif t == "tree":
+            w[i] = trees[i]["leaves"]
         elif t == "target":
             w[i] = 1
         elif t == "column":
@@ -376,8 +407,9 @@ def widths_v2(nodes, edges, d, cats=None):
 
 
 class ModelV2(nn.Module):
-    def __init__(self, nodes, edges, params, w, src, dropout_mask=None, cats=None):
+    def __init__(self, nodes, edges, params, w, src, dropout_mask=None, cats=None, trees=None):
         super().__init__()
+        self.trees = trees or {}
         self.ck = category_counts(nodes, src, cats or {})
         self.nodes, self.src, self.mask = nodes, src, dropout_mask
         self.nodes_by_id = {n["id"]: n for n in nodes}
@@ -429,6 +461,9 @@ class ModelV2(nn.Module):
                 v[i] = F.one_hot(get()[:, 0].long(), self.ck[self.src[(i, "in")]]).to(torch.float64)
             elif t == "lookup":
                 v[i] = self.embs[i](get()[:, 0].long())
+            elif t == "tree":
+                tr = self.trees[i]
+                v[i] = F.one_hot(torch.tensor(tr["leaf"]), tr["leaves"]).to(torch.float64)
             elif t == "linear":
                 v[i] = self.lins[i](get())
             elif t == "column":
@@ -539,7 +574,8 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
     else:
         y = (rng.uniform(size=(n, 1)) > 0.5).astype(float)
         y[0, 0], y[1, 0] = 0.0, 1.0
-    w, src = widths_v2(nodes, edges, d, cats)
+    trees = fit_trees(nodes, edges, x, y)
+    w, src = widths_v2(nodes, edges, d, cats, trees)
     ck = category_counts(nodes, src, cats)
     params = {}
     for nd in nodes:
@@ -570,7 +606,7 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
     pin_nodes = [p.split(".")[0] for p in predictions]
     loss_node = loss_id.split(".")[0]
 
-    m = ModelV2(nodes, edges, params, w, src, maskt, cats)
+    m = ModelV2(nodes, edges, params, w, src, maskt, cats, trees)
     preds, obj = m(xt, yt, pin_nodes, loss_node)
     assert obj.dim() == 0
     obj.backward()
@@ -579,11 +615,11 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
               "grads": m.host("grads")}
     if mask is not None:
         expect["dropoutMask"] = mask.tolist()
-        pe, oe = ModelV2(nodes, edges, params, w, src, None, cats)(xt, yt, pin_nodes, loss_node)
+        pe, oe = ModelV2(nodes, edges, params, w, src, None, cats, trees)(xt, yt, pin_nodes, loss_node)
         expect["predEval"] = pe[0].detach().flatten().tolist() if pe else []
         expect["lossEval"] = oe.item()
     if optimizer:
-        m2 = ModelV2(nodes, edges, params, w, src, maskt, cats)
+        m2 = ModelV2(nodes, edges, params, w, src, maskt, cats, trees)
         opt = {"sgd": lambda ps: torch.optim.SGD(ps, lr=lr),
                "momentum": lambda ps: torch.optim.SGD(ps, lr=lr, momentum=0.9),
                "adam": lambda ps: torch.optim.Adam(ps, lr=lr)}[optimizer](m2.parameters())
@@ -605,6 +641,8 @@ def make_case_v2(name, seed, nodes, edges, predictions, loss_id, *, n=6, d=1, yt
     }
     fx = {"name": name, "graph": graph, "params": params,
           "batch": {"x": x.flatten().tolist(), "y": y.flatten().tolist(), "n": n}, "expect": expect}
+    if trees:
+        fx["trees"] = trees
     if cats:
         fx["categories"] = {f"x{c + 1}": k for c, k in sorted(cats.items())}
     return fx
@@ -1054,6 +1092,17 @@ def main():
              ["err", "loss"]]
     add2("categorical_lookup_width3", nodes, edges, ["lin1"], "loss", d=2, n=8, cats={1: 4},
          optimizer="momentum", lr=0.1)
+
+    # tinker-6h1.3: Input -> Tree -> Linear(1) -> squared error, one SGD step and five Adam steps on the
+    # same one-hot (last, so the seeds of the cases above do not move). n = 20 rows, depth 3, minLeaf 3 (no tiny nodes, so no equal-gain ties between features).
+    for opt, steps, lr in (("sgd", 1, 0.1), ("adam", 5, 0.05)):
+        nodes = [inp(2), n_("tree", "tree", criterion="squared_error", depth=3, minSplit=2,
+                            minLeaf=3, minDecrease=0.0), lin("lin1", 1), TARGET,
+                 n_("diff", "subtract"), n_("err", "square"), n_("loss", "mean")]
+        edges = [["x", "tree"], ["tree", "lin1"], ["lin1", "diff.a"], ["y", "diff.b"],
+                 ["diff", "err"], ["err", "loss"]]
+        add2(f"tree_linear_{opt}", nodes, edges, ["lin1"], "loss", d=2, n=20, optimizer=opt,
+             lr=lr, steps=steps)
 
     names = [c["name"] for c in cases]
     assert len(set(names)) == len(names)

@@ -8,9 +8,9 @@
 import { jit, numpy as np, random, tree, vmap } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import type * as optax from '@jax-js/optax';
-import { initParams } from '@tinker/core';
-import type { Batch, HostParams } from '@tinker/core';
-import { internals } from './compile.js';
+import { analyse, fitTrees, initParams, treeLeafCounts } from '@tinker/core';
+import type { Analysis, Batch, HostParams, NodeId, TreeFits } from '@tinker/core';
+import { compilePadded, disposeCompiled, internals, xHost } from './compile.js';
 import type { Internals } from './compile.js';
 import type { ParamTree } from './convert.js';
 import type { ManyResult, Model } from './types.js';
@@ -105,6 +105,54 @@ function stacked(parts: Float32Array[], shape: number[]): JArray {
   return np.array(flat, { shape: [parts.length, ...shape], dtype: np.float32 });
 }
 
+const prod = (shape: readonly number[]): number => shape.reduce((p, q) => p * q, 1);
+
+/**
+ * Copies the block both shapes share (same rank, row-major) into a new array of shape `to`, zero
+ * where `from` has no entry. Pads when `to` is larger, strips when it is smaller.
+ */
+function reblock(src: Float32Array, from: readonly number[], to: readonly number[]): Float32Array {
+  if (from.length === to.length && from.every((v, i) => v === to[i])) return src;
+  const out = new Float32Array(prod(to));
+  const nd = from.length;
+  const common = from.map((v, i) => Math.min(v, to[i] ?? 0));
+  const idx = new Array<number>(nd).fill(0);
+  const total = prod(common);
+  for (let c = 0; c < total; c++) {
+    let a = 0;
+    let b = 0;
+    for (let i = 0; i < nd; i++) {
+      a = a * (from[i] ?? 1) + (idx[i] ?? 0);
+      b = b * (to[i] ?? 1) + (idx[i] ?? 0);
+    }
+    out[b] = src[a] ?? 0;
+    for (let i = nd - 1; i >= 0; i--) {
+      idx[i] = (idx[i] ?? 0) + 1;
+      if ((idx[i] ?? 0) < (common[i] ?? 1)) break;
+      idx[i] = 0;
+    }
+  }
+  return out;
+}
+
+type Shapes = Record<NodeId, Record<string, number[]>>;
+
+/** `host` (laid out as `from`) re-laid out as `to`, for every node and tensor of `to`. */
+function reshapeHost(host: HostParams, from: Shapes, to: Shapes): HostParams {
+  const out = Object.create(null) as HostParams;
+  for (const [id, shapes] of Object.entries(to)) {
+    const h = Object.create(null) as HostParams[string];
+    for (const [name, shape] of Object.entries(shapes)) {
+      const src = host[id]?.[name];
+      const was = from[id]?.[name];
+      if (!src || !was) continue;
+      h[name] = reblock(src, was, shape);
+    }
+    out[id] = h;
+  }
+  return out;
+}
+
 /** Throws a plain sentence when the arguments do not fit (before anything is allocated). */
 function checkMany(m: Internals, seeds: number[], data: Batch[], steps: number): void {
   const k = seeds.length;
@@ -137,13 +185,70 @@ export function trainMany(
   data: Batch[],
   steps: number,
 ): ManyResult[] {
-  const m = internals(model);
-  checkMany(m, seeds, data, steps);
+  const user = internals(model);
+  checkMany(user, seeds, data, steps);
+  if (user.trees.length === 0) {
+    return trainCopies(
+      user,
+      seeds,
+      data,
+      steps,
+      data.map(() => ({})),
+      null,
+    );
+  }
+  // Trees: each copy fits its own trees on its own training rows. The copies are trained as one
+  // vmapped step on a sibling model whose one-hots are padded to the largest leaf count of each
+  // tree (zero columns); the Linear weights of the padded columns start at 0, get zero gradient
+  // and never change a prediction. The padding is stripped from the returned params.
+  const info = user.data;
+  const fits = data.map((b) =>
+    fitTrees(user.graph, { info, nTrain: b.n, xTrain: b.x, yTrain: b.y }),
+  );
+  const most: Record<NodeId, number> = {};
+  for (const t of user.trees) {
+    for (const f of fits) {
+      const fit = Object.hasOwn(f, t.id) ? f[t.id] : undefined;
+      if (!fit) throw new Error('A Tree could not be fitted to a training set.');
+      most[t.id] = Math.max(most[t.id] ?? 1, fit.leaves);
+    }
+  }
+  const padded = compilePadded(user, most);
+  try {
+    // init with each copy's real leaf counts (fan-in = its real leaf count), then pad
+    const analyses = fits.map((f) => analyse(user.graph, info, treeLeafCounts(f)));
+    const own: Shapes[] = analyses.map((a) => a.paramShapes);
+    return trainCopies(internals(padded), seeds, data, steps, fits, { analyses, own });
+  } finally {
+    disposeCompiled(padded);
+  }
+}
+
+/** What trainCopies needs of a tree model: each copy's own analysis (init and unpadded shapes). */
+type Per = { analyses: Analysis[]; own: Shapes[] };
+
+/**
+ * Trains the copies on `m` (the padded sibling for Tree models, `per` set). `fits[i]` are copy i's
+ * tree fits. Borrows everything; see `trainMany`.
+ */
+function trainCopies(
+  m: Internals,
+  seeds: number[],
+  data: Batch[],
+  steps: number,
+  fits: TreeFits[],
+  per: Per | null,
+): ManyResult[] {
   const k = seeds.length;
   const n = data[0]?.n ?? 0;
-  const d = m.dataColumns.length;
-
-  const inits = seeds.map((s) => initParams(m.analysis, s));
+  const d = m.dataColumns.length + m.treeWidth;
+  const paddedShapes: Shapes = Object.fromEntries(m.shapes);
+  const inits = seeds.map((s, i) => {
+    const a = per?.analyses[i];
+    return a
+      ? reshapeHost(initParams(a, s), per?.own[i] ?? {}, paddedShapes)
+      : initParams(m.analysis, s);
+  });
   let params: ParamTree = {};
   for (const [id, s] of m.shapes) {
     const layer: ParamTree[string] = {};
@@ -162,7 +267,7 @@ export function trainMany(
   ) as optax.OptState;
   let key = np.stack(seeds.map((s) => random.key(s)));
   const x = stacked(
-    data.map((b) => b.x),
+    data.map((b, i) => xHost(m, b.x, n, fits[i])),
     [n, d],
   );
   const y = stacked(
@@ -204,7 +309,12 @@ export function trainMany(
         for (const [name, a] of Object.entries(l)) h[name] = host(a, c, size(a) / k);
         hp[id] = h;
       }
-      result.push({ params: hp, diverged: diverged[c] ?? false });
+      const own = per?.own[c];
+      result.push({
+        params: own ? reshapeHost(hp, paddedShapes, own) : hp,
+        diverged: diverged[c] ?? false,
+        fits: fits[c] ?? {},
+      });
     }
     return result;
   } finally {

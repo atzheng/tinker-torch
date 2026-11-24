@@ -2,7 +2,7 @@
 // section 4). The probe must be installed before jax-js loads, hence the dynamic import.
 import { installProbe } from '../src/probe.js';
 import { expect, test } from 'vitest';
-import { loadFixture, toBatch, toHostParams, predict0 } from './util.js';
+import { fitFixtureTrees, loadFixture, toBatch, toHostParams, predict0 } from './util.js';
 
 installProbe();
 const { createEngine } = await import('../src/index.js');
@@ -240,4 +240,56 @@ test('a softmax link shared with another consumer (non-fused cross-entropy) leav
   const baseline = engine.liveArrays();
   for (let i = 0; i < 200; i++) cycle();
   expect(engine.liveArrays()).toBe(baseline);
+}, 120_000);
+
+test('a Tree model (steps, grid predictions, evaluate, grids, trainMany with different leaf counts) leaves the live buffer count flat', async () => {
+  const engine = await createEngine();
+  const { fx, graph, data } = loadFixture('tree_linear_adam');
+  const batch = toBatch(fx);
+  const model = engine.compile(graph, data, fitFixtureTrees(graph, data, batch));
+  // a second training set whose tree has another leaf count
+  const other = {
+    ...batch,
+    y: Float32Array.from(batch.y, (_, i) => ((batch.x[2 * i] ?? 0) > 0 ? 1 : 0)),
+  };
+  const axes = [
+    { node: 'lin1', tensor: 'W' as const, index: 0 },
+    { node: 'lin1', tensor: 'W' as const, index: 1 },
+  ] as [{ node: string; tensor: 'W'; index: number }, { node: string; tensor: 'W'; index: number }];
+  let state = engine.startTraining(model, engine.fromHost(model, toHostParams(fx.params)), 1);
+  const grid = Float32Array.from({ length: 2 * 50 }, (_, i) => (i % 7) / 3 - 1);
+  const once = (i: number) => {
+    const r = engine.step(model, state, batch);
+    state = r.state;
+    expect(r.diverged).toBe(false);
+    if (i % 5 === 0) engine.evaluate(model, state.params, batch);
+    if (i % 5 === 0) predict0(engine, model, state.params, grid, 50);
+    if (i % 25 === 0) engine.exampleLosses(model, state.params, batch);
+    if (i % 50 === 0) {
+      engine.lossGrid(
+        model,
+        state.params,
+        batch,
+        axes,
+        Float32Array.of(0, 1),
+        Float32Array.of(0, 1),
+      );
+      engine.lossSlope(model, state.params, batch, axes[0]);
+    }
+    if (i % 100 === 0) {
+      const many = engine.trainMany(model, [1, 2], [batch, other], 3);
+      expect(many[0]?.fits['tree']?.leaves).not.toBe(many[1]?.fits['tree']?.leaves);
+    }
+  };
+  for (let i = 1; i <= 100; i++) once(i);
+  const baseline = engine.liveArrays();
+  expect(baseline).toBeGreaterThan(0);
+  const samples: number[] = [];
+  for (let i = 1; i <= 2000; i++) {
+    once(i);
+    if (i % 400 === 0) samples.push(engine.liveArrays());
+  }
+  expect(samples).toEqual(samples.map(() => baseline));
+  engine.dispose(state);
+  engine.disposeModel(model);
 }, 120_000);

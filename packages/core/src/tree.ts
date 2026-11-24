@@ -341,7 +341,10 @@ export function treeLeafCounts(fits: TreeFits): Record<NodeId, number> {
  * rows (batch, validation, grid). A Tree with no Input wired, an Input with no known or a category
  * column, or a criterion that does not match the data kind gets no entry (analyse says why).
  */
-export function fitTrees(graph: Graph, dataset: Dataset): TreeFits {
+export function fitTrees(
+  graph: Graph,
+  dataset: Pick<Dataset, 'info' | 'nTrain' | 'xTrain' | 'yTrain'>,
+): TreeFits {
   const info = dataset.info;
   const d = info.columns.length;
   const out: TreeFits = {};
