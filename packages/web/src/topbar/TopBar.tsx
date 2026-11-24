@@ -1,6 +1,7 @@
 import { useUiShown } from '../state/disclosure.js';
 import { DataControls } from './DataControls.js';
 import { FileMenu } from './FileMenu.js';
+import { LectureNav } from './LectureNav.js';
 import { PresetMenu } from './PresetMenu.js';
 import { UndoRedo } from './UndoRedo.js';
 
@@ -23,6 +24,7 @@ export function TopBar() {
       {file && <FileMenu />}
       {presets && <PresetMenu />}
       <UndoRedo />
+      <LectureNav />
     </div>
   );
 }

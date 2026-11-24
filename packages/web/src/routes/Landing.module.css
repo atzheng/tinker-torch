@@ -1,0 +1,73 @@
+.page {
+  height: 100%;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text);
+}
+.inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  box-sizing: border-box;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.lecture {
+  margin-bottom: 24px;
+}
+.stages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.stage,
+.free {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 12px;
+  box-sizing: border-box;
+  color: var(--text);
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.free {
+  flex: none;
+  color: var(--accent);
+}
+.stage:hover,
+.free:hover {
+  background: var(--surface-2);
+}
+.stage:focus-visible,
+.free:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.num {
+  flex: none;
+  font-weight: 600;
+}
+.sub {
+  min-width: 0;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}

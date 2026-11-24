@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
 import { loadBundled } from './topbar/PresetMenu.js';
 import { loadParsed } from './topbar/FileMenu.js';
+import { startRouting } from './routes/useRoute.js';
 import { useStore } from './state/store.js';
 import { startFromUrl } from './share/shareLink.js';
 import './theme.css';
@@ -26,6 +27,9 @@ void startFromUrl(
   loadBundled,
   (message) => useStore.setState({ error: message }),
 );
+
+// `#/<lecture>/stage<k>` opens a lecture stage and wins over `?preset=`; `#/lectures` is the landing page.
+startRouting();
 
 const root = document.getElementById('root');
 if (root) {
