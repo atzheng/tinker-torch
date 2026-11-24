@@ -1,0 +1,77 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`torchScript > (a) 1-D MLP with squared error: whole script 1`] = `
+"import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+torch.manual_seed(5)
+
+x_train = torch.tensor([
+    [1.525973],
+    [2.85657],
+    [-0.1465892],
+    [-0.8583069],
+    [-0.2188728],
+    [2.184736],
+    [2.453615],
+    [0.6790317],
+], dtype=torch.float32)
+y_train = torch.tensor([
+    [1.766294],
+    [2.496298],
+    [0.2299433],
+    [-0.4356233],
+    [0.2627699],
+    [2.216884],
+    [2.261666],
+    [0.9777966],
+], dtype=torch.float32)
+x_val = torch.tensor([
+    [2.456269],
+    [-0.8692232],
+], dtype=torch.float32)
+y_val = torch.tensor([
+    [2.467976],
+    [-0.2261409],
+], dtype=torch.float32)
+
+class Model(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.l1 = nn.Linear(1, 4, bias=True)
+        self.l2 = nn.Linear(4, 1, bias=True)
+
+    def forward(self, x):
+        in_ = x[:, [0]]
+        l1 = self.l1(in_)
+        a1 = torch.tanh(l1)
+        l2 = self.l2(a1)
+        return l2
+
+
+def objective(model, x, y):
+    l2 = model(x)
+    tgt = y
+    loss = F.mse_loss(l2, tgt)
+    return loss
+
+
+model = Model()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+steps = 1000
+
+for step in range(1, steps + 1):
+    model.train()
+    batch_loss = objective(model, x_train, y_train)
+    optimizer.zero_grad()
+    batch_loss.backward()
+    optimizer.step()
+    if step % 100 == 0 or step == steps:
+        model.eval()
+        with torch.no_grad():
+            train_loss = objective(model, x_train, y_train)
+            val_loss = objective(model, x_val, y_val)
+        print(f"step {step}: train loss {train_loss.item():.4f}, val loss {val_loss.item():.4f}")
+"
+`;

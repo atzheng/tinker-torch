@@ -1,4 +1,4 @@
-/** Piece registry v2, core half (CONTRACTS.md section 3): ports, defaults, shape rules, param shapes, torch strings. */
+/** Piece registry v2, core half (CONTRACTS.md section 3): ports, defaults, shape rules, param shapes, torch emitters. */
 import type { DataInfo, Node, NodeBody, NodeOf, PieceType } from './graph.js';
 import type { NodeId } from './common.js';
 import {
@@ -100,9 +100,48 @@ export type CorePiece<N extends Node> = {
   paramShapes(node: N, inWidth: number, inShape?: Shape): ParamShapes;
   /** How the node's tensors start. Called only when `paramShapes` is non-empty. */
   paramInit(node: N, inWidth: number, data: DataInfo): ParamInit;
-  /** Torch counterpart for the later code view. `inWidth` is the width entering the node, when known. */
-  torch(node: N, inWidth?: number): string;
+  /**
+   * Torch counterpart for the generated script (CONTRACTS.md section 14). Pure text: the statement
+   * `<name> = <expr>` and the module line `self.<name> = <init>` are put together by `torchScript`.
+   */
+  torch(node: N, ctx: TorchCtx): TorchEmit;
 };
+
+/** What a piece's torch emitter may read (CONTRACTS.md section 3, "Torch emitters"). */
+export type TorchCtx = {
+  /**
+   * Python variable names of the wires into each input port, in `analysis.inputs` order. A plain
+   * port has one entry, a variadic port one per wire, an unwired optional port none.
+   */
+  ins: Record<string, string[]>;
+  /** Example width entering the node (0 when nothing is wired in). */
+  inWidth: number;
+  /** The dataset's column ids (`DataInfo.columns`): an Input or Column indexes `x` by position here. */
+  dataColumns: readonly string[];
+  /** Category count of the node's category input (OneHot, Lookup); 0 otherwise. */
+  categories: number;
+  /** Uniform init bound of the node's own parameters (`analysis.paramInit`); 1 when it owns none. */
+  bound: number;
+  /** Set when a scalar parameter must start inside (0, 1) (it feeds an unfused log loss as a probability): `uniform_(lo, hi)` replaces +/- bound. */
+  initRange?: [lo: number, hi: number];
+  /** `self` in `Model.forward`, `model` in `objective`: what a parameter owner is reached through. */
+  owner: 'self' | 'model';
+  /** `<owner>.training`. */
+  training: string;
+  /** `<owner>.<variable of this node>`: where this node's module or parameter lives. */
+  self: string;
+  /** Python variable name of any node (a Weights tap reads `<owner>.<name(of)>.weight`). */
+  name(id: NodeId): string;
+  /** Tree only: its fitted estimator, and the node ids of its leaves, as module-level variables. */
+  tree?: { estimator: string; leaves: string; columns: number[] };
+};
+
+/**
+ * `expr`: the right-hand side of the node's statement. `init`: the right-hand side of the
+ * `self.<name> = ...` line in `Model.__init__`, for a piece that owns a module or parameter. `pre`:
+ * statements run once before the Model class (a Tree's fit); lines separated by `\n`.
+ */
+export type TorchEmit = { init?: string; pre?: string; expr: string };
 
 export type PaletteEntry =
   | {
@@ -201,10 +240,22 @@ function pairwise(label: string) {
 const noParams = () => ({});
 const noInit = (): ParamInit => ({ kind: 'const', value: 0 });
 
-function columnIndex(name: string, position: number): number {
+/** Position of a dataset column in `x` (columns are `x1`, `x2`, ...; `position` is the fallback). */
+function dataIndex(ctx: TorchCtx, name: string, position: number): number {
+  const i = ctx.dataColumns.indexOf(name);
+  if (i >= 0) return i;
   const m = /^x(\d+)$/.exec(name);
   return m?.[1] !== undefined ? Number(m[1]) - 1 : position;
 }
+
+/** The `lo, hi` of a scalar parameter's uniform init. */
+const scalarRange = (ctx: TorchCtx): string => {
+  const [lo, hi] = ctx.initRange ?? [-ctx.bound, ctx.bound];
+  return `${py.float(lo)}, ${py.float(hi)}`;
+};
+
+/** The variable of the one wire into a plain port (a placeholder name while unwired). */
+const one = (ctx: TorchCtx, port: string): string => ctx.ins[port]?.[0] ?? port;
 
 /** Output width of a feature expansion of d columns (CONTRACTS.md section 3). */
 export function featureWidth(
@@ -258,7 +309,9 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) => `x[:, [${node.columns.map((c, i) => columnIndex(c, i)).join(', ')}]]`,
+    torch: (node, ctx) => ({
+      expr: `x[:, [${node.columns.map((c, i) => dataIndex(ctx, c, i)).join(', ')}]]`,
+    }),
   },
   column: {
     family: 'inputs',
@@ -267,7 +320,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: (node, _in, ctx) => columnsShape([node.name], ctx),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) => `x[:, [${columnIndex(node.name, 0)}]]`,
+    torch: (node, ctx) => ({ expr: `x[:, [${dataIndex(ctx, node.name, 0)}]]` }),
   },
   scalew: {
     family: 'scalars',
@@ -280,7 +333,10 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       kind: 'uniform',
       bound: 1 / Math.sqrt(Math.max(1, data.columns.length)),
     }),
-    torch: () => 'w * x',
+    torch: (_node, ctx) => ({
+      init: `nn.Parameter(torch.empty(1, 1).uniform_(${scalarRange(ctx)}))`,
+      expr: `${ctx.self} * ${one(ctx, 'in')}`,
+    }),
   },
   bias: {
     family: 'scalars',
@@ -297,8 +353,13 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       kind: 'uniform',
       bound: 1 / Math.sqrt(Math.max(1, data.columns.length)),
     }),
-    // inWidth is 0 when nothing is wired in (like a piece with no ports)
-    torch: (_node, inWidth) => (inWidth === 0 ? 'b.expand(n, 1)' : 'x + b'),
+    torch: (_node, ctx) => ({
+      init: `nn.Parameter(torch.empty(1, 1).uniform_(${scalarRange(ctx)}))`,
+      expr:
+        ctx.ins['in']?.[0] === undefined
+          ? `${ctx.self}.expand(x.shape[0], 1)`
+          : `${one(ctx, 'in')} + ${ctx.self}`,
+    }),
   },
   sum: {
     family: 'structure',
@@ -309,7 +370,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: (_node, inShapes) => needInput('A sum', inShapes['in']),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: () => 'torch.stack(xs).sum(0)',
+    torch: (_node, ctx) => ({ expr: `torch.stack([${(ctx.ins['in'] ?? []).join(', ')}]).sum(0)` }),
   },
   onehot: {
     family: 'categories',
@@ -323,7 +384,9 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    torch: () => 'F.one_hot(x[:, 0].long(), K).float()',
+    torch: (_node, ctx) => ({
+      expr: `F.one_hot(${one(ctx, 'in')}[:, 0].long(), ${ctx.categories}).float()`,
+    }),
   },
   lookup: {
     family: 'categories',
@@ -339,7 +402,10 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       W: [inShape?.kind === 'example' ? (inShape.category?.count ?? 1) : 1, node.width],
     }),
     paramInit: () => ({ kind: 'uniform', bound: 1 }),
-    torch: (node) => `nn.Embedding(K, ${node.width})`,
+    torch: (node, ctx) => ({
+      init: `nn.Embedding(${ctx.categories}, ${node.width})`,
+      expr: `${ctx.self}(${one(ctx, 'in')}[:, 0].long())`,
+    }),
   },
   tree: {
     family: 'features',
@@ -363,12 +429,23 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) => {
+    torch: (node, ctx) => {
       const cls =
         node.criterion === 'squared_error' || node.criterion === 'absolute_error'
           ? 'Regressor'
           : 'Classifier';
-      return `F.one_hot(torch.as_tensor(DecisionTree${cls}(criterion='${node.criterion}', max_depth=${node.depth}, min_samples_split=${node.minSplit}, min_samples_leaf=${node.minLeaf}, min_impurity_decrease=${py.float(node.minDecrease)}).fit(x, y).apply(x))).float()`;
+      const t = ctx.tree;
+      const cols = (t?.columns ?? []).join(', ');
+      const est = t?.estimator ?? 'tree';
+      const leaves = t?.leaves ?? 'leaves';
+      return {
+        // Fitted once on the training rows, like the app does; the one-hot is the leaf each row falls in.
+        pre: [
+          `${est} = DecisionTree${cls}(criterion='${node.criterion}', max_depth=${node.depth}, min_samples_split=${node.minSplit}, min_samples_leaf=${node.minLeaf}, min_impurity_decrease=${py.float(node.minDecrease)}).fit(x_train[:, [${cols}]].numpy(), y_train.numpy().ravel())`,
+          `${leaves} = torch.as_tensor(${est}.tree_.children_left == -1).nonzero().squeeze(1)`,
+        ].join('\n'),
+        expr: `(torch.as_tensor(${est}.apply(${one(ctx, 'in')}.numpy())).unsqueeze(1) == ${leaves}).float()`,
+      };
     },
   },
   target: {
@@ -379,7 +456,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: () => ({ kind: 'example', width: 1 }),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: () => 'y',
+    torch: () => ({ expr: 'y' }),
   },
   feature: {
     family: 'features',
@@ -391,18 +468,17 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node, inWidth) => {
-      const terms = ['x'];
-      for (let k = 2; k <= node.degree; k++) terms.push(`x**${k}`);
-      if (node.sin) terms.push('torch.sin(x)');
-      if (node.cos) terms.push('torch.cos(x)');
+    torch: (node, ctx) => {
+      const h = one(ctx, 'in');
+      const terms = [h];
+      for (let k = 2; k <= node.degree; k++) terms.push(`${h} ** ${k}`);
+      if (node.sin) terms.push(`torch.sin(${h})`);
+      if (node.cos) terms.push(`torch.cos(${h})`);
       if (node.products) {
-        if (inWidth === undefined) terms.push('x[:, [?]] * x[:, [?]]');
-        else
-          for (let i = 0; i < inWidth; i++)
-            for (let j = i + 1; j < inWidth; j++) terms.push(`x[:, [${i}]] * x[:, [${j}]]`);
+        for (let i = 0; i < ctx.inWidth; i++)
+          for (let j = i + 1; j < ctx.inWidth; j++) terms.push(`${h}[:, [${i}]] * ${h}[:, [${j}]]`);
       }
-      return `torch.cat([${terms.join(', ')}], dim=-1)`;
+      return { expr: `torch.cat([${terms.join(', ')}], dim=-1)` };
     },
   },
   linear: {
@@ -419,8 +495,10 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     }),
     // nn.Linear default: W and b uniform on +/- 1/sqrt(in).
     paramInit: (_node, inWidth) => ({ kind: 'uniform', bound: 1 / Math.sqrt(inWidth) }),
-    torch: (node, inWidth) =>
-      `nn.Linear(${inWidth ?? '?'}, ${node.out}, bias=${py.bool(node.bias)})`,
+    torch: (node, ctx) => ({
+      init: `nn.Linear(${ctx.inWidth}, ${node.out}, bias=${py.bool(node.bias)})`,
+      expr: `${ctx.self}(${one(ctx, 'in')})`,
+    }),
   },
   activation: {
     family: 'activations',
@@ -429,10 +507,9 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: exampleThrough('An activation'),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) =>
-      ({ sigmoid: 'nn.Sigmoid()', tanh: 'nn.Tanh()', relu: 'nn.ReLU()', gelu: 'nn.GELU()' })[
-        node.fn
-      ],
+    torch: (node, ctx) => ({
+      expr: `${{ sigmoid: 'torch.sigmoid', tanh: 'torch.tanh', relu: 'torch.relu', gelu: 'F.gelu' }[node.fn]}(${one(ctx, 'in')})`,
+    }),
   },
   dropout: {
     family: 'structure',
@@ -441,7 +518,9 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: exampleThrough('Dropout'),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) => `nn.Dropout(p=${py.float(node.p)})`,
+    torch: (node, ctx) => ({
+      expr: `F.dropout(${one(ctx, 'in')}, p=${py.float(node.p)}, training=${ctx.training})`,
+    }),
   },
   add: {
     family: 'structure',
@@ -450,7 +529,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: pairwise('Add'),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: () => 'a + b',
+    torch: (_node, ctx) => ({ expr: `${one(ctx, 'a')} + ${one(ctx, 'b')}` }),
   },
   link: {
     family: 'links',
@@ -459,7 +538,12 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: exampleThrough('A link'),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) => (node.fn === 'sigmoid' ? 'nn.Sigmoid()' : 'nn.Softmax(dim=-1)'),
+    torch: (node, ctx) => ({
+      expr:
+        node.fn === 'sigmoid'
+          ? `torch.sigmoid(${one(ctx, 'in')})`
+          : `torch.softmax(${one(ctx, 'in')}, dim=-1)`,
+    }),
   },
   subtract: {
     family: 'math',
@@ -468,7 +552,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: pairwise('Subtract'),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: () => 'a - b',
+    torch: (_node, ctx) => ({ expr: `${one(ctx, 'a')} - ${one(ctx, 'b')}` }),
   },
   square: {
     family: 'errors',
@@ -477,7 +561,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: elementwise('Square'),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: () => 'x ** 2',
+    torch: (_node, ctx) => ({ expr: `${one(ctx, 'in')} ** 2` }),
   },
   abs: {
     family: 'errors',
@@ -486,7 +570,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: elementwise('Absolute value'),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: () => 'x.abs()',
+    torch: (_node, ctx) => ({ expr: `torch.abs(${one(ctx, 'in')})` }),
   },
   huber: {
     family: 'errors',
@@ -496,8 +580,9 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     paramShapes: noParams,
     paramInit: noInit,
     // Per-element Huber of a difference d (0.5 d^2 inside delta, delta (|d| - 0.5 delta) outside).
-    torch: (node) =>
-      `F.huber_loss(d, torch.zeros_like(d), delta=${py.float(node.delta)}, reduction='none')`,
+    torch: (node, ctx) => ({
+      expr: `F.huber_loss(${one(ctx, 'in')}, torch.zeros_like(${one(ctx, 'in')}), delta=${py.float(node.delta)}, reduction='none')`,
+    }),
   },
   log_loss: {
     family: 'losses',
@@ -514,8 +599,10 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    // The engine fuses a sigmoid link into this (BCE with logits).
-    torch: () => "F.binary_cross_entropy(p, y, reduction='none')",
+    // The literal formula (NaN outside (0, 1), where F.binary_cross_entropy would raise); torchScript writes the with-logits idiom when a sigmoid link is fused in front.
+    torch: (_node, ctx) => ({
+      expr: `-(${one(ctx, 'target')} * torch.log(${one(ctx, 'pred')}) + (1 - ${one(ctx, 'target')}) * torch.log(1 - ${one(ctx, 'pred')}))`,
+    }),
   },
   cross_entropy: {
     family: 'losses',
@@ -530,8 +617,10 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    // The engine fuses a softmax link into this (log-softmax, then pick the target class).
-    torch: () => "F.nll_loss(torch.log(p), y.long(), reduction='none')",
+    // The literal form; torchScript writes F.cross_entropy on the logits when a softmax link is fused in front.
+    torch: (_node, ctx) => ({
+      expr: `F.nll_loss(torch.log(${one(ctx, 'pred')}), ${one(ctx, 'target')}.long().squeeze(1), reduction='none').unsqueeze(1)`,
+    }),
   },
   mean: {
     family: 'reductions',
@@ -543,7 +632,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    torch: () => 'x.mean()',
+    torch: (_node, ctx) => ({ expr: `${one(ctx, 'in')}.mean()` }),
   },
   scale: {
     family: 'math',
@@ -552,7 +641,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     outShape: elementwise('Scale'),
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) => `${py.float(node.c)} * x`,
+    torch: (node, ctx) => ({ expr: `${py.float(node.c)} * ${one(ctx, 'in')}` }),
   },
   weights: {
     family: 'parameters',
@@ -566,7 +655,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) => `${node.of}.weight`,
+    torch: (node, ctx) => ({ expr: `${ctx.owner}.${ctx.name(node.of)}.weight.T` }),
   },
   norm: {
     family: 'parameters',
@@ -584,7 +673,9 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    torch: (node) => (node.kind === 'l2' ? 'w.pow(2).sum()' : 'w.abs().sum()'),
+    torch: (node, ctx) => ({
+      expr: `${one(ctx, 'in')}${node.kind === 'l2' ? '.pow(2).sum()' : '.abs().sum()'}`,
+    }),
   },
 };
 

@@ -26,6 +26,7 @@ import {
   outputPortAt,
   insertable,
   resolveDrop,
+  dropsOnStub,
   wireSource,
   type DragPayload,
 } from './dnd.js';
@@ -470,9 +471,7 @@ export function Canvas() {
           toAbstract(cx, cy),
           coarse ? 32 : 20,
         );
-        if (payload.kind === 'pin' && target?.kind === 'node' && ghosts[target.id] !== undefined) {
-          return null;
-        }
+        if (dropsOnStub(target, ghosts)) return null;
         if (target?.kind !== 'free') return target;
         // "Free" (a ready-made group on empty canvas) only counts inside the drawing.
         const r = ref.current?.getBoundingClientRect();

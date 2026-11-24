@@ -14,6 +14,7 @@ export type LectureInfo = {
 export const LECTURES: LectureInfo[] = [
   { slug: 'lecture1', title: 'Lecture 1', stages: [0, 1, 2, 3, 4, 5] },
   { slug: 'bias-variance', title: 'Bias and variance', stages: [1, 2, 3] },
+  { slug: 'tree-class', title: 'Trees for classification', stages: [1, 2, 3] },
 ];
 
 /** The bundled preset name of a lecture stage. */
