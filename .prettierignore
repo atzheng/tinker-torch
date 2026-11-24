@@ -11,3 +11,4 @@ packages/engine/test/fixtures/
 /CLAUDE.md
 /CONTRACTS.md
 /SPEC.md
+packages/core/test/__snapshots__/presetLayouts.json
