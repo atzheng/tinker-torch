@@ -227,7 +227,7 @@ export function trainMany(
         own = compile(user.graph, info, fits[c] ?? {});
       } catch (e) {
         const why = e instanceof Error ? e.message : 'the graph does not fit';
-        throw new Error(`Copy ${c + 1} cannot be trained with its own trees: ${why}`);
+        throw new Error(`Copy ${c + 1} cannot be trained with its own trees: ${why}`, { cause: e });
       }
       try {
         const [r] = trainCopies(internals(own), [seeds[c] ?? 0], [b], steps, [fits[c] ?? {}], null);
