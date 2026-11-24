@@ -19,6 +19,7 @@ import { usePlotCanvas, type DrawFn } from '../plot/canvas.js';
 import { AxisLabels } from '../plot/AxisLabels.js';
 import { MARGINS, drawAxes, drawLegend, type LegendItem } from '../plot/draw.js';
 import { classColor } from '../plot/color.js';
+import { treeFitsOf } from '../state/treeFits.js';
 import { useStore } from '../state/store.js';
 import { axisLabel, featureName } from '../state/names.js';
 import { FitPlot2D } from './FitPlot2D.js';
@@ -89,6 +90,20 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
     const f = hasTruth(set) && !categorical ? truth(set, grid.xRaw) : new Float32Array(grid.n);
     return { xt, xv, grid, f, k };
   }, [dataset, set, col, categorical]);
+  // Split thresholds of the fitted trees on this column, in raw units (fits are in standardised units).
+  const graph = useStore((s) => s.graph);
+  const splitXs = useMemo(() => {
+    if (categorical) return [];
+    const st = dataset.standardization;
+    const out: number[] = [];
+    for (const fit of Object.values(treeFitsOf(graph, dataset))) {
+      for (const n of fit.nodes) {
+        if (n.kind !== 'split' || n.feature !== col) continue;
+        out.push(st ? n.threshold * (st.std[col] ?? 1) + (st.mean[col] ?? 0) : n.threshold);
+      }
+    }
+    return out;
+  }, [graph, dataset, col, categorical]);
   const levels = categoryNames(dataset.info, col);
   const catLabel = (t: number) => levels[Math.round(t)] ?? String(Math.round(t));
 
@@ -206,6 +221,20 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
       }
       ctx.stroke();
     };
+    // faint vertical lines at the tree's split thresholds
+    if (splitXs.length > 0) {
+      ctx.strokeStyle = c.muted;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (const x of splitXs) {
+        const px = Math.round(xs.px(x)) + 0.5;
+        ctx.moveTo(px, m.t);
+        ctx.lineTo(px, h - m.b);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     if (showTruth) {
       ctx.strokeStyle = c.truth;
       ctx.lineWidth = 2;
@@ -290,6 +319,7 @@ function FitPlot1D({ col, categorical }: { col: number; categorical: boolean }) 
   const ref = usePlotCanvas(draw, [
     dataset,
     fixed,
+    splitXs,
     curve,
     classCurves,
     showTruth,

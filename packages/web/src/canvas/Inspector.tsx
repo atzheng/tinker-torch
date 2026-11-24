@@ -216,7 +216,7 @@ function EdgeInspector(p: {
           p.j,
           inW,
           n.out,
-          hostShape(host, p.node, useStore.getState().dataInfo),
+          hostShape(host, p.node, useStore.getState().dataset),
         )
       : undefined;
   return (

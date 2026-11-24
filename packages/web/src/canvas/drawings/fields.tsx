@@ -12,6 +12,17 @@ function run(make: (g: ReturnType<typeof useStore.getState>['graph']) => EditRes
 
 export const editSetting = (id: NodeId, key: string, value: unknown) =>
   run((g) => setSetting(g, id, key, value, { locked: lockedIds() }));
+/**
+ * Like `editSetting`, for a setting a preset can open on a locked piece: when the preset's `show.ui`
+ * lists `openId` explicitly, the lock on `id` does not apply to this one edit.
+ */
+export const editSettingOpen = (id: NodeId, key: string, value: unknown, openId: string) =>
+  run((g) => {
+    const { preset, show } = useStore.getState();
+    const open = show?.ui?.includes(openId) === true;
+    const locked = (preset?.locked ?? []).filter((l) => !(open && l === id));
+    return setSetting(g, id, key, value, { locked });
+  });
 export const editOut = (id: NodeId, out: number) =>
   run((g) => setLinearOut(g, id, out, { locked: lockedIds() }));
 

@@ -273,12 +273,12 @@ test('the store remembers the graph a host was published with, so its shapes are
     lin1: { W: new Float32Array(4), b: new Float32Array(4) },
     lin2: { W: new Float32Array(4), b: new Float32Array(1) },
   };
-  expect(hostShape(h, 'lin1', s().dataInfo)).toBeUndefined();
+  expect(hostShape(h, 'lin1', s().dataset)).toBeUndefined();
   act(() => useStore.setState({ host: h }));
-  expect(hostShape(h, 'lin1', s().dataInfo)).toEqual([1, 4]);
-  expect(hostShape(h, 'lin2', s().dataInfo)).toEqual([4, 1]);
+  expect(hostShape(h, 'lin1', s().dataset)).toEqual([1, 4]);
+  expect(hostShape(h, 'lin2', s().dataset)).toEqual([4, 1]);
   act(() => void s().apply(setLinearOut(s().graph, 'lin1', 2)));
-  expect(hostShape(h, 'lin1', s().dataInfo)).toEqual([1, 4]); // still what it was built for
+  expect(hostShape(h, 'lin1', s().dataset)).toEqual([1, 4]); // still what it was built for
   noteHost(h, s().graph); // a snapshot is noted once: the first graph stays
-  expect(hostShape(h, 'lin1', s().dataInfo)).toEqual([1, 4]);
+  expect(hostShape(h, 'lin1', s().dataset)).toEqual([1, 4]);
 });

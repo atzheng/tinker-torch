@@ -40,6 +40,7 @@ const GLYPH: Record<string, string> = {
   l1: '\\sum|w|',
   onehot: 'e_k',
   lookup: 'E',
+  tree: '\\mathrm{leaf}',
   weight_penalty: '\\lambda',
 };
 function chipOf(entry: PaletteEntry): {
@@ -95,6 +96,7 @@ export const ENTRY_TITLES: Record<string, string> = {
     'One-hot: a category as one 0/1 column per category. Connects a category column to a Linear.',
   lookup:
     'Lookup: one learned number (or a vector) per category. Connects a category column onward.',
+  tree: 'Tree: splits the data into leaves, one 0/1 column per leaf. Connects an Input to a Linear.',
   loss_squared_error: `Squared error loss. ${GROUP}`,
   loss_absolute_error: `Absolute error loss. ${GROUP}`,
   loss_huber: `Huber loss. ${GROUP}`,
