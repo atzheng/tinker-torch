@@ -2,6 +2,7 @@ import { useUiShown } from '../state/disclosure.js';
 import { DataControls } from './DataControls.js';
 import { FileMenu } from './FileMenu.js';
 import { PresetMenu } from './PresetMenu.js';
+import { ThemeToggle } from './ThemeToggle.js';
 import { UndoRedo } from './UndoRedo.js';
 
 /** Top bar: the dataset controls; the file and preset menus join them in later beads. */
@@ -23,6 +24,7 @@ export function TopBar() {
       {file && <FileMenu />}
       {presets && <PresetMenu />}
       <UndoRedo />
+      <ThemeToggle />
     </div>
   );
 }

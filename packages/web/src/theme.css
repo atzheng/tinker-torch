@@ -1,6 +1,7 @@
-/* All colours are variables. Light is the default; dark follows prefers-color-scheme. */
+/* All colours are variables. Light is the default. themePref.ts sets data-theme on <html> to the resolved
+   theme (an explicit choice, or the OS preference for System), so the dark values live in one block. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --bg: #f6f7f9;
   --surface: #ffffff;
@@ -109,70 +110,69 @@
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14171c;
-    --surface: #1d2129;
-    --surface-2: #272c36;
-    --border: #3a4150;
-    --text: #e7eaf0;
-    --text-muted: #9aa3b2;
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #14171c;
+  --surface: #1d2129;
+  --surface-2: #272c36;
+  --border: #3a4150;
+  --text: #e7eaf0;
+  --text-muted: #9aa3b2;
 
-    --success: #3fb950;
-    --accent: #6f9bff;
-    --accent-text: #0e1116;
-    --focus-ring: #8ab4ff;
-    --error: #ff6b6b;
-    --error-bg: #3a1d1f;
+  --success: #3fb950;
+  --accent: #6f9bff;
+  --accent-text: #0e1116;
+  --focus-ring: #8ab4ff;
+  --error: #ff6b6b;
+  --error-bg: #3a1d1f;
 
-    --weight-pos: #5b9dff;
-    --weight-neg: #ff9a45;
-    --wire: #8a93a1;
+  --weight-pos: #5b9dff;
+  --weight-neg: #ff9a45;
+  --wire: #8a93a1;
 
-    --series-train: #5b9dff;
-    --series-val: #ffb454;
-    --series-true: #8a93a1;
-    --pin-1: #2fc79a;
-    --pin-2: #e58fc6;
-    --pin-3: #e6c84a;
+  --series-train: #5b9dff;
+  --series-val: #ffb454;
+  --series-true: #8a93a1;
+  --pin-1: #2fc79a;
+  --pin-2: #e58fc6;
+  --pin-3: #e6c84a;
 
-    --div-neg: #e8964a;
-    --div-mid: #2c313b;
-    --div-pos: #2a5cb8;
-    --seq-0: #440154;
-    --seq-1: #21918c;
-    --seq-2: #fde725;
-    --point-halo: #0f1218;
-    --class-0: #4aa3e0;
-    --class-1: #f0b429;
-    --class-2: #2fc79a;
-    --class-3: #e58fc6;
-    --class-4: #8fd0f5;
-    --class-5: #ff8a4a;
+  --div-neg: #e8964a;
+  --div-mid: #2c313b;
+  --div-pos: #2a5cb8;
+  --seq-0: #440154;
+  --seq-1: #21918c;
+  --seq-2: #fde725;
+  --point-halo: #0f1218;
+  --class-0: #4aa3e0;
+  --class-1: #f0b429;
+  --class-2: #2fc79a;
+  --class-3: #e58fc6;
+  --class-4: #8fd0f5;
+  --class-5: #ff8a4a;
 
-    --ctl-fill: #2b313c;
-    --ctl-fill-hover: #343b49;
-    --ctl-fill-press: #3d4658;
-    --ctl-field-bg: #14171c;
-    --ctl-border: #8a93a3;
+  --ctl-fill: #2b313c;
+  --ctl-fill-hover: #343b49;
+  --ctl-fill-press: #3d4658;
+  --ctl-field-bg: #14171c;
+  --ctl-border: #8a93a3;
 
-    --node-fill: #232833;
-    --node-fill-hover: #2c3342;
-    --node-fill-press: #2f384a;
-    --node-border: #8b94a3;
-    --role-input: #5fd0dc;
-    --role-input-fill: #143a40;
-    --role-pred: #b9a0ff;
-    --role-pred-fill: #2b2146;
-    --role-loss: #f0b84a;
-    --role-loss-fill: #40300f;
-    --role-param: #7ccf6a;
-    --role-param-fill: #1b3320;
-    --on-role: #14171c;
-    --region-opacity: 0.13;
-    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
-    --shadow-2: 0 4px 14px rgb(0 0 0 / 0.5);
-  }
+  --node-fill: #232833;
+  --node-fill-hover: #2c3342;
+  --node-fill-press: #2f384a;
+  --node-border: #8b94a3;
+  --role-input: #5fd0dc;
+  --role-input-fill: #143a40;
+  --role-pred: #b9a0ff;
+  --role-pred-fill: #2b2146;
+  --role-loss: #f0b84a;
+  --role-loss-fill: #40300f;
+  --role-param: #7ccf6a;
+  --role-param-fill: #1b3320;
+  --on-role: #14171c;
+  --region-opacity: 0.13;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 4px 14px rgb(0 0 0 / 0.5);
 }
 
 *,

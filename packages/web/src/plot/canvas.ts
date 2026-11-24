@@ -1,5 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { readColors, type PlotColors } from './color.js';
+import { THEME_EVENT } from '../themePref.js';
 
 export type DrawFn = (ctx: CanvasRenderingContext2D, w: number, h: number, c: PlotColors) => void;
 
@@ -66,9 +67,11 @@ export function usePlotCanvas(
       request();
     };
     mq.addEventListener('change', onTheme);
+    window.addEventListener(THEME_EVENT, onTheme);
     return () => {
       ro.disconnect();
       mq.removeEventListener('change', onTheme);
+      window.removeEventListener(THEME_EVENT, onTheme);
       if (st.raf) cancelAnimationFrame(st.raf);
       st.raf = 0;
       requestRef.current = () => {};
