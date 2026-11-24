@@ -42,7 +42,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 }
 
 /** The store's `host`, republished at most every `ms` while a run is going, at once otherwise. */
-function useThrottledHost(ms: number): HostParams | undefined {
+export function useThrottledHost(ms: number): HostParams | undefined {
   const [host, setHost] = useState<HostParams | undefined>(
     () => useStore.getState().host ?? undefined,
   );

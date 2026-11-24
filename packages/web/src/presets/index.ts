@@ -10,6 +10,7 @@ import softmax from './softmax.json';
 import iris from './iris.json';
 import interceptProb from './intercept-prob.json';
 import interceptMean from './intercept-mean.json';
+import { lecturePresetNames } from './lectures.js';
 import lecture1Stage0 from './lecture1-stage0.json';
 import lecture1Stage1 from './lecture1-stage1.json';
 import lecture1Stage2 from './lecture1-stage2.json';
@@ -45,6 +46,9 @@ export const PRESET_SOURCES: Record<string, unknown> = {
 };
 
 export const PRESET_NAMES: string[] = Object.keys(PRESET_SOURCES);
+
+/** Names in the top bar Presets menu: every bundled preset except lecture stages (those open from `#/lectures`). */
+export const MENU_PRESET_NAMES: string[] = PRESET_NAMES.filter((n) => !lecturePresetNames().has(n));
 
 /** A bundled preset, parsed; null for an unknown name. */
 export function bundledPreset(name: string): SaveFile | Preset | null {

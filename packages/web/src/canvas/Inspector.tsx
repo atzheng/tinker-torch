@@ -16,6 +16,7 @@ import { pinLive } from './pure.js';
 import { usePinRoles } from '../state/disclosure.js';
 import { biasAt, weightAt } from './neuronPure.js';
 import { edgeIndexOf } from './pure.js';
+import { InspectorMatrix } from './InspectorMatrix.js';
 import { ValueField } from './ValueField.js';
 import { TexText } from '../tex/Tex.js';
 import { hostShape } from '../state/hostShape.js';
@@ -100,6 +101,7 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
         </p>
       )}
       <Fields node={node} />
+      {node.type === 'linear' && <InspectorMatrix node={node} />}
       {(node.type === 'linear' || node.type === 'scalew' || node.type === 'bias') && (
         <button
           type="button"
