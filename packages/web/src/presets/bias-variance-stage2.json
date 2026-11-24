@@ -20,6 +20,7 @@
       "instructions",
       "preset-prompt",
       "tab-model",
+      "tab-loss",
       "panel-fit",
       "panel-loss",
       "loss-readout",
@@ -33,7 +34,10 @@
       "data-n",
       "data-noise",
       "data-seed"
-    ]
+    ],
+    "panelTabs": {
+      "loss": ["model", "loss"]
+    }
   },
   "options": {
     "val-points-toggle": false
