@@ -19,4 +19,5 @@ export * from './equation.js';
 export * from './likelihood.js';
 export * from './checks.js';
 export * from './viewPartition.js';
+export * from './wireCrossings.js';
 export * from './tree.js';
