@@ -231,6 +231,20 @@ export function resolveDrop(
   return placeable(entry) ? { kind: 'free', at: placeAt(at) } : null;
 }
 
+/**
+ * Whether a resolved drop lands on a stub (a ghost standing in for a piece of the other tab).
+ * Pins and wire ends are rejected there; palette drops resolve to a wire or a free spot, or
+ * replace a piece, and keep their own rules.
+ */
+export function dropsOnStub(
+  target: DropTarget | null,
+  ghosts: Readonly<Record<NodeId, unknown>>,
+): boolean {
+  if (target?.kind === 'node') return ghosts[target.id] !== undefined;
+  if (target?.kind === 'port') return ghosts[parsePort(target.port).node] !== undefined;
+  return false;
+}
+
 /** Whether the dragged pin may be dropped on node `id`: not on its own node, not on another ŷ for a ŷ. */
 export function pinCanLandOn(
   graph: Graph,
