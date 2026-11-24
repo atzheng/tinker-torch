@@ -18,6 +18,7 @@
       "instructions",
       "preset-prompt",
       "tab-model",
+      "tab-loss",
       "panel-fit",
       "panel-loss",
       "loss-readout",
@@ -36,7 +37,10 @@
       "resample-run",
       "pins",
       "loss-log-toggle"
-    ]
+    ],
+    "panelTabs": {
+      "loss": ["model", "loss"]
+    }
   },
   "labels": {
     "loss-readout": "Score",
