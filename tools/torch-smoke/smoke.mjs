@@ -1,3 +1,4 @@
+/* global URL, process, console */
 // `pnpm torch-smoke`: opt-in (needs uv and network, never part of `pnpm test`). Dumps the torch script of
 // every bundled preset and engine fixture graph to a temp dir (through vitest, to import the TypeScript
 // sources), then runs each under uv with torch and checks it (run.py). The scripts are kept for inspection.
