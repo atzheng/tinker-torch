@@ -408,15 +408,7 @@ export function Canvas() {
   const placed = useMemo(
     () =>
       placeIssues(
-        // An issue on the wire into a collapsed Weight, or on the Weight itself, goes on its weight wire.
-        analysis.issues.map((i) => {
-          const via = layout.wires.find(
-            (w) =>
-              w.weightNode !== undefined &&
-              (w.viaEdge === i.at.edge || (i.at.edge === undefined && w.weightNode === i.at.node)),
-          );
-          return via ? { ...i, at: { ...i.at, edge: via.edge } } : i;
-        }),
+        analysis.issues,
         new Set(layout.wires.map((w) => w.edge)),
         new Set(graph.nodes.map((n) => n.id)),
         undefined,
@@ -503,15 +495,7 @@ export function Canvas() {
   let anchor: InspectorPlacement | null = null;
   if (selection?.kind === 'node') {
     const box = layout.nodes[selection.id];
-    const pill = box ? undefined : layout.wires.find((x) => x.weightNode === selection.id);
-    if (pill) {
-      const y = py(pill.labelAt[1]);
-      anchor = placeInspector(
-        { cx: px(pill.labelAt[0]), top: y - 16, bottom: y + 16 },
-        view,
-        INSPECTOR_W,
-      );
-    } else if (box) {
+    if (box) {
       anchor = placeInspector(
         // clear of the pins (and the add pins) above and below the piece
         { cx: px(box.x + box.w / 2), top: py(box.y - 30), bottom: py(box.y + box.h + 30) },

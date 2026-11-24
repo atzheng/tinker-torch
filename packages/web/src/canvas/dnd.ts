@@ -32,7 +32,7 @@ import {
   type PaletteEntry,
   type PortRef,
 } from '@tinker/core';
-import { hitAt, layerHitShapes, pillTexts, HIT_MIN_PX, type HitShape } from './pure.js';
+import { hitAt, layerHitShapes, HIT_MIN_PX, type HitShape } from './pure.js';
 
 export type DragPayload =
   | { kind: 'palette'; entry: PaletteEntry }
@@ -156,7 +156,7 @@ export function resolveDrop(
   hitPx: number = HIT_MIN_PX,
 ): DropTarget | null {
   const outputs = new Set(graph.nodes.map((n) => n.id));
-  const shapes = layerHitShapes(layout, scale, widths, outputs, pillTexts(layout));
+  const shapes = layerHitShapes(layout, scale, widths, outputs);
   const nodeOf = (s: HitShape | undefined): NodeId | undefined =>
     s?.kind === 'node' ? s.id : s?.kind === 'port' ? s.node : undefined;
 

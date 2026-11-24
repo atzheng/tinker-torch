@@ -75,20 +75,33 @@ export const columnPiece: WebPiece<'column'> = {
   Neuron: noNeuron('column'),
   Fields: ColumnFields,
 };
-/** A Weight that is not collapsed into a wire (no wire in or out yet, or in neuron view): a box. */
-export const scalewPiece: WebPiece<'scalew'> = {
-  Layer: ({ w, h, scale }) => (
+/** A Weight is a module that multiplies by one learnable number; it shows its value like a Bias (tinker-g3w). */
+function WeightLayer(p: LayerProps<'scalew'>) {
+  const known = p.weightValue !== undefined;
+  return (
     <NodeShell
       piece="scalew"
-      w={w}
-      h={h}
-      scale={scale}
+      w={p.w}
+      h={p.h}
+      scale={p.scale}
       name="Weight"
-      glyph="w"
+      {...(known ? {} : { glyph: 'w' })}
       inPorts={1}
       outPort
-    />
-  ),
+    >
+      <ScalarValuePill
+        node={p.node.id}
+        kind="scalew"
+        w={p.w}
+        h={p.h}
+        scale={p.scale}
+        value={p.weightValue}
+      />
+    </NodeShell>
+  );
+}
+export const scalewPiece: WebPiece<'scalew'> = {
+  Layer: WeightLayer,
   Neuron: noNeuron('scalew'),
   Fields: ScalarValue,
 };

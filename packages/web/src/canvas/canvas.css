@@ -666,8 +666,8 @@ path.tk-hit {
   background: linear-gradient(to top, var(--bg), transparent);
 }
 
-/* Weight wires: the label of a wire that stands for a Weight is a control (raised, outlined,
-   accent when touched or selected), never a diagnostic. */
+/* Value pills on Weight and Bias boxes: a control (raised, outlined, accent when touched or
+   selected), never a diagnostic. */
 .tk-wpill {
   cursor: ns-resize;
 }
