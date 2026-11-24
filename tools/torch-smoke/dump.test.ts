@@ -10,6 +10,9 @@ import {
   analyse,
   classCount,
   fitTrees,
+  initParams,
+  paramsFromJson,
+  withStartParams,
   isBundled,
   loadRealSet,
   parseFile,
@@ -17,9 +20,11 @@ import {
   sample,
   torchScript,
   treeLeafCounts,
+  type Analysis,
   type DataInfo,
   type Dataset,
   type Graph,
+  type HostParams,
 } from '../../packages/core/src/index.js';
 
 const root = join(import.meta.dirname, '../..');
@@ -31,13 +36,25 @@ const out = process.env.SMOKE_OUT ?? '';
 const EXPECTED_NAN: Record<string, string> = {
   'lecture1-stage2':
     'bias straight into log loss at lr 0.5; the lesson has the student add a sigmoid',
+  prob_direct_log_loss:
+    'the app starts a raw probability outside (0, 1) for a raw log loss: NaN there too',
 };
 
 type Entry = { name: string; script: string | null; skip?: string; expectedNaN?: string };
 
-function scriptOf(graph: Graph, ds: Dataset): string | null {
+/** The app's start values: `initParams`, with the file's own `params` over them (as on load and Reset). */
+function startParams(a: Analysis, seed: number, saved: unknown): HostParams {
+  const host = initParams(a, seed);
+  return saved === undefined ? host : withStartParams(host, paramsFromJson(saved, a).params, a);
+}
+
+function scriptOf(graph: Graph, ds: Dataset, saved?: unknown): string | null {
   const a = analyse(graph, ds.info, treeLeafCounts(fitTrees(graph, ds)));
-  return torchScript(graph, a, ds, { steps: 50 })?.text ?? null;
+  // the engine's initial parameters (initParams), so the strict load_state_dict is exercised for every case
+  return (
+    torchScript(graph, a, ds, { steps: 50, params: startParams(a, graph.train.seed, saved) })
+      ?.text ?? null
+  );
 }
 
 type Fixture = {
@@ -126,7 +143,7 @@ test('dump scripts', async () => {
         if (!r.ok) throw new Error(r.error);
         // the preset's own dataset and seed (the fixed dataset seed of the case: graph.data.seed)
         if (isBundled(r.file.graph.data.set)) await loadRealSet(r.file.graph.data.set); // bundled real sets load their rows on demand
-        return scriptOf(r.file.graph, sample(r.file.graph.data));
+        return scriptOf(r.file.graph, sample(r.file.graph.data), r.file.params);
       },
       why ? { expectedNaN: why } : {},
     );
@@ -135,12 +152,18 @@ test('dump scripts', async () => {
     .filter((f) => f.endsWith('.json'))
     .sort()) {
     const name = f.replace(/\.json$/, '');
-    await add('fixture', name, () => {
-      const fx = JSON.parse(readFileSync(join(fixtureDir, f), 'utf8')) as Fixture;
-      const p = parseGraph(fx.graph); // version 1 fixtures are migrated
-      if (!p.ok) throw new Error(p.error);
-      return scriptOf(p.graph, fixtureDataset(fx, p.graph));
-    });
+    const nan = EXPECTED_NAN[name];
+    await add(
+      'fixture',
+      name,
+      () => {
+        const fx = JSON.parse(readFileSync(join(fixtureDir, f), 'utf8')) as Fixture;
+        const p = parseGraph(fx.graph); // version 1 fixtures are migrated
+        if (!p.ok) throw new Error(p.error);
+        return scriptOf(p.graph, fixtureDataset(fx, p.graph));
+      },
+      nan ? { expectedNaN: nan } : {},
+    );
   }
   writeFileSync(join(out, 'manifest.json'), JSON.stringify(entries, null, 1));
 });
