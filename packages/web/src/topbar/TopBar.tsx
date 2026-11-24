@@ -5,6 +5,7 @@ import { LANDING_HASH } from '../routes/lectureRoute.js';
 import { LectureNav } from './LectureNav.js';
 import navStyles from './LectureNav.module.css';
 import { PresetMenu } from './PresetMenu.js';
+import { ThemeToggle } from './ThemeToggle.js';
 import { UndoRedo } from './UndoRedo.js';
 
 /** Top bar: the dataset controls; the file and preset menus join them in later beads. */
@@ -30,6 +31,7 @@ export function TopBar() {
         Lectures
       </a>
       <LectureNav />
+      <ThemeToggle />
     </div>
   );
 }

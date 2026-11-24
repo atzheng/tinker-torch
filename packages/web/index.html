@@ -3,6 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Before first paint, so there is no flash of the wrong theme (same rule as themePref.ts).
+      (function () {
+        var t = 'light';
+        try {
+          var v = localStorage.getItem('tinker.theme');
+          t =
+            v === 'light' || v === 'dark'
+              ? v
+              : matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+        } catch (e) {}
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
     <title>Tinker</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>

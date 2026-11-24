@@ -13,7 +13,7 @@ function lstar(hex: string): number {
 }
 
 const css = readFileSync(new URL('../src/theme.css', import.meta.url), 'utf8');
-const darkAt = css.indexOf('prefers-color-scheme: dark');
+const darkAt = css.indexOf("data-theme='dark'");
 const token = (block: string, name: string): string => {
   const m = new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`).exec(block);
   if (!m?.[1]) throw new Error(`missing ${name}`);
