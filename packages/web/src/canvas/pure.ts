@@ -258,6 +258,8 @@ export function placeIssues(
   wireOfNode: (node: NodeId) => number | undefined = () => undefined,
   /** The node a pin issue's pin sits on; when given, pin issues are drawn at the pin, not the node. */
   pinNode?: (pin: NonNullable<Issue['at']['pin']>) => NodeId | undefined,
+  /** The name of the other tab an issue's piece lives on; a global line is then prefixed with it. */
+  otherTab?: (issue: Issue) => string | undefined,
 ): PlacedIssues {
   const out: PlacedIssues = { byPin: new Map(), byEdge: new Map(), byNode: new Map(), global: [] };
   const add = <K>(m: Map<K, string[]>, k: K, msg: string) => {
@@ -274,7 +276,11 @@ export function placeIssues(
       const wire = wireOfNode(at.node);
       if (wire !== undefined && wireEdges.has(wire)) add(out.byEdge, wire, message);
       else add(out.byNode, at.node, message);
-    } else if (!out.global.includes(message)) out.global.push(message);
+    } else {
+      const where = otherTab?.({ at, message });
+      const line = where === undefined ? message : `${where}: ${message}`;
+      if (!out.global.includes(line)) out.global.push(line);
+    }
   }
   return out;
 }
