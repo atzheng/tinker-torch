@@ -10,6 +10,8 @@ import { useRegionShown } from './state/disclosure.js';
 import { useLayoutMode } from './layout/useLayoutMode.js';
 import { useStore } from './state/store.js';
 import { TabBar } from './tabs/TabBar.js';
+import { Landing } from './routes/Landing.js';
+import { useRoute } from './routes/useRoute.js';
 import { TopBar } from './topbar/TopBar.js';
 import type { LayoutMode } from './layout/layoutMode.js';
 import { TrainingBar } from './trainbar/TrainingBar.js';
@@ -109,6 +111,7 @@ export const PORTRAIT_RESULTS = 'clamp(150px, 32%, 380px)';
 export function App() {
   useEngine(); // the engine loads even when a preset hides the training bar (its other caller)
   const mode = useLayoutMode();
+  const route = useRoute();
   const top = useRegionShown('top-bar');
   const results = useRegionShown('results');
   const train = useRegionShown('training-bar');
@@ -132,6 +135,7 @@ export function App() {
     const px = portrait ? r?.height : r?.width;
     return px && px > 0 ? clampSize(key, px / extent()) : REGION_LIMITS[key].def;
   };
+  if (route.kind === 'lectures') return <Landing />;
   return (
     <>
       <div

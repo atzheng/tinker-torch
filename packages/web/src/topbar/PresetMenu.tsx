@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { bundledPreset, PRESET_NAMES, presetTitle } from '../presets/index.js';
+import { bundledPreset, MENU_PRESET_NAMES, presetTitle } from '../presets/index.js';
 import { loadParsed } from './FileMenu.js';
 import styles from './PresetMenu.module.css';
 
@@ -53,7 +53,7 @@ export function PresetMenu() {
       </button>
       {open && (
         <ul className={styles.list} style={{ left }} data-testid="presets-list">
-          {PRESET_NAMES.map((name) => (
+          {MENU_PRESET_NAMES.map((name) => (
             <li key={name}>
               <button
                 type="button"

@@ -1,6 +1,9 @@
 import { useUiShown } from '../state/disclosure.js';
 import { DataControls } from './DataControls.js';
 import { FileMenu } from './FileMenu.js';
+import { LANDING_HASH } from '../routes/lectureRoute.js';
+import { LectureNav } from './LectureNav.js';
+import navStyles from './LectureNav.module.css';
 import { PresetMenu } from './PresetMenu.js';
 import { UndoRedo } from './UndoRedo.js';
 
@@ -23,6 +26,10 @@ export function TopBar() {
       {file && <FileMenu />}
       {presets && <PresetMenu />}
       <UndoRedo />
+      <a className={navStyles.link} href={LANDING_HASH} data-testid="lectures-link">
+        Lectures
+      </a>
+      <LectureNav />
     </div>
   );
 }
