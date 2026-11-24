@@ -17,7 +17,7 @@ import {
   type HostParams,
   type LossMode,
 } from '@tinker/core';
-import { analyseWithTrees, treeFitsOf } from './treeFits.js';
+import { analyseWithTrees, sameFits, treeFitsOf } from './treeFits.js';
 import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engine';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { listParams } from '../plot/lossCurve1d.js';
@@ -429,7 +429,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
 
     const fits = treeFitsOf(graph, dataset);
     // a refit (data or tree setting changed) makes the leaf weights meaningless: start them again
-    const refit = fits !== rt.lastFits && Object.keys(fits).length > 0;
+    const refit = Object.keys(fits).length > 0 && !(rt.lastFits && sameFits(fits, rt.lastFits));
     rt.lastFits = fits;
     if (refit) bumpWeightGeneration();
     const analysis = analyse(graph, dataInfo, treeLeafCounts(fits));

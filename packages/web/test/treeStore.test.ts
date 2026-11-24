@@ -2,7 +2,7 @@
 // The Tree piece in the store (tinker-6h1.4): fitted on the host before analysis, refits on a data or
 // tree-setting change and re-initialises the weights, never on a move.
 import { beforeAll, beforeEach, expect, test } from 'vitest';
-import { moveNodes, parseGraph, setSetting, type Graph } from '@tinker/core';
+import { insertOnWire, moveNodes, parseGraph, setSetting, type Graph } from '@tinker/core';
 import { loadEngine } from '../src/engine.js';
 import { useStore } from '../src/state/store.js';
 import { treeFitsOf } from '../src/state/treeFits.js';
@@ -66,18 +66,19 @@ test('the Linear after a Tree reads its in-width from the fitted leaf count', ()
   expect(s().host?.lin1?.W?.length).toBe(fit?.leaves);
 });
 
-test('a depth change refits and resizes; the same leaf count still resets the weights', () => {
+test('a depth change refits and resizes; an equal refit keeps the weights', () => {
   const before = leaves();
   s().apply(setSetting(s().graph, 'tree', 'depth', 6));
   expect(leaves()).toBeGreaterThan(before ?? 0);
   expect(s().host?.lin1?.W?.length).toBe(leaves());
-  // train a little, then a setting change that leaves the fit identical: weights start again
+  // train a little, then a setting change that leaves the fit identical: nothing is re-initialised
   s().reset();
   const start = Array.from(s().host?.lin1?.W ?? []);
   for (let i = 0; i < 5; i++) s().stepOnce();
-  expect(Array.from(s().host?.lin1?.W ?? [])).not.toEqual(start);
+  const trainedW = Array.from(s().host?.lin1?.W ?? []);
+  expect(trainedW).not.toEqual(start);
   s().apply(setSetting(s().graph, 'tree', 'minDecrease', 1e-12));
-  expect(Array.from(s().host?.lin1?.W ?? [])).toEqual(start);
+  expect(Array.from(s().host?.lin1?.W ?? [])).toEqual(trainedW);
 });
 
 test('undo of a tree setting refits', () => {
@@ -134,4 +135,20 @@ test('a locked Tree refuses setting edits unless its field id is listed in show.
   editSettingOpen('tree', 'minLeaf', 4, 'tree-min-leaf');
   expect(s().graph.nodes.find((n) => n.id === 'tree')).toMatchObject({ minLeaf: 4 });
   useStore.setState({ preset: null, show: null });
+});
+
+test('a wiring edit downstream keeps trained weights; a depth change still re-inits', () => {
+  s().reset();
+  const start = Array.from(s().host?.lin1?.W ?? []);
+  for (let i = 0; i < 5; i++) s().stepOnce();
+  const trained = Array.from(s().host?.lin1?.W ?? []);
+  expect(trained).not.toEqual(start);
+  const idx = s().graph.edges.findIndex((e) => String(e[0]) === 'lin1');
+  const r = insertOnWire(s().graph, idx, { type: 'activation', fn: 'relu' } as never);
+  expect(r.ok).toBe(true);
+  s().apply(r);
+  expect(Array.from(s().host?.lin1?.W ?? [])).toEqual(trained);
+  s().apply(setSetting(s().graph, 'tree', 'depth', 5));
+  expect(s().host?.lin1?.W?.length).toBe(leaves());
+  expect(Array.from(s().host?.lin1?.W ?? [])).not.toEqual(trained);
 });

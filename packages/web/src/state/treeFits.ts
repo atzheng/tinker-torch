@@ -1,6 +1,7 @@
 import {
   analyse,
   fitTrees,
+  resolveEdge,
   treeLeafCounts,
   type Analysis,
   type Dataset,
@@ -12,11 +13,40 @@ type DatasetFit = Pick<Dataset, 'info' | 'nTrain' | 'xTrain' | 'yTrain'>;
 
 const EMPTY: TreeFits = Object.freeze({}) as TreeFits;
 
-/** What a fit depends on besides the data: the Tree and Input nodes and the wires (positions and training settings are not in it). */
+/** What a fit depends on besides the data: each Tree's settings and the Input wired straight into it (no other wire, node or position). */
 function fitKey(graph: Graph): string | null {
-  const nodes = graph.nodes.filter((n) => n.type === 'tree' || n.type === 'input');
-  if (!nodes.some((n) => n.type === 'tree')) return null;
-  return JSON.stringify([nodes, graph.edges]);
+  const trees = graph.nodes.filter((n) => n.type === 'tree');
+  if (trees.length === 0) return null;
+  return JSON.stringify(
+    trees.map((t) => {
+      let src: unknown = null;
+      for (const e of graph.edges) {
+        const r = resolveEdge(graph.nodes, e);
+        if (r.ok && r.to.node === t.id && r.to.port === 'in') {
+          const from = graph.nodes.find((n) => n.id === r.from.node);
+          src = from?.type === 'input' ? from : (from?.id ?? null);
+          break;
+        }
+      }
+      return [t, src];
+    }),
+  );
+}
+
+/** Whether two fit sets are the same trees (per id: leaves, split features and thresholds). */
+export function sameFits(a: TreeFits, b: TreeFits): boolean {
+  const sig = (f: TreeFits) =>
+    JSON.stringify(
+      Object.keys(f)
+        .sort()
+        .map((id) => [
+          id,
+          f[id]?.leaves,
+          f[id]?.columns,
+          f[id]?.nodes.map((n) => (n.kind === 'split' ? [n.feature, n.threshold] : n.leaf)),
+        ]),
+    );
+  return a === b || sig(a) === sig(b);
 }
 
 const cache = new WeakMap<object, { key: string; fits: TreeFits }>();
