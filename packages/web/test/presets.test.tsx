@@ -2,7 +2,16 @@
 import { beforeEach, expect, test } from 'vitest';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { analyse, deleteNode, layoutLayers, loadRealSet, sample, setSetting } from '@tinker/core';
+import {
+  analyse,
+  deleteNode,
+  fitTrees,
+  layoutLayers,
+  loadRealSet,
+  sample,
+  setSetting,
+  treeLeafCounts,
+} from '@tinker/core';
 import { LAYER_FIT_MIN_SCALE } from '../src/canvas/viewport.js';
 import { initialGraph as defaultGraph } from '../src/state/graphSlice.js';
 import { PRESET_NAMES, bundledPreset } from '../src/presets/index.js';
@@ -48,17 +57,24 @@ test('every bundled preset parses, is titled, has no prompt and analyses as trai
     'lecture1-stage3',
     'lecture1-stage4',
     'lecture1-stage5',
+    'bias-variance-stage1',
+    'bias-variance-stage2',
+    'bias-variance-stage3',
   ]);
   for (const name of PRESET_NAMES) {
     const f = bundledPreset(name);
     expect(f, name).not.toBeNull();
     if (!f) continue;
     expect('title' in f).toBe(true);
-    expect('prompt' in f, name).toBe(name.startsWith('lecture1-'));
+    expect('prompt' in f, name).toBe(
+      name.startsWith('lecture1-') || name.startsWith('bias-variance-'),
+    );
     expect(f.graph.version, name).toBe(2); // bundled files are native version 2
     expect(f.graph.predictions, name).toHaveLength(1);
     expect(f.graph.loss, name).toBe('loss');
-    const a = analyse(f.graph, sample(f.graph.data).info);
+    const ds = sample(f.graph.data);
+    const leaves = treeLeafCounts(fitTrees(f.graph, ds));
+    const a = analyse(f.graph, ds.info, leaves);
     expect(a.issues, name).toEqual([]);
     expect(a.trainable, name).toBe(true);
   }

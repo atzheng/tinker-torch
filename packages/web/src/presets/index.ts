@@ -16,6 +16,9 @@ import lecture1Stage2 from './lecture1-stage2.json';
 import lecture1Stage3 from './lecture1-stage3.json';
 import lecture1Stage4 from './lecture1-stage4.json';
 import lecture1Stage5 from './lecture1-stage5.json';
+import biasVarianceStage1 from './bias-variance-stage1.json';
+import biasVarianceStage2 from './bias-variance-stage2.json';
+import biasVarianceStage3 from './bias-variance-stage3.json';
 
 /** Bundled presets by the name used in `?preset=<name>`, in menu order. Imported, never fetched. */
 export const PRESET_SOURCES: Record<string, unknown> = {
@@ -36,6 +39,9 @@ export const PRESET_SOURCES: Record<string, unknown> = {
   'lecture1-stage3': lecture1Stage3,
   'lecture1-stage4': lecture1Stage4,
   'lecture1-stage5': lecture1Stage5,
+  'bias-variance-stage1': biasVarianceStage1,
+  'bias-variance-stage2': biasVarianceStage2,
+  'bias-variance-stage3': biasVarianceStage3,
 };
 
 export const PRESET_NAMES: string[] = Object.keys(PRESET_SOURCES);

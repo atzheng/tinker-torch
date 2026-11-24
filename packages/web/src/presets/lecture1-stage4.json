@@ -37,6 +37,7 @@
       "loss-mode-mean",
       "loss-1d-tangent",
       "loss-log-toggle",
+      "loss-val",
       "truth-toggle",
       "btn-step",
       "btn-reset",

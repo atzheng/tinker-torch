@@ -147,6 +147,8 @@ export const UI_IDS = {
     'loss-mode-mean',
     'loss-log-toggle',
     'loss-restore-best',
+    // The validation curve in the loss chart, its legend entry and the val number in the readout (tinker-6h1.5); hidden when a preset lists `show.ui` without it
+    'loss-val',
     'loss-1d-axis',
     'loss-1d-explored',
     'loss-1d-tangent',

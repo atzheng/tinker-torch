@@ -1,5 +1,5 @@
 import type { LossMode } from '@tinker/core';
-import { useUiLabel } from '../state/disclosure.js';
+import { useUiLabel, useUiShown } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { isMiniBatch } from '../state/trainSlice.js';
 import { useShallow } from 'zustand/react/shallow';
@@ -48,6 +48,7 @@ export function LossReadout() {
   );
   const [train, val] = text;
   const modes = useStore(useShallow((s) => shownLossModes(s)));
+  const showVal = useUiShown('loss-val');
   const title = useUiLabel('loss-readout', '');
   const diverged = useStore((s) => s.diverged);
   const probIssue = useStore((s) => s.probIssue);
@@ -90,12 +91,14 @@ export function LossReadout() {
           </span>
         )}
       </span>
-      <span className={styles.readoutGroup}>
-        <span className={styles.readoutLabel}>val</span>
-        <span className={styles.readoutVal} data-testid="loss-readout-val">
-          {val}
+      {showVal && (
+        <span className={styles.readoutGroup}>
+          <span className={styles.readoutLabel}>val</span>
+          <span className={styles.readoutVal} data-testid="loss-readout-val">
+            {val}
+          </span>
         </span>
-      </span>
+      )}
     </div>
   );
 }
