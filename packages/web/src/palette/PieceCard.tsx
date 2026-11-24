@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -49,53 +50,71 @@ type Rect = { left: number; top: number; right: number; bottom: number };
 export type CardPos = { left: number; top: number; width: number; maxHeight: number };
 /** The narrowest the card gets before it overlaps what it sits beside. */
 const CARD_MIN_W = 200;
+/** Least vertical room the preferred side needs before the card tries the other side. */
+const MIN_SCROLL_H = 120;
 
 /**
  * Where the card (natural `height`) goes inside `box`. Beside `side` (the palette or the inspector):
- * on the right, else the left, whichever has room (the larger room when neither fits whole), its
- * top lined up with `align`. With `under`, below `side` instead (the portrait palette strip), at
- * `align` horizontally. The card scrolls inside `maxHeight` when `box` is short.
+ * on the right, else the left, whichever has room, its top lined up with `align`; the width narrows
+ * from 320 to `CARD_MIN_W` to fit. When neither side has `CARD_MIN_W` px and `side` is the inspector
+ * (`vertical`), the card goes above or below it instead, on the side away from the piece
+ * (`piece`: its vertical extent; the card is on the far side of the inspector from it, or when that has under 120 px the other side, above the piece; unknown: the side with more room), at
+ * the inspector's left edge, scrolling inside the room left. With `under`, below `side` (the
+ * portrait palette strip), at `align` horizontally. It never covers `side` when `vertical` is set.
  */
 export function placeCard(
   box: Rect,
-  side: { left: number; right: number; bottom: number },
+  side: { left: number; right: number; top?: number; bottom: number },
   align: number,
   height: number,
-  under = false,
+  opts: { under?: boolean; vertical?: boolean; piece?: { top: number; bottom: number } } = {},
 ): CardPos {
   let w = Math.min(CARD_W, box.right - box.left - 2 * EDGE);
-  let left: number;
-  let wanted: number;
-  if (under) {
-    left = Math.min(Math.max(box.left + EDGE, align), box.right - EDGE - w);
-    wanted = side.bottom + GAP;
-  } else {
-    const roomR = box.right - EDGE - (side.right + GAP);
-    const roomL = side.left - GAP - (box.left + EDGE);
-    const onRight = roomR >= Math.min(w, Math.max(roomL, CARD_MIN_W));
-    const room = onRight ? roomR : roomL;
-    if (room >= CARD_MIN_W) w = Math.min(w, room); // beside it, narrower when the canvas is tight
-    left = onRight
-      ? Math.min(side.right + GAP, box.right - EDGE - w)
-      : Math.max(box.left + EDGE, side.left - GAP - w);
-    wanted = align;
-  }
-  const maxHeight = Math.max(box.bottom - box.top - 2 * EDGE, 0);
-  const h = Math.min(height, maxHeight);
-  const top = Math.min(Math.max(wanted, box.top + EDGE), box.bottom - EDGE - h);
-  return {
-    left,
-    top,
-    width: w,
-    maxHeight: Math.max(Math.min(maxHeight, box.bottom - EDGE - top), 0),
+  const clampLeft = (x: number) => Math.min(Math.max(box.left + EDGE, x), box.right - EDGE - w);
+  const fullH = Math.max(box.bottom - box.top - 2 * EDGE, 0);
+  const finish = (left: number, wanted: number, maxH: number): CardPos => {
+    const h = Math.min(height, maxH);
+    const top = Math.min(Math.max(wanted, box.top + EDGE), box.bottom - EDGE - h);
+    return { left, top, width: w, maxHeight: Math.max(Math.min(maxH, box.bottom - EDGE - top), 0) };
   };
+  if (opts.under) return finish(clampLeft(align), side.bottom + GAP, fullH);
+  const roomR = box.right - EDGE - (side.right + GAP);
+  const roomL = side.left - GAP - (box.left + EDGE);
+  if (opts.vertical && side.top !== undefined && Math.max(roomR, roomL) < CARD_MIN_W) {
+    // Above or below the inspector and the piece together, so the card covers neither.
+    const p = opts.piece;
+    const top = p ? Math.min(side.top, p.top) : side.top;
+    const bottom = p ? Math.max(side.bottom, p.bottom) : side.bottom;
+    const roomBelow = Math.max(box.bottom - EDGE - (bottom + GAP), 0);
+    const roomAbove = Math.max(top - GAP - (box.top + EDGE), 0);
+    const pieceAbove = p ? p.top + p.bottom < side.top + side.bottom : undefined;
+    // Away from the piece, unless that side has hardly any room and the other has more.
+    let below = pieceAbove === undefined ? roomBelow >= roomAbove : pieceAbove;
+    if (
+      below
+        ? roomBelow < MIN_SCROLL_H && roomAbove > roomBelow
+        : roomAbove < MIN_SCROLL_H && roomBelow > roomAbove
+    )
+      below = !below;
+    const left = clampLeft(side.left);
+    if (below) return { left, top: bottom + GAP, width: w, maxHeight: roomBelow };
+    const h = Math.min(height, roomAbove);
+    return { left, top: top - GAP - h, width: w, maxHeight: roomAbove };
+  }
+  const onRight = roomR >= Math.min(w, Math.max(roomL, CARD_MIN_W));
+  const room = onRight ? roomR : roomL;
+  if (room >= CARD_MIN_W) w = Math.min(w, room); // beside it, narrower when the canvas is tight
+  const left = onRight
+    ? Math.min(side.right + GAP, box.right - EDGE - w)
+    : Math.max(box.left + EDGE, side.left - GAP - w);
+  return finish(left, align, fullH);
 }
 
 export type CardPlacement =
   /** Beside the palette (under its strip in portrait), lined up with the entry; fixed to the viewport. */
   | { kind: 'palette'; row: HTMLElement }
-  /** Beside the inspector panel, inside the canvas. */
-  | { kind: 'inspector'; panel: HTMLElement; canvas: HTMLElement };
+  /** Beside (or, in a narrow canvas, above or below) the inspector panel, inside the canvas; `piece` is the selected piece's element. */
+  | { kind: 'inspector'; panel: HTMLElement; canvas: HTMLElement; piece: Element | null };
 
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -184,11 +203,14 @@ function CardBody({ view }: { view: DocView }) {
  * it and outside the opener, and on its ×. `onClose` is called for each.
  */
 export function PieceCard({
+  id,
   view,
   opener,
   placement,
   onClose,
 }: {
+  /** The card's DOM id (the "?" points at it with aria-controls). */
+  id: string;
   view: DocView;
   opener: HTMLElement | null;
   placement: CardPlacement;
@@ -198,6 +220,7 @@ export function PieceCard({
   const [pos, setPos] = useState<CardPos | null>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  const [, remeasure] = useReducer((n: number) => n + 1, 0);
 
   // Placed after every render (the view changes with live edits, the inspector moves with the
   // canvas); state only changes when the numbers do.
@@ -212,16 +235,26 @@ export function PieceCard({
       const row = placement.row.getBoundingClientRect();
       const vp = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
       const strip = bar?.getAttribute('data-strip') === 'true';
-      next = placeCard(vp, b, strip ? row.left : row.top, h, strip);
+      next = placeCard(vp, b, strip ? row.left : row.top, h, { under: strip });
     } else {
       const c = placement.canvas.getBoundingClientRect();
       const p = placement.panel.getBoundingClientRect();
-      const side = { left: p.left - c.left, right: p.right - c.left, bottom: p.bottom - c.top };
+      const side = {
+        left: p.left - c.left,
+        right: p.right - c.left,
+        top: p.top - c.top,
+        bottom: p.bottom - c.top,
+      };
+      const piece = placement.piece?.getBoundingClientRect();
       next = placeCard(
         { left: 0, top: 0, right: c.width, bottom: c.height },
         side,
         p.top - c.top,
         h,
+        {
+          vertical: true,
+          piece: piece && { top: piece.top - c.top, bottom: piece.bottom - c.top },
+        },
       );
     }
     setPos((o) =>
@@ -248,25 +281,42 @@ export function PieceCard({
       if (t && (ref.current?.contains(t) || opener?.contains(t))) return;
       close.current();
     };
+    // The palette card is fixed to the viewport, so a scrolling palette would leave it behind: it
+    // closes, and so does a window resize. The inspector card re-measures on resize.
+    const bar = placement.kind === 'palette' ? placement.row.closest('.tk-palette') : null;
+    const onScroll = (e: Event) => {
+      if (bar && e.target instanceof Node && (e.target === bar || bar.contains(e.target)))
+        close.current();
+    };
+    const onResize = () => (placement.kind === 'palette' ? close.current() : remeasure());
     window.addEventListener('keydown', onKey, true);
-    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointerdown', onDown, true); // not prevented: the press still reaches what is under it
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
     };
-  }, [opener]);
+  }, [opener, placement]);
+
+  // Focus moves into the card when it opens (Escape or the close button return it to the opener).
+  const closeBtn = useRef<HTMLButtonElement>(null);
+  useEffect(() => closeBtn.current?.focus({ preventScroll: true }), []);
 
   const fixed = placement.kind === 'palette';
   const card = (
     <div
       ref={ref}
+      id={id}
       className="tk-piece-card"
       data-testid="piece-card"
       data-key={view.key}
       data-placement={placement.kind}
       role="dialog"
       aria-modal="false"
-      aria-label={`${view.label} reference`}
+      aria-labelledby={`${id}-title`}
       style={{
         position: fixed ? 'fixed' : 'absolute',
         left: pos?.left ?? 0,
@@ -277,8 +327,9 @@ export function PieceCard({
       }}
     >
       <div className="tk-card-head">
-        <h3>{view.label}</h3>
+        <h3 id={`${id}-title`}>{view.label}</h3>
         <button
+          ref={closeBtn}
           type="button"
           className="tk-card-close"
           aria-label="Close reference"

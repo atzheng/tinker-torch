@@ -76,7 +76,8 @@ function NodeDoc({ node, analysis }: { node: Node; analysis: Analysis }) {
   const graph = useStore((s) => s.graph);
   const data = useStore((s) => s.dataInfo);
   useEffect(() => () => cardOwner.close(id), [node.id]);
-  const panel = btn.current?.closest<HTMLElement>('.tk-inspector') ?? null;
+  // The positioned box (clipped to the canvas), not the aside, which may be taller when it scrolls.
+  const panel = btn.current?.closest<HTMLElement>('.tk-inspector-pos, .tk-inspector') ?? null;
   const canvas = btn.current?.closest<HTMLElement>('.tk-canvas') ?? null;
   return (
     <>
@@ -87,15 +88,22 @@ function NodeDoc({ node, analysis }: { node: Node; analysis: Analysis }) {
         data-testid="piece-doc-inspector"
         aria-label={`About ${PIECE_LABEL[node.type]}`}
         aria-expanded={open}
+        aria-controls={open ? 'piece-card-inspector' : undefined}
         onClick={() => (open ? cardOwner.close(id) : cardOwner.open(id))}
       >
         ?
       </button>
       {open && panel && canvas && (
         <PieceCard
+          id="piece-card-inspector"
           view={docViewFor(node, analysis, data, graph)}
           opener={btn.current}
-          placement={{ kind: 'inspector', panel, canvas }}
+          placement={{
+            kind: 'inspector',
+            panel,
+            canvas,
+            piece: canvas.querySelector(`[data-testid="node-${node.id}"]`),
+          }}
           onClose={() => cardOwner.close(id)}
         />
       )}

@@ -80,6 +80,8 @@ function EntryDoc({ entry }: { entry: PaletteEntry }) {
   const open = useCardOpen(id);
   const btn = useRef<HTMLButtonElement>(null);
   const row = btn.current?.parentElement ?? null;
+  // The entry can leave (preset load, tab switch) and come back: its card must not reopen by itself.
+  useEffect(() => () => cardOwner.close(id), [id]);
   return (
     <>
       <button
@@ -89,12 +91,14 @@ function EntryDoc({ entry }: { entry: PaletteEntry }) {
         data-testid={`piece-doc-${entry.key}`}
         aria-label={`About ${entry.label}`}
         aria-expanded={open}
+        aria-controls={open ? `piece-card-${entry.key}` : undefined}
         onClick={() => (open ? cardOwner.close(id) : cardOwner.open(id))}
       >
         ?
       </button>
       {open && row && (
         <PieceCard
+          id={`piece-card-${entry.key}`}
           view={docView(entry.key)}
           opener={btn.current}
           placement={{ kind: 'palette', row }}

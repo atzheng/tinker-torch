@@ -158,3 +158,64 @@ test('placeCard keeps the card inside the box, beside the side, never wider than
   const narrow = placeCard({ ...box, right: 200 }, { left: 0, right: 10, bottom: 10 }, 0, 100);
   expect(narrow.left + 192).toBeLessThanOrEqual(196);
 });
+
+test('placeCard: with under 200 px on both sides the card goes above or below the inspector and the piece', () => {
+  // 1024x768 touch canvas: 561 wide, inspector 248 centred (145 px each side).
+  const box = { left: 0, top: 0, right: 561, bottom: 600 };
+  const insp = { left: 156, right: 404, top: 150, bottom: 300 };
+  const piece = { top: 80, bottom: 126 }; // above the inspector
+  const below = placeCard(box, insp, 150, 400, { vertical: true, piece });
+  expect(below.top).toBe(308);
+  expect(below.maxHeight).toBe(600 - 4 - 308);
+  expect(below.width).toBe(320);
+  expect(below.left + below.width).toBeLessThanOrEqual(557);
+  // Inspector at the bottom of the canvas (piece centred): not enough room below, so above the piece.
+  const low = { ...insp, top: 450, bottom: 596 };
+  const above = placeCard(box, low, 450, 200, { vertical: true, piece: { top: 380, bottom: 426 } });
+  expect(above.top + 200).toBe(380 - 8);
+  expect(above.maxHeight).toBe(380 - 8 - 4);
+  // The piece below the inspector: the card goes above the inspector.
+  const up = placeCard(box, { ...insp, top: 300, bottom: 420 }, 300, 100, {
+    vertical: true,
+    piece: { top: 440, bottom: 486 },
+  });
+  expect(up.top + 100).toBe(300 - 8);
+  const tall = placeCard(box, { ...insp, top: 300, bottom: 420 }, 300, 900, {
+    vertical: true,
+    piece: { top: 440, bottom: 486 },
+  });
+  expect(tall.top + tall.maxHeight).toBe(292); // scrolls inside the room above
+  const unknown = placeCard(box, { ...insp, top: 40, bottom: 310 }, 40, 100, { vertical: true });
+  expect(unknown.top).toBe(318); // more room below
+});
+
+test('a palette card closes when its entry leaves, and does not reopen when it returns', () => {
+  click(must('piece-doc-linear'));
+  expect(cards()).toBe(1);
+  act(() => useStore.setState({ show: { palette: ['input'] } }));
+  expect(cards()).toBe(0);
+  act(() => useStore.setState({ show: null }));
+  expect(cards()).toBe(0);
+});
+
+test('the palette card closes when the palette scrolls or the window resizes', () => {
+  click(must('piece-doc-linear'));
+  act(() => void must('palette').dispatchEvent(new Event('scroll')));
+  expect(cards()).toBe(0);
+  click(must('piece-doc-linear'));
+  act(() => void window.dispatchEvent(new Event('resize')));
+  expect(cards()).toBe(0);
+});
+
+test('focus moves into the card; the "?" points at it with aria-controls', () => {
+  const b = must('piece-doc-linear');
+  click(b);
+  const card = must('piece-card');
+  expect(b.getAttribute('aria-controls')).toBe(card.id);
+  expect(card.getAttribute('aria-labelledby')).toBe(`${card.id}-title`);
+  expect(document.getElementById(`${card.id}-title`)?.textContent).toBe('Linear');
+  expect(document.activeElement).toBe(must('piece-card-close'));
+  act(() => s().select({ kind: 'node', id: 'lin1' }));
+  click(must('piece-doc-inspector'));
+  expect(document.activeElement).toBe(must('piece-card-close'));
+});
