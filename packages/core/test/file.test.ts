@@ -197,6 +197,18 @@ describe('preset show (progressive disclosure)', () => {
     expect(r.error).toMatch(re);
     expect(r.error).toMatch(/^[A-Z].*\.$/);
   });
+  test('show.docs is kept (true and false) and a non-boolean is refused in one sentence', () => {
+    for (const docs of [true, false]) {
+      const r = parseFile({ ...base(), show: { docs } });
+      expect(r.ok && 'show' in r.file && r.file.show).toEqual({ docs });
+    }
+    for (const docs of ['no', 0, null, []]) {
+      const r = parseFile({ ...base(), show: { docs } });
+      expect(r.ok).toBe(false);
+      if (r.ok) continue;
+      expect(r.error).toMatch(/"show\.docs" must be true or false\.$/);
+    }
+  });
   test('show must be an object', () => {
     expect(parseFile({ ...base(), show: [] }).ok).toBe(false);
   });

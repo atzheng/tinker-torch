@@ -355,6 +355,23 @@ path.tk-hit {
   line-height: 1;
   cursor: pointer;
 }
+.tk-inspector-title[data-docs='true'] {
+  margin-right: 58px;
+}
+.tk-inspector-doc {
+  position: absolute;
+  top: 6px;
+  right: 34px;
+}
+@media (pointer: coarse) {
+  .tk-inspector-title[data-docs='true'] {
+    margin-right: 70px;
+  }
+  .tk-inspector-doc {
+    top: 4px;
+    right: 38px;
+  }
+}
 .tk-inspector-close:hover {
   background: var(--surface-2);
 }
@@ -459,7 +476,14 @@ path.tk-hit {
   color: var(--error);
   background: var(--surface);
 }
+/* Room for the "?" (CONTRACTS.md section 15) between Delete and the close button. */
+.tk-inspector[data-docs='true'] .tk-inspector-delete {
+  right: 64px;
+}
 @media (pointer: coarse) {
+  .tk-inspector[data-docs='true'] .tk-inspector-delete {
+    right: 76px;
+  }
   .tk-inspector-delete {
     height: 32px;
     right: 44px;

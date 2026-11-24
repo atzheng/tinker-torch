@@ -249,3 +249,31 @@
   margin: 0;
   touch-action: pan-x;
 }
+
+/* A row holds the entry and its "?" (CONTRACTS.md section 15): the "?" shows on hover or focus with a
+   mouse, and on the armed entry (touch and keyboard); an open card keeps it shown. */
+.tk-palette-row {
+  position: relative;
+}
+.tk-palette-doc {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  visibility: hidden;
+}
+.tk-palette-row[data-armed='true'] .tk-palette-doc,
+.tk-palette-row:focus-within .tk-palette-doc,
+.tk-palette-doc[aria-expanded='true'] {
+  visibility: visible;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tk-palette-row:hover .tk-palette-doc {
+    visibility: visible;
+  }
+}
+@media (pointer: coarse) {
+  .tk-palette-doc {
+    right: 2px;
+  }
+}

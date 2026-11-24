@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   PALETTE,
+  PIECE_DOCS,
+  docView,
   isShown,
   ownsParams,
   paletteTabs,
@@ -14,6 +16,7 @@ import { useLayoutMode } from '../layout/useLayoutMode.js';
 import { useSplitTabs, useViewTab } from '../state/disclosure.js';
 import { useStore } from '../state/store.js';
 import { Tex } from '../tex/Tex.js';
+import { PieceCard, cardOwner, useCardOpen } from './PieceCard.js';
 import './palette.css';
 
 /** The glyph a palette chip shows, the same one the node it creates carries (roles get a badge). */
@@ -68,42 +71,43 @@ const VALUE_ENTRIES: ReadonlySet<string> = new Set([
   'bias',
 ]);
 
-const GROUP = 'Adds the pieces that make it. Drop it on a wire or on empty canvas.';
-
-/** One plain phrase per entry: what the piece is and what it connects to (the chip's tooltip). */
-export const ENTRY_TITLES: Record<string, string> = {
-  input: 'Input: the data columns. Connects out to the next piece.',
-  target: 'Target: the true answers. Connects to an error or a loss.',
-  feature: 'Feature: new columns made from the inputs. Goes between two pieces.',
-  linear: 'Linear: weighted sum of its inputs. Goes between two pieces.',
-  activation: 'Activation: bends the numbers. Goes between two pieces.',
-  dropout: 'Dropout: randomly zeroes values in training. Goes between two pieces.',
-  add: 'Add: sums two inputs. Goes between two pieces.',
-  sigmoid: 'Sigmoid: turns a number into a probability. Goes between two pieces.',
-  softmax: 'Softmax: turns numbers into probabilities that sum to 1. Goes between two pieces.',
-  subtract: 'Subtract: a minus b. Goes between two pieces.',
-  square: 'Square: each number times itself. Goes between two pieces.',
-  abs: 'Absolute value: drops the sign. Goes between two pieces.',
-  huber: 'Huber: squared for small values, linear for large ones. Goes between two pieces.',
-  log_loss: 'Log loss: per example, from a probability and the target.',
-  cross_entropy: 'Cross-entropy: per example, from probabilities and the target class.',
-  mean: 'Mean: averages over the examples into one number. Goes between two pieces.',
-  scale: 'Scale: multiplies by a constant. Goes between two pieces.',
-  weights: 'Weights: reads the weights of a Linear piece.',
-  l2: 'L2 norm: sum of the squared weights.',
-  l1: 'L1 norm: sum of the absolute weights.',
-  onehot:
-    'One-hot: a category as one 0/1 column per category. Connects a category column to a Linear.',
-  lookup:
-    'Lookup: one learned number (or a vector) per category. Connects a category column onward.',
-  tree: 'Tree: splits the data into leaves, one 0/1 column per leaf. Connects an Input to a Linear.',
-  loss_squared_error: `Squared error loss. ${GROUP}`,
-  loss_absolute_error: `Absolute error loss. ${GROUP}`,
-  loss_huber: `Huber loss. ${GROUP}`,
-  loss_log_loss: `Log loss, averaged. ${GROUP}`,
-  loss_cross_entropy: `Cross-entropy loss, averaged. ${GROUP}`,
-  weight_penalty: `Weight penalty: discourages large weights. ${GROUP}`,
-};
+/**
+ * The "?" of one palette entry (CONTRACTS.md section 15). A sibling of the entry button, so a press
+ * on it never reaches the entry's drag or arm handlers. Opens the symbolic card beside the palette.
+ */
+function EntryDoc({ entry }: { entry: PaletteEntry }) {
+  const id = `palette:${entry.key}`;
+  const open = useCardOpen(id);
+  const btn = useRef<HTMLButtonElement>(null);
+  const row = btn.current?.parentElement ?? null;
+  // The entry can leave (preset load, tab switch) and come back: its card must not reopen by itself.
+  useEffect(() => () => cardOwner.close(id), [id]);
+  return (
+    <>
+      <button
+        ref={btn}
+        type="button"
+        className="tk-doc-btn tk-palette-doc"
+        data-testid={`piece-doc-${entry.key}`}
+        aria-label={`About ${entry.label}`}
+        aria-expanded={open}
+        aria-controls={open ? `piece-card-${entry.key}` : undefined}
+        onClick={() => (open ? cardOwner.close(id) : cardOwner.open(id))}
+      >
+        ?
+      </button>
+      {open && row && (
+        <PieceCard
+          id={`piece-card-${entry.key}`}
+          view={docView(entry.key)}
+          opener={btn.current}
+          placement={{ kind: 'palette', row }}
+          onClose={() => cardOwner.close(id)}
+        />
+      )}
+    </>
+  );
+}
 
 /**
  * The palette's groups, in order. Most are one family; "Ready-made losses" is every macro (the five
@@ -144,6 +148,7 @@ export function Palette() {
   const armed = useSyncExternalStore(dnd.subscribe, dnd.armed, () => null);
   // A preset's palette allow-list (CONTRACTS.md section 12): listed entries, or every entry of a listed group.
   const allowed = useStore((s) => s.show?.palette);
+  const docs = useStore((s) => s.show?.docs) !== false; // `show.docs: false` removes every "?"
   // Toggles the person made; a group not toggled is open at its default, or open when the preset narrows the palette.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const isOpen = (g: Group) => toggled[g.id] ?? (allowed !== undefined || g.open);
@@ -176,7 +181,10 @@ export function Palette() {
     const onDown = (e: PointerEvent) => {
       if (!dnd.armed()) return;
       const t = e.target instanceof Element ? e.target : null;
-      if (t?.closest('.tk-palette-entry, [data-testid="canvas-svg"]')) return;
+      if (
+        t?.closest('.tk-palette-entry, .tk-palette-doc, .tk-piece-card, [data-testid="canvas-svg"]')
+      )
+        return;
       dnd.arm(null);
     };
     window.addEventListener('keydown', onKey);
@@ -210,55 +218,59 @@ export function Palette() {
           </h3>
           <div hidden={!isOpen(g)}>
             {visibleIn(g).map((entry) => (
-              <button
-                key={entry.key}
-                type="button"
-                className="tk-palette-entry"
-                data-testid={`palette-${entry.key}`}
-                data-dragging={dragging?.key === entry.key}
-                data-role={chipOf(entry).role}
-                data-shape={entry.kind === 'piece' && VALUE_ENTRIES.has(entry.key) ? 'value' : 'op'}
-                data-family={entry.family}
-                data-kind={entry.kind}
-                title={ENTRY_TITLES[entry.key] ?? entry.label}
-                aria-pressed={armed?.key === entry.key}
-                onClick={(e) => {
-                  if (e.detail === 0) dnd.arm(entry); // keyboard: Enter or Space picks the entry
-                }}
-                onPointerDown={(e) => {
-                  if (e.pointerType === 'mouse' && e.button !== 0) return;
-                  // Touch: the palette scrolls along its long axis (`touch-action: pan-y`, or `pan-x`
-                  // in the strip), so a drag begins only once the movement is mostly across it.
-                  const touch = e.pointerType !== 'mouse';
-                  let begun = false;
-                  startDrag(e, {
-                    onMove: (p) => {
-                      if (!begun) {
-                        if (
-                          touch &&
-                          (strip
-                            ? Math.abs(p.dy) < Math.abs(p.dx)
-                            : Math.abs(p.dx) < Math.abs(p.dy))
-                        )
-                          return;
-                        begun = true;
-                        dnd.begin({ kind: 'palette', entry }, p.x, p.y);
-                      }
-                      dnd.move(p.x, p.y);
-                    },
-                    onTap: () => dnd.arm(entry),
-                    onEnd: (p) => (begun ? dnd.end(p.x, p.y) : undefined),
-                    onCancel: () => dnd.cancel(),
-                  });
-                }}
-              >
-                <span className="tk-chip-label">{entry.label}</span>
-                {chipOf(entry).glyph && (
-                  <span className="tk-chip-glyph" aria-hidden="true">
-                    <Tex src={chipOf(entry).glyph ?? ''} />
-                  </span>
-                )}
-              </button>
+              <div key={entry.key} className="tk-palette-row" data-armed={armed?.key === entry.key}>
+                <button
+                  type="button"
+                  className="tk-palette-entry"
+                  data-testid={`palette-${entry.key}`}
+                  data-dragging={dragging?.key === entry.key}
+                  data-role={chipOf(entry).role}
+                  data-shape={
+                    entry.kind === 'piece' && VALUE_ENTRIES.has(entry.key) ? 'value' : 'op'
+                  }
+                  data-family={entry.family}
+                  data-kind={entry.kind}
+                  aria-description={PIECE_DOCS[entry.key]?.summary}
+                  aria-pressed={armed?.key === entry.key}
+                  onClick={(e) => {
+                    if (e.detail === 0) dnd.arm(entry); // keyboard: Enter or Space picks the entry
+                  }}
+                  onPointerDown={(e) => {
+                    if (e.pointerType === 'mouse' && e.button !== 0) return;
+                    // Touch: the palette scrolls along its long axis (`touch-action: pan-y`, or `pan-x`
+                    // in the strip), so a drag begins only once the movement is mostly across it.
+                    const touch = e.pointerType !== 'mouse';
+                    let begun = false;
+                    startDrag(e, {
+                      onMove: (p) => {
+                        if (!begun) {
+                          if (
+                            touch &&
+                            (strip
+                              ? Math.abs(p.dy) < Math.abs(p.dx)
+                              : Math.abs(p.dx) < Math.abs(p.dy))
+                          )
+                            return;
+                          begun = true;
+                          dnd.begin({ kind: 'palette', entry }, p.x, p.y);
+                        }
+                        dnd.move(p.x, p.y);
+                      },
+                      onTap: () => dnd.arm(entry),
+                      onEnd: (p) => (begun ? dnd.end(p.x, p.y) : undefined),
+                      onCancel: () => dnd.cancel(),
+                    });
+                  }}
+                >
+                  <span className="tk-chip-label">{entry.label}</span>
+                  {chipOf(entry).glyph && (
+                    <span className="tk-chip-glyph" aria-hidden="true">
+                      <Tex src={chipOf(entry).glyph ?? ''} />
+                    </span>
+                  )}
+                </button>
+                {docs && <EntryDoc entry={entry} />}
+              </div>
             ))}
           </div>
         </section>

@@ -1,0 +1,130 @@
+/* The piece reference card (CONTRACTS.md section 15): a non-modal popover, at most 320 px wide. */
+.tk-piece-card {
+  z-index: 30;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: calc(100vw - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 12px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  font-size: 13px;
+  text-align: left;
+}
+.tk-piece-card p {
+  margin: 4px 0;
+}
+.tk-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tk-card-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.tk-card-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-right: -6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tk-card-close:hover {
+  background: var(--surface-2);
+}
+.tk-card-close:focus-visible,
+.tk-doc-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+}
+.tk-card-equation {
+  overflow-x: auto;
+  padding: 4px 8px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+.tk-card-section h4 {
+  margin: 8px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tk-card-dl {
+  margin: 0;
+}
+.tk-card-dl > div {
+  display: flex;
+  gap: 8px;
+  margin: 2px 0;
+}
+.tk-card-dl dt {
+  flex: none;
+  min-width: 3.5em;
+  color: var(--text-muted);
+}
+.tk-card-dl dd {
+  margin: 0;
+  min-width: 0;
+}
+.tk-card-torch {
+  display: block;
+  padding: 4px 8px;
+  overflow-x: auto;
+  white-space: pre;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.tk-card-notes {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.tk-card-see {
+  color: var(--text-muted);
+}
+@media (pointer: coarse) {
+  .tk-card-close {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* The "?" button: palette rows and the inspector title row. */
+.tk-doc-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px solid var(--node-border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  font: 700 12px/1 var(--font);
+  cursor: pointer;
+}
+.tk-doc-btn:hover,
+.tk-doc-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+@media (pointer: coarse) {
+  .tk-doc-btn {
+    width: 32px;
+    height: 32px;
+  }
+}

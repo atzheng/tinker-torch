@@ -29,6 +29,8 @@ export type Show = {
    * "Panels on more than one tab"). A panel not listed keeps its default tab.
    */
   panelTabs?: Partial<Record<ResultsPanelId, ('model' | 'loss')[]>>;
+  /** Piece reference cards (CONTRACTS.md section 15). Default true; `false` removes the "?" buttons in the palette and the inspector. */
+  docs?: boolean;
 };
 /** The results panel ids (`data-panel` values): the web `PANEL_IDS`, listed here so a preset can be validated in core. */
 export const RESULTS_PANEL_IDS = [
@@ -415,9 +417,14 @@ function parseShow(v: unknown): Show | string | undefined {
     }
     out.panelTabs = tabs;
   }
+  const docs = v['docs'];
+  if (docs !== undefined) {
+    if (typeof docs !== 'boolean') return 'The preset "show.docs" must be true or false.';
+    out.docs = docs;
+  }
   for (const k of Object.keys(v)) {
-    if (k !== 'palette' && k !== 'ui' && k !== 'tab' && k !== 'panelTabs') {
-      return `The preset "show" has "${k}", but only "palette", "ui", "tab" and "panelTabs" are known.`;
+    if (k !== 'palette' && k !== 'ui' && k !== 'tab' && k !== 'panelTabs' && k !== 'docs') {
+      return `The preset "show" has "${k}", but only "palette", "ui", "tab", "panelTabs" and "docs" are known.`;
     }
   }
   return out;
