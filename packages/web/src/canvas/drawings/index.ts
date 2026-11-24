@@ -21,6 +21,7 @@ import {
 } from './math.js';
 import { targetPiece } from './target.js';
 import { lookupPiece, onehotPiece } from './category.js';
+import { treePiece } from './tree.js';
 import { biasPiece, columnPiece, scalewPiece, sumPiece } from './scalar.js';
 
 export type { WebPiece } from './types.js';
@@ -50,4 +51,5 @@ export const WEB_PIECES: { [T in PieceType]: WebPiece<T> } = {
   sum: sumPiece,
   onehot: onehotPiece,
   lookup: lookupPiece,
+  tree: treePiece,
 };

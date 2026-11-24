@@ -51,6 +51,11 @@ export type ShapeCtx = {
   /** Number of categories by column id, for the categorical columns of the dataset (absent: all numeric). */
   categories?: Record<string, number>;
   numClasses: number;
+  /**
+   * Fitted leaf count by Tree node id (CONTRACTS.md section 3, "Tree"). A Tree's output width is its
+   * entry; absent entry: the tree has not been fitted yet. Absent object: no tree is fitted.
+   */
+  treeLeaves?: Record<NodeId, number>;
   /** [rows, cols] of a Linear's W, or undefined when that Linear's input width is unknown. */
   weightShape(linearId: NodeId): [rows: number, cols: number] | undefined;
 };
@@ -336,6 +341,36 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     paramInit: () => ({ kind: 'uniform', bound: 1 }),
     torch: (node) => `nn.Embedding(K, ${node.width})`,
   },
+  tree: {
+    family: 'features',
+    inputPorts: ['in'],
+    defaults: () => ({
+      type: 'tree',
+      criterion: 'squared_error',
+      depth: 3,
+      minSplit: 2,
+      minLeaf: 1,
+      minDecrease: 0,
+    }),
+    // One output column per leaf of the fitted tree (the host fits it before analysis).
+    outShape: (node, inShapes, ctx) => {
+      const d = exampleIn('Tree', inShapes);
+      if (typeof d !== 'number') return d;
+      const leaves = ctx.treeLeaves?.[node.id];
+      return leaves === undefined
+        ? { error: 'Tree has not been fitted to data yet.' }
+        : { kind: 'example', width: leaves };
+    },
+    paramShapes: noParams,
+    paramInit: noInit,
+    torch: (node) => {
+      const cls =
+        node.criterion === 'squared_error' || node.criterion === 'absolute_error'
+          ? 'Regressor'
+          : 'Classifier';
+      return `F.one_hot(torch.as_tensor(DecisionTree${cls}(criterion='${node.criterion}', max_depth=${node.depth}, min_samples_split=${node.minSplit}, min_samples_leaf=${node.minLeaf}, min_impurity_decrease=${py.float(node.minDecrease)}).fit(x, y).apply(x))).float()`;
+    },
+  },
   target: {
     family: 'inputs',
     inputPorts: [],
@@ -583,6 +618,7 @@ export const PALETTE: PaletteEntry[] = [
   piece('target', 'Target', 'target'),
   piece('column', 'Column', 'column'),
   piece('feature', 'Feature', 'feature'),
+  piece('tree', 'Tree', 'tree'),
   piece('linear', 'Linear', 'linear'),
   piece('activation', 'Activation', 'activation'),
   piece('dropout', 'Dropout', 'dropout'),

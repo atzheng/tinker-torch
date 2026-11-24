@@ -52,6 +52,7 @@ export {
 
 export const LINK_FNS = ['sigmoid', 'softmax'] as const;
 export const NORM_KINDS = ['l2', 'l1'] as const;
+export const TREE_CRITERIA = ['squared_error', 'absolute_error', 'gini', 'entropy'] as const;
 export const NODE_TYPES = [
   'input',
   'target',
@@ -77,6 +78,7 @@ export const NODE_TYPES = [
   'sum',
   'onehot',
   'lookup',
+  'tree',
 ] as const;
 
 const nodeSchema = z.discriminatedUnion('type', [
@@ -150,6 +152,15 @@ const nodeSchema = z.discriminatedUnion('type', [
   z.strictObject({ id: nodeId, type: z.literal('sum') }),
   z.strictObject({ id: nodeId, type: z.literal('onehot') }),
   z.strictObject({ id: nodeId, type: z.literal('lookup'), width: int(1, 64).default(1) }),
+  z.strictObject({
+    id: nodeId,
+    type: z.literal('tree'),
+    criterion: z.enum(TREE_CRITERIA, { error: oneOf(TREE_CRITERIA) }).default('squared_error'),
+    depth: int(1, 8).default(3),
+    minSplit: int(2, 1_000_000).default(2),
+    minLeaf: int(1, 1_000_000).default(1),
+    minDecrease: num('must be a number from 0 up', (n) => n >= 0).default(0),
+  }),
 ]);
 
 const GRAPH_VERSION = 2 as const;
@@ -179,6 +190,7 @@ export type NodeOf<T extends PieceType> = Extract<Node, { type: T }>;
 export type NodeBody = Node extends infer N ? (N extends Node ? Omit<N, 'id'> : never) : never;
 export type LinkFn = (typeof LINK_FNS)[number];
 export type NormKind = (typeof NORM_KINDS)[number];
+export type TreeCriterion = (typeof TREE_CRITERIA)[number];
 export type Graph = {
   version: 2;
   nodes: Node[];
@@ -468,6 +480,7 @@ const NODE_KEY_ORDER: Record<PieceType, string[]> = {
   sum: ['id', 'type'],
   onehot: ['id', 'type'],
   lookup: ['id', 'type', 'width'],
+  tree: ['id', 'type', 'criterion', 'depth', 'minSplit', 'minLeaf', 'minDecrease'],
 };
 
 function pick(obj: object, keys: string[]): Record<string, unknown> {

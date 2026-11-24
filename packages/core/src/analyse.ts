@@ -94,7 +94,15 @@ type InitFn = (node: Node, inW: number, data: DataInfo) => ParamInit;
 
 const record = <T>() => Object.create(null) as Record<NodeId, T>; // no prototype: ids like "constructor" are safe
 
-export function analyse(graph: Graph, data: DataInfo): Analysis {
+/**
+ * `treeLeaves`: the fitted leaf count of each Tree node by id (`treeLeafCounts(fitTrees(graph, dataset))`).
+ * A Tree without an entry gets the issue 'Tree has not been fitted to data yet.'.
+ */
+export function analyse(
+  graph: Graph,
+  data: DataInfo,
+  treeLeaves?: Record<NodeId, number>,
+): Analysis {
   const issues: Issue[] = [];
   // Defensive: parseGraph rejects duplicate ids, but an unparsed graph may have them. The first wins.
   const seen = new Set<NodeId>();
@@ -196,6 +204,7 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
     dataColumns: data.columns.length,
     ...(data.categories ? { categories: categoryCounts(data) } : {}),
     numClasses: data.numClasses,
+    ...(treeLeaves ? { treeLeaves } : {}),
     weightShape: (linearId) => {
       const lin = byId.get(linearId);
       if (lin?.type !== 'linear') return undefined;
@@ -324,6 +333,28 @@ export function analyse(graph: Graph, data: DataInfo): Analysis {
             message: `"${id}" reads the weights of "${node.of}", which depends on "${id}" itself.`,
           });
         }
+        return;
+      }
+    }
+    if (node.type === 'tree') {
+      const w = wireOf(id, 'in');
+      if (w && byId.get(w.from)?.type !== 'input') {
+        nodeIssue({
+          at: { node: id, edge: w.index },
+          message: 'A Tree reads data columns directly; wire an Input into it.',
+        });
+        return;
+      }
+      const regression = data.kind === 'regression';
+      const wantsNumbers =
+        node.criterion === 'squared_error' || node.criterion === 'absolute_error';
+      if (wantsNumbers !== regression) {
+        nodeIssue({
+          at: { node: id },
+          message: regression
+            ? 'This data has a number to predict, so a Tree needs the squared error or absolute error criterion.'
+            : 'This data has classes to predict, so a Tree needs the gini or entropy criterion.',
+        });
         return;
       }
     }

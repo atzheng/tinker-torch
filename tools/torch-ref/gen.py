@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["torch==2.15.0", "numpy==2.4.6"]
+# dependencies = ["torch==2.15.0", "numpy==2.4.6", "scikit-learn==1.9.1"]
 # ///
 """Generate PyTorch reference fixtures (CONTRACTS.md section 11).
 
@@ -775,6 +775,131 @@ def scalar_cases(add, check_linear):
     check_linear(3)
 
 
+# ---------- decision trees (tinker-6h1.2; CONTRACTS.md sections 3 and 11) ----------
+#
+# One file, packages/core/test/fixtures/tree_sklearn.json, read by core/test/tree.test.ts (not by the
+# engine). Each case fits scikit-learn's DecisionTreeRegressor / DecisionTreeClassifier (its splitter breaks exact
+# ties by random feature order or float noise; tie_check flags such cases and the test relaxes them) on x rounded to
+# float32 (the app stores float32; sklearn converts to float32 anyway) and records
+#   leaf:   per training row, the leaf's rank among the leaves in node-id order (sklearn builds depth
+#           first, left child first, so this is the left-to-right numbering of core/tree.ts),
+#   splits: [feature, threshold] of every internal node in node-id (pre-order) order.
+# Deliberate deviation of core/tree.ts: it never splits on a zero improvement (sklearn will, e.g. on xor).
+# The fixtures contain no such case. Never hand-edit.
+
+TREE_OUT = Path(__file__).resolve().parent.parent.parent / "packages/core/test/fixtures"
+
+
+def tie_check(tr, x, y, kind, criterion, s):
+    """Whether sklearn's tree is tie-free. At every internal node, recompute (float64, independently of
+    sklearn) the gain of every candidate split; near-equal best candidates are a tie, which sklearn
+    breaks by its random feature order or by float noise. Returns (partition_stable, splits_stable):
+    the first is False when tied candidates cut the node's rows differently, the second when any tie
+    exists (e.g. two features cutting the same rows)."""
+    k = int(y.max()) + 1 if kind != "regression" else 0
+
+    def imp(v):
+        if criterion == "squared_error":
+            return float(np.mean((v - v.mean()) ** 2))
+        if criterion == "absolute_error":
+            return float(np.mean(np.abs(v - np.median(v))))
+        q = np.bincount(v.astype(int), minlength=k) / len(v)
+        if criterion == "gini":
+            return float(1 - np.sum(q * q))
+        q = q[q > 0]
+        return float(-np.sum(q * np.log2(q)))
+
+    partition_ok, splits_ok = True, True
+    dp = tr.decision_path(x.astype(np.float32)).toarray()
+    for node in range(tr.tree_.node_count):
+        if tr.tree_.children_left[node] == -1:
+            continue
+        rows = np.flatnonzero(dp[:, node])
+        m = len(rows)
+        cands = []  # (gain, frozenset of left rows)
+        for f in range(x.shape[1]):
+            order = rows[np.argsort(x[rows, f], kind="stable")]
+            xs = x[order, f]
+            for p in range(1, m):
+                if xs[p] <= xs[p - 1] + 1e-7 or p < s["minLeaf"] or m - p < s["minLeaf"]:
+                    continue
+                gain = m * imp(y[rows]) - p * imp(y[order[:p]]) - (m - p) * imp(y[order[p:]])
+                cands.append((gain, frozenset(order[:p].tolist())))
+        top = max(g for g, _ in cands)
+        near = [rs for g, rs in cands if g >= top - 1e-9 * max(top, 1e-12)]
+        if len(near) > 1:
+            splits_ok = False
+            if len(set(near)) > 1:
+                partition_ok = False
+    return partition_ok, splits_ok
+
+
+def tree_fixtures():
+    from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+
+    rng = np.random.RandomState(2024)
+
+    def f32(a):
+        return np.asarray(a, dtype=np.float32).astype(np.float64)
+
+    sets = {}
+    # 1-D regression with many duplicate x values, including a clipped (flat) run at each end.
+    x = np.clip(rng.normal(0, 1.6, size=(80, 1)), -2, 2)
+    x[:20, 0] = np.round(x[:20, 0] * 2) / 2
+    sets["reg1d_dup"] = ("regression", 1, f32(x), np.sin(1.5 * x[:, 0]) + 0.3 * rng.normal(size=80))
+    x = rng.uniform(-2, 2, size=(90, 2))
+    sets["reg2d"] = ("regression", 1, f32(x), 0.5 * (x[:, 0] ** 2 - x[:, 1] ** 2) + 0.2 * rng.normal(size=90))
+    x = np.vstack([rng.normal(-0.7, 1.2, size=(130, 2)), rng.normal(0.7, 1.2, size=(110, 2))])
+    sets["bin2d"] = ("binary", 2, f32(x), np.repeat([0.0, 1.0], [130, 110]))
+    x = np.vstack([rng.normal(c, 0.8, size=(40, 2)) for c in ([0, 1.6], [-1.4, -0.8], [1.4, -0.8])])
+    sets["multi3"] = ("multiclass", 3, f32(x), np.repeat([0.0, 1.0, 2.0], 40))
+    x = np.clip(rng.normal(0, 1.5, size=(70, 1)), -2, 2)
+    sets["bin1d_dup"] = ("binary", 2, f32(np.round(x * 4) / 4), (x[:, 0] + 0.8 * rng.normal(size=70) > 0).astype(float))
+
+    variants = [
+        ("depth3", dict(depth=3)),
+        ("depth1", dict(depth=1)),
+        ("depth8", dict(depth=8)),
+        ("depth8_leaf5", dict(depth=8, minLeaf=5)),
+        ("depth8_split20", dict(depth=8, minSplit=20)),
+        ("depth8_dec", dict(depth=8, minDecrease=0.01)),
+        ("depth5_leaf3_dec", dict(depth=5, minLeaf=3, minDecrease=0.002)),
+    ]
+    crit = {"regression": ["squared_error", "absolute_error"],
+            "binary": ["gini", "entropy"], "multiclass": ["gini", "entropy"]}
+    out = []
+    for sname, (kind, k, x, y) in sets.items():
+        for criterion in crit[kind]:
+            for vname, v in variants:
+                s = {"criterion": criterion, "depth": v.get("depth", 3), "minSplit": v.get("minSplit", 2),
+                     "minLeaf": v.get("minLeaf", 1), "minDecrease": v.get("minDecrease", 0)}
+                cls = DecisionTreeRegressor if kind == "regression" else DecisionTreeClassifier
+                t = cls(criterion=criterion, max_depth=s["depth"], min_samples_split=s["minSplit"],
+                        min_samples_leaf=s["minLeaf"], min_impurity_decrease=s["minDecrease"],
+                        random_state=0).fit(x, y)
+                tr = t.tree_
+                leaves = [i for i in range(tr.node_count) if tr.children_left[i] == -1]
+                rank = {n: r for r, n in enumerate(leaves)}
+                applied = t.apply(x)
+                splits = [[int(tr.feature[i]), float(tr.threshold[i])]
+                          for i in range(tr.node_count) if tr.children_left[i] != -1]
+                same_partition, same_splits = tie_check(t, x, y, kind, criterion, s)
+                out.append({
+                    "name": f"{sname}_{criterion}_{vname}", "kind": kind, "numClasses": k,
+                    "partitionStable": bool(same_partition), "splitsStable": bool(same_splits),
+                    "n": int(x.shape[0]), "d": int(x.shape[1]),
+                    "x": x.flatten().tolist(), "y": y.tolist(), "settings": s,
+                    "expect": {"leaves": len(leaves), "leaf": [rank[int(a)] for a in applied], "splits": splits},
+                })
+    import sklearn
+    TREE_OUT.mkdir(parents=True, exist_ok=True)
+    (TREE_OUT / "tree_sklearn.json").write_text(
+        json.dumps({"sklearn": sklearn.__version__, "cases": out}, indent=1) + "\n")
+    print(f"wrote {len(out)} tree cases to {TREE_OUT} (scikit-learn {sklearn.__version__}); "
+          f"{sum(not c['partitionStable'] for c in out)} with unstable partitions, "
+          f"{sum(not c['splitsStable'] for c in out)} with unstable splits")
+
+
 def main():
     cases = []
     seed = [100]
@@ -935,6 +1060,7 @@ def main():
     for c in cases:
         write(c)
     print(f"wrote {len(cases)} fixtures to {OUT} (torch {torch.__version__})")
+    tree_fixtures()
 
 
 if __name__ == "__main__":
