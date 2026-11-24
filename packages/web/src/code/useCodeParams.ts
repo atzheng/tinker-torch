@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { Analysis, HostParams } from '@tinker/core';
+import { useEffect, useMemo, useState } from 'react';
+import { withStartParams, type Analysis, type HostParams } from '@tinker/core';
 import { useStore } from '../state/store.js';
 import { useInitialWeights } from '../state/derived.js';
 
@@ -15,6 +15,12 @@ export const CODE_PARAMS_MS = 500;
  */
 export function useCodeParams(analysis: Analysis): HostParams | undefined {
   const initial = useInitialWeights(analysis);
+  const startParams = useStore((s) => s.startParams);
+  // before the engine has published a host: the step-0 weights with the preset's own values over them
+  const start = useMemo(
+    () => (initial && startParams ? withStartParams(initial, startParams, analysis) : initial),
+    [initial, startParams, analysis],
+  );
   const [host, setHost] = useState<HostParams | null>(() => useStore.getState().host);
   useEffect(() => {
     let last = 0;
@@ -39,5 +45,5 @@ export function useCodeParams(analysis: Analysis): HostParams | undefined {
       if (timer !== undefined) clearTimeout(timer);
     };
   }, []);
-  return host ?? initial;
+  return host ?? start;
 }
