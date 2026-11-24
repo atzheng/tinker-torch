@@ -135,3 +135,30 @@ test('an invalid option is refused with a sentence and the graph is left alone',
   expect(r.message).toMatch(/must be true or false/);
   expect(s().graph).toBe(before);
 });
+
+test('validation points toggle: on by default (plain file and preset without options), off from options, student can change it', () => {
+  const { q, done } = mount();
+  act(() => s().setViewTab('model'));
+  expect(q('[data-testid="val-points-toggle"]')?.checked).toBe(true);
+  act(() => void loadText(presetText({ show: { tab: 'model' } })));
+  expect(q('[data-testid="val-points-toggle"]')?.checked).toBe(true);
+  act(
+    () =>
+      void loadText(
+        presetText({ show: { tab: 'model' }, options: { 'val-points-toggle': false } }),
+      ),
+  );
+  expect(q('[data-testid="val-points-toggle"]')?.checked).toBe(false);
+  act(() => q('[data-testid="val-points-toggle"]')?.click());
+  expect(q('[data-testid="val-points-toggle"]')?.checked).toBe(true);
+  // hidden by show.ui: fixed to the preset value (default on, or the option)
+  act(
+    () =>
+      void loadText(
+        presetText({ options: { 'val-points-toggle': false }, show: { ui: ['panel-fit'] } }),
+      ),
+  );
+  expect(q('[data-testid="val-points-toggle"]')).toBeNull();
+  expect(s().preset?.options?.['val-points-toggle']).toBe(false);
+  done();
+});

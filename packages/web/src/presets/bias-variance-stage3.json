@@ -28,6 +28,7 @@
       "data-resample",
       "loss-val",
       "truth-toggle",
+      "val-points-toggle",
       "data-n",
       "data-noise",
       "data-seed",

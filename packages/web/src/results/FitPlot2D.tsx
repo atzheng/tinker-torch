@@ -94,6 +94,7 @@ export function FitPlot2D({ used = [] }: { used?: readonly number[] }) {
   const pick = useStore((s) => s.plotPrediction);
   const predictions = useStore((s) => s.graph.predictions);
   const [showTruth, setShowTruth] = useUiOption('truth-toggle');
+  const [showVal, setShowVal] = useUiOption('val-points-toggle', true);
   const classification = dataset.info.kind !== 'regression';
   const multiclass = dataset.info.kind === 'multiclass';
   const numClasses = dataset.info.numClasses;
@@ -348,7 +349,7 @@ export function FitPlot2D({ used = [] }: { used?: readonly number[] }) {
         }
       }
     };
-    dots(fixed.xv, dataset.yVal, dataset.nVal, true);
+    if (showVal) dots(fixed.xv, dataset.yVal, dataset.nVal, true);
     dots(fixed.xt, dataset.yTrain, dataset.nTrain, false);
     ctx.restore();
     ctx.save();
@@ -365,11 +366,14 @@ export function FitPlot2D({ used = [] }: { used?: readonly number[] }) {
     shown,
     host,
     showTruth,
+    showVal,
     mapped,
     margins,
     truthRegions,
   ]);
   const showTruthToggle = useUiShown('truth-toggle');
+  const showValToggle = useUiShown('val-points-toggle');
+  const lblVal = useUiLabel('val-points-toggle', 'Validation points');
   const showResample = useUiShown('resample-run');
   const showPicker = useUiShown('prediction-picker');
   const panelTitle = useUiLabel('panel-fit', 'Fit');
@@ -389,7 +393,7 @@ export function FitPlot2D({ used = [] }: { used?: readonly number[] }) {
               </span>
             ))}{' '}
             <span aria-hidden>
-              {'\u25CF'} train {'\u25CB'} val
+              {'\u25CF'} train{showVal ? ` ${'\u25CB'} val` : ''}
             </span>
           </span>
         ) : classification ? (
@@ -399,7 +403,7 @@ export function FitPlot2D({ used = [] }: { used?: readonly number[] }) {
             <i className={styles.swatch} style={{ background: 'var(--weight-pos)' }} />
             {classNames[1] ?? 'class 1'}{' '}
             <span aria-hidden>
-              {'\u25CF'} train {'\u25CB'} val
+              {'\u25CF'} train{showVal ? ` ${'\u25CB'} val` : ''}
             </span>
           </span>
         ) : (
@@ -413,7 +417,7 @@ export function FitPlot2D({ used = [] }: { used?: readonly number[] }) {
             />
             {formatTick(fixed.range[1])}{' '}
             <span aria-hidden>
-              {'\u25CF'} train {'\u25CB'} val
+              {'\u25CF'} train{showVal ? ` ${'\u25CB'} val` : ''}
             </span>
           </span>
         )}
@@ -426,6 +430,18 @@ export function FitPlot2D({ used = [] }: { used?: readonly number[] }) {
               data-testid="truth-toggle"
             />
             {classification ? 'True boundary' : 'True contours'}
+          </label>
+        )}
+        {showValToggle && (
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={showVal}
+              onChange={(e) => setShowVal(e.target.checked)}
+              data-testid="val-points-toggle"
+              aria-label={lblVal}
+            />
+            {lblVal}
           </label>
         )}
         {d > 2 && (
