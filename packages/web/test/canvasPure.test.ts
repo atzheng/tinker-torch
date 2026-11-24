@@ -7,7 +7,6 @@ import {
   fitTransform,
   heatMap,
   hitPad,
-  placeInspector,
   placeIssues,
   resolvedEdges,
   hitAt,
@@ -189,24 +188,6 @@ function skipGraph(): Graph {
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.graph;
 }
-
-test('placeInspector goes below when there is room, above otherwise, and stays in view', () => {
-  const view = { w: 700, h: 600 };
-  const below = placeInspector({ cx: 100, top: 100, bottom: 130 }, view, 248);
-  expect(below).toEqual({ left: 4, top: 146 });
-  const above = placeInspector({ cx: 690, top: 450, bottom: 480 }, view, 248);
-  expect(above).toEqual({ left: 448, bottom: 600 - 434 });
-});
-
-test('placeInspector keeps the whole panel inside a short canvas', () => {
-  // 508 px tall canvas, target in the middle: no side has 230 px, so the panel is lifted to fit.
-  const p = placeInspector({ cx: 300, top: 220, bottom: 280 }, { w: 768, h: 508 }, 248);
-  expect(p).toEqual({ left: 176, top: 508 - 230 - 4 });
-  // Canvas shorter than the panel: it starts at the top edge.
-  expect(placeInspector({ cx: 300, top: 60, bottom: 90 }, { w: 768, h: 200 }, 248)).toMatchObject({
-    top: 4,
-  });
-});
 
 test('errorNodes lists nodes named by any issue', () => {
   expect(

@@ -1,3 +1,4 @@
+import { fitInspector, INSPECTOR_GUESS_H, type InspectorFit } from './inspectorPlacement';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   LAYOUT,
@@ -50,9 +51,7 @@ import {
   pinKey,
   pinsOf,
   placePins,
-  placeInspector,
   placeIssues,
-  type InspectorPlacement,
   type Transform,
 } from './pure.js';
 import { useAnalysis, useSelection, useWeights } from '../state/derived.js';
@@ -71,6 +70,7 @@ const snap = (v: number): number => Math.round(v / SNAP) * SNAP;
 
 const DEFAULT_SIZE = { w: 800, h: 500 };
 const INSPECTOR_W = 248;
+
 /** Height in px of the strip above the drawing (the grain toggle sits in it). */
 const HEADER_H = 44;
 
@@ -490,17 +490,38 @@ export function Canvas() {
   const px = (x: number) => x * t.scale + t.tx;
   const py = (y: number) => y * t.scale + t.ty;
 
+  // Natural height of the open inspector, measured so a tall one (a Linear) is placed whole or
+  // scrolls inside the space left, never cut off by the canvas edge.
+  const inspRef = useRef<HTMLDivElement>(null);
+  const [inspH, setInspH] = useState(INSPECTOR_GUESS_H);
+  useEffect(() => {
+    const el = inspRef.current;
+    if (!el) return;
+    const read = () => {
+      const h = el.offsetHeight;
+      if (h > 0) setInspH(h);
+    };
+    read();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [selection]);
+
   // The inspector goes below the piece (or wire label), above when there is no room below, so it
   // does not cover the wires beside the piece.
-  let anchor: InspectorPlacement | null = null;
+  let anchor: InspectorFit | null = null;
   if (selection?.kind === 'node') {
     const box = layout.nodes[selection.id];
     if (box) {
-      anchor = placeInspector(
+      anchor = fitInspector(
         // clear of the pins (and the add pins) above and below the piece
         { cx: px(box.x + box.w / 2), top: py(box.y - 30), bottom: py(box.y + box.h + 30) },
         view,
         INSPECTOR_W,
+        inspH,
+        16,
+        HEADER_H,
       );
     }
   } else if (selection?.kind === 'pin') {
@@ -509,12 +530,15 @@ export function Canvas() {
       const [cx, cy] = pinSpots.get(pinKey(selection.role, selection.node)) ?? [0, 0];
       // A ŷ pin sits over the Target and the Subtract inputs below it: open the inspector above.
       const above = selection.role === 'pred' && py(cy) - 20 >= 230;
-      anchor = placeInspector(
+      anchor = fitInspector(
         above
           ? { cx: px(cx), top: py(cy) - 20, bottom: view.h + 1000 }
           : { cx: px(cx), top: py(cy) - 16, bottom: py(cy) + 16 },
         view,
         INSPECTOR_W,
+        inspH,
+        16,
+        HEADER_H,
       );
     }
   } else if (selection?.kind === 'edge' || selection?.kind === 'unit') {
@@ -531,20 +555,26 @@ export function Canvas() {
       if (e) at = [(e.from[0] + e.to[0]) / 2, (e.from[1] + e.to[1]) / 2];
     }
     if (at) {
-      anchor = placeInspector(
+      anchor = fitInspector(
         { cx: px(at[0]), top: py(at[1]) - 14, bottom: py(at[1]) + 14 },
         view,
         INSPECTOR_W,
+        inspH,
+        16,
+        HEADER_H,
       );
     }
   } else if (selection?.kind === 'wire') {
     const w = layout.wires.find((x) => x.edge === edgeIndexOf(graph, selection.from, selection.to));
     if (w) {
       const y = py(w.labelAt[1]);
-      anchor = placeInspector(
+      anchor = fitInspector(
         { cx: px(w.labelAt[0]), top: y - 10, bottom: y + 10 },
         view,
         INSPECTOR_W,
+        inspH,
+        16,
+        HEADER_H,
       );
     }
   }
@@ -811,17 +841,27 @@ export function Canvas() {
       })}
       <WeightInspector />
       {selection && anchor && (
-        <div className="tk-inspector-pos" style={{ ...anchor, width: INSPECTOR_W }}>
-          <Inspector
-            selection={selection}
-            analysis={analysis}
-            weights={weights}
-            wireMessages={
-              selection.kind === 'wire'
-                ? (placed.byEdge.get(edgeIndexOf(graph, selection.from, selection.to)) ?? [])
-                : []
-            }
-          />
+        <div
+          className="tk-inspector-pos"
+          style={{
+            left: anchor.left,
+            top: anchor.top,
+            maxHeight: anchor.maxHeight,
+            width: INSPECTOR_W,
+          }}
+        >
+          <div ref={inspRef}>
+            <Inspector
+              selection={selection}
+              analysis={analysis}
+              weights={weights}
+              wireMessages={
+                selection.kind === 'wire'
+                  ? (placed.byEdge.get(edgeIndexOf(graph, selection.from, selection.to)) ?? [])
+                  : []
+              }
+            />
+          </div>
         </div>
       )}
     </div>
