@@ -58,6 +58,8 @@ export const LAYOUT = {
   laneClear: 14,
   /** Lanes stay at least this far from the box edges either side of the gap (the step shrinks to fit). */
   laneMargin: 6,
+  /** One wire's first horizontal run and another's last at the same height in a gap: their verticals sit at least this many lane steps apart, so the break between them reads as two wires. */
+  breakLanes: 3,
   pad: 24,
   /** A Linear expands only while both sides have at most this many units. */
   maxUnits: 8,
@@ -520,8 +522,27 @@ function separateLanes(
   type Item = { lo: number; hi: number; runs: Run[]; order: number; lane: number };
   const byGap = new Map<number, Map<NodeId, Run[]>>();
   const order = new Map<NodeId, number>();
+  // First and last horizontal runs: a wire's first run ends at its first vertical (points[1][0]),
+  // its last begins at its last vertical (points[n-2][0]); both belong to the gap of that x.
+  type Ends = { w: number; from: NodeId; y: number; vi: number };
+  const firsts = new Map<number, Ends[]>();
+  const lasts = new Map<number, Ends[]>();
+  const push = (m: Map<number, Ends[]>, x: number, e: Ends) => {
+    const l = m.get(x);
+    if (l) l.push(e);
+    else m.set(x, [e]);
+  };
   for (const { wire, from } of auto) {
     const pts = wires[wire]?.points ?? [];
+    const n = pts.length;
+    if (n >= 4) {
+      const f = pts[0] as [number, number];
+      const f1 = pts[1] as [number, number];
+      const l0 = pts[n - 2] as [number, number];
+      const l1 = pts[n - 1] as [number, number];
+      if (f[1] === f1[1]) push(firsts, f1[0], { w: wire, from, y: f[1], vi: 1 });
+      if (l0[1] === l1[1]) push(lasts, l0[0], { w: wire, from, y: l0[1], vi: n - 3 });
+    }
     if (!order.has(from)) order.set(from, order.size);
     for (let i = 0; i + 1 < pts.length; i++) {
       const p = pts[i] as [number, number];
@@ -536,7 +557,7 @@ function separateLanes(
     }
   }
   const moved = new Set<number>();
-  for (const sources of byGap.values()) {
+  for (const [gx, sources] of byGap) {
     const items: Item[] = [];
     for (const [from, runs] of sources) {
       // Runs of one source that touch or overlap are one item (they share a trunk).
@@ -553,6 +574,25 @@ function separateLanes(
       }
     }
     items.sort((a, b) => a.lo - b.lo || a.order - b.order);
+    const itemOf = (w: number, i: number) =>
+      items.find((it) => it.runs.some((r) => r.w === w && r.i === i));
+    // `before` constraints: item A (first run at y) must lie at least `breakLanes` slots left of
+    // item B (last run at y) when both horizontals sit at the same height in this gap.
+    const left = new Map<Item, Set<Item>>(); // B -> items that must be left of B
+    for (const [x, fs] of firsts) {
+      if (Math.abs(x - gx) > 1e-6) continue;
+      for (const fa of fs)
+        for (const lb of lasts.get(x) ?? []) {
+          if (fa.from === lb.from || Math.abs(fa.y - lb.y) > 1e-6) continue;
+          const a = itemOf(fa.w, fa.vi);
+          const b = itemOf(lb.w, lb.vi);
+          if (!a || !b || a === b) continue;
+          const set = left.get(b) ?? new Set<Item>();
+          set.add(a);
+          left.set(b, set);
+        }
+    }
+    const slotOf = (lane: number) => (lane % 2 === 1 ? (lane + 1) / 2 : -lane / 2);
     const clash = (a: Item, b: Item) =>
       a.lo < b.hi + LAYOUT.laneClear && b.lo < a.hi + LAYOUT.laneClear;
     items.forEach((it, n) => {
@@ -561,16 +601,31 @@ function separateLanes(
         const o = items[m] as Item;
         if (clash(it, o)) used.add(o.lane);
       }
-      while (used.has(it.lane)) it.lane++;
+      const ok = (lane: number): boolean => {
+        if (used.has(lane)) return false;
+        const s = slotOf(lane);
+        for (let m = 0; m < n; m++) {
+          const o = items[m] as Item;
+          if (left.get(it)?.has(o) && s - slotOf(o.lane) < LAYOUT.breakLanes) return false;
+          if (left.get(o)?.has(it) && slotOf(o.lane) - s < LAYOUT.breakLanes) return false;
+        }
+        return true;
+      };
+      let lane = 0;
+      while (lane < 24 && !ok(lane)) lane++;
+      if (lane === 24) {
+        lane = 0; // no placement honours the break: fall back to distinct lanes only
+        while (used.has(lane)) lane++;
+      }
+      it.lane = lane;
     });
     // All lanes of the gap must fit between the boxes either side: shrink the step when needed.
-    const maxIdx = Math.ceil(items.reduce((m, it) => Math.max(m, it.lane), 0) / 2);
+    const maxIdx = items.reduce((m, it) => Math.max(m, Math.abs(slotOf(it.lane))), 0);
     const step =
       maxIdx === 0 ? 0 : Math.min(LAYOUT.laneStep, (gap / 2 - LAYOUT.laneMargin) / maxIdx);
     for (const it of items) {
       if (it.lane === 0) continue;
-      const off = Math.ceil(it.lane / 2) * step;
-      const dx = it.lane % 2 === 1 ? off : -off;
+      const dx = slotOf(it.lane) * step;
       for (const r of it.runs) {
         const pts = wires[r.w]?.points;
         const p = pts?.[r.i];

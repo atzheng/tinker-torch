@@ -2,6 +2,9 @@ import { memo, useLayoutEffect, useMemo, useRef, useState, type ComponentType } 
 import {
   LAYOUT,
   resolveEdge,
+  gapDashArray,
+  polylineLength,
+  wireGaps,
   categoryDials,
   setLinearOut,
   type Analysis,
@@ -227,7 +230,7 @@ export function NeuronView(p: NeuronViewProps) {
 
   // Plain links: wires that are not weight edges. A wire into an expanded Linear is its edges.
   const links = useMemo(() => {
-    const out: { key: string; d: string; error: boolean }[] = [];
+    const out: { key: string; d: string; error: boolean; pts: [number, number][] }[] = [];
     for (const w of layout.wires) {
       const e = graph.edges[w.edge];
       if (!e) continue;
@@ -246,14 +249,29 @@ export function NeuronView(p: NeuronViewProps) {
           const b = dst[k];
           if (!b) return;
           const [x1, y1, x2, y2] = trimSegment([a.x, a.y], [b.x, b.y], UNIT_R, UNIT_R);
-          out.push({ key: `${w.edge}-${k}`, d: `M${x1} ${y1} L${x2} ${y2}`, error });
+          out.push({
+            key: `${w.edge}-${k}`,
+            d: `M${x1} ${y1} L${x2} ${y2}`,
+            error,
+            pts: [
+              [x1, y1],
+              [x2, y2],
+            ],
+          });
         });
       } else {
         const pts = w.points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x} ${y}`).join(' ');
-        out.push({ key: `${w.edge}`, d: pts, error });
+        out.push({ key: `${w.edge}`, d: pts, error, pts: w.points });
       }
     }
-    return out;
+    // Over/under (CONTRACTS.md section 10): plain links only, in edge order, later over earlier.
+    const gaps = wireGaps(out.map((l) => l.pts));
+    return out.map((l, i) => ({
+      key: l.key,
+      d: l.d,
+      error: l.error,
+      dash: gapDashArray(gaps[i] ?? [], polylineLength(l.pts)),
+    }));
   }, [layout, graph, unitsByNode, p.errorEdges]);
 
   const pressEdge = (own: number, ev: PointerEvent | React.PointerEvent) => {
@@ -291,7 +309,14 @@ export function NeuronView(p: NeuronViewProps) {
     <g data-testid="neuron-view">
       <g className="tk-links">
         {links.map((l) => (
-          <path key={l.key} d={l.d} className="tk-link" data-error={l.error} />
+          <path
+            key={l.key}
+            d={l.d}
+            className="tk-link"
+            data-error={l.error}
+            strokeDasharray={l.dash}
+            data-gapped={l.dash !== undefined ? 'true' : undefined}
+          />
         ))}
       </g>
       <EdgeLayer
