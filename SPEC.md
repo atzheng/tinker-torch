@@ -105,7 +105,7 @@ All version 1 datasets are synthetic, drawn from a known true function plus nois
 
 | Kind | Sets |
 | --- | --- |
-| 1-D regression | Line, quadratic, sine, step, wiggle |
+| 1-D regression | Line, quadratic, sine, step, wiggle, trend + sine |
 | 2-D regression | Plane, bowl, saddle |
 | 2-D classification | Two blobs, circle, XOR, two moons |
 

@@ -374,3 +374,44 @@ describe('truthMargin', () => {
     expect(m[2]).toBeCloseTo(-0.85, 6);
   });
 });
+
+describe('trend_sine (clipped-normal x)', () => {
+  const big = sample(cfg('trend_sine', { n: 20000, val: 0, noise: 0 }));
+  test('x is clipped Normal(5, 2) on [0, 10] with point masses at the ends', () => {
+    const x = Array.from(big.xTrain);
+    expect(Math.min(...x)).toBe(0);
+    expect(Math.max(...x)).toBe(10);
+    const mean = x.reduce((a, b) => a + b, 0) / x.length;
+    expect(Math.abs(mean - 5)).toBeLessThan(0.1);
+    // P(x <= 0) = P(z <= -2.5) ~ 0.6%: some exactly at each end.
+    expect(x.filter((v) => v === 0).length).toBeGreaterThan(20);
+    expect(x.filter((v) => v === 10).length).toBeGreaterThan(20);
+    // Not uniform: far more mass in [4, 6] than the uniform 20%.
+    expect(x.filter((v) => v >= 4 && v <= 6).length / x.length).toBeGreaterThan(0.35);
+  });
+  test('truth is 0.5x + sin x, and noise 0 reproduces it', () => {
+    const t = truth('trend_sine', Float32Array.of(0, 2, 10));
+    expect(t[0]).toBeCloseTo(0, 6);
+    expect(t[1]).toBeCloseTo(1 + Math.sin(2), 5);
+    expect(t[2]).toBeCloseTo(5 + Math.sin(10), 5);
+    const tr = truth('trend_sine', big.xTrain.subarray(0, 50));
+    for (let i = 0; i < 50; i++) expect(big.yTrain[i]).toBeCloseTo(tr[i] ?? NaN, 5);
+  });
+  test('spread is that of f* over a uniform grid (noise 0.6466 gives sigma 1)', () => {
+    expect(spread('trend_sine')).toBeCloseTo(1.5466, 3);
+  });
+});
+
+describe('uniform sets are unchanged by xDist', () => {
+  test('seeded sine sample matches the values recorded on origin/main', () => {
+    const d = sample(cfg('sine', { n: 5, val: 0 }));
+    expect(Array.from(d.xTrain)).toEqual([
+      2.611025333404541, -1.2999413013458252, -0.8056244254112244, 1.2193810939788818,
+      -2.5828166007995605,
+    ]);
+    expect(Array.from(d.yTrain)).toEqual([
+      -0.5286279320716858, -1.039266586303711, -0.9604676961898804, 0.9178498387336731,
+      0.5233895182609558,
+    ]);
+  });
+});

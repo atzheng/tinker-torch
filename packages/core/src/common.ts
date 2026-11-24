@@ -7,6 +7,7 @@ export const DATASET_NAMES = [
   'sine',
   'step',
   'wiggle',
+  'trend_sine',
   'plane',
   'bowl',
   'saddle',
