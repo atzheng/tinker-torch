@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["torch==2.15.0", "numpy==2.4.6", "scikit-learn"]
+# dependencies = ["torch==2.15.0", "numpy==2.4.6", "scikit-learn==1.9.1"]
 # ///
 """Generate PyTorch reference fixtures (CONTRACTS.md section 11).
 
@@ -778,8 +778,8 @@ def scalar_cases(add, check_linear):
 # ---------- decision trees (tinker-6h1.2; CONTRACTS.md sections 3 and 11) ----------
 #
 # One file, packages/core/test/fixtures/tree_sklearn.json, read by core/test/tree.test.ts (not by the
-# engine). Each case fits scikit-learn's DecisionTreeRegressor / DecisionTreeClassifier (the splitter is
-# deterministic here because the data are continuous, so no two candidate splits tie) on x rounded to
+# engine). Each case fits scikit-learn's DecisionTreeRegressor / DecisionTreeClassifier (its splitter breaks exact
+# ties by random feature order or float noise; tie_check flags such cases and the test relaxes them) on x rounded to
 # float32 (the app stores float32; sklearn converts to float32 anyway) and records
 #   leaf:   per training row, the leaf's rank among the leaves in node-id order (sklearn builds depth
 #           first, left child first, so this is the left-to-right numbering of core/tree.ts),

@@ -47,6 +47,103 @@ const splitsOf = (f: TreeFit): [number, number][] =>
   );
 const REG = { numClasses: 1 };
 
+/** Brute-force impurity of a set of targets (independent of core/tree.ts). */
+function impurityOf(criterion: TreeSettings['criterion'], v: number[]): number {
+  const m = v.length;
+  if (criterion === 'squared_error') {
+    const mean = v.reduce((a, b) => a + b, 0) / m;
+    return v.reduce((a, b) => a + (b - mean) ** 2, 0) / m;
+  }
+  if (criterion === 'absolute_error') {
+    const t = [...v].sort((a, b) => a - b);
+    const med =
+      m % 2 ? (t[(m - 1) / 2] as number) : ((t[m / 2 - 1] as number) + (t[m / 2] as number)) / 2;
+    return v.reduce((a, b) => a + Math.abs(b - med), 0) / m;
+  }
+  const counts = new Map<number, number>();
+  for (const y of v) counts.set(y, (counts.get(y) ?? 0) + 1);
+  let s = 0;
+  for (const c of counts.values()) {
+    const q = c / m;
+    s += criterion === 'gini' ? -q * q : -q * Math.log2(q);
+  }
+  return criterion === 'gini' ? 1 + s : s;
+}
+
+/** Every split is the brute-force best at its node; every leaf is justified by a stopping rule. */
+function expectOptimal(c: Case, fit: TreeFit): void {
+  const { settings: st, x, y, n, d } = c;
+  const rec = (id: number, rows: number[], depth: number): void => {
+    const nd = fit.nodes[id] as TreeFit['nodes'][number];
+    const m = rows.length;
+    const imp = impurityOf(
+      st.criterion,
+      rows.map((r) => y[r] as number),
+    );
+    // Best gain over every candidate (feature, threshold) that keeps minLeaf on each side.
+    let best = 0;
+    for (let f = 0; f < d; f++) {
+      const order = [...rows].sort((a, b) => (x[a * d + f] as number) - (x[b * d + f] as number));
+      for (let p = 1; p < m; p++) {
+        const lo = x[(order[p - 1] as number) * d + f] as number;
+        const hi = x[(order[p] as number) * d + f] as number;
+        if (hi <= lo + 1e-7 || p < st.minLeaf || m - p < st.minLeaf) continue;
+        const g =
+          m * imp -
+          p *
+            impurityOf(
+              st.criterion,
+              order.slice(0, p).map((r) => y[r] as number),
+            ) -
+          (m - p) *
+            impurityOf(
+              st.criterion,
+              order.slice(p).map((r) => y[r] as number),
+            );
+        best = Math.max(best, g);
+      }
+    }
+    const tol = 1e-9 * Math.max(m * imp, 1e-12);
+    if (nd.kind === 'split') {
+      expect(depth).toBeLessThan(st.depth);
+      expect(m).toBeGreaterThanOrEqual(st.minSplit);
+      const lr = rows.filter((r) => (x[r * d + nd.feature] as number) <= nd.threshold);
+      const rr = rows.filter((r) => !((x[r * d + nd.feature] as number) <= nd.threshold));
+      expect(Math.min(lr.length, rr.length)).toBeGreaterThanOrEqual(st.minLeaf);
+      const g =
+        m * imp -
+        lr.length *
+          impurityOf(
+            st.criterion,
+            lr.map((r) => y[r] as number),
+          ) -
+        rr.length *
+          impurityOf(
+            st.criterion,
+            rr.map((r) => y[r] as number),
+          );
+      expect(Math.abs(g - best)).toBeLessThanOrEqual(tol);
+      expect(g / n).toBeGreaterThanOrEqual(st.minDecrease - 1e-12);
+      rec(nd.left, lr, depth + 1);
+      rec(nd.right, rr, depth + 1);
+    } else {
+      const reason =
+        depth >= st.depth ||
+        m < st.minSplit ||
+        m < 2 * st.minLeaf ||
+        imp <= 1e-12 ||
+        best <= tol ||
+        best / n < st.minDecrease + 1e-12;
+      expect(reason).toBe(true);
+    }
+  };
+  rec(
+    0,
+    Array.from({ length: n }, (_, i) => i),
+    0,
+  );
+}
+
 describe('fitTree against scikit-learn fixtures', () => {
   it('has cases for every criterion', () => {
     const crits = new Set(fixtures.cases.map((c) => c.settings.criterion));
@@ -62,6 +159,7 @@ describe('fitTree against scikit-learn fixtures', () => {
       // Whatever the ties, the root split is unambiguous in these data.
       expect(got[0]?.[0]).toBe(rf);
       expect(got[0]?.[1]).toBeCloseTo(rt, 9);
+      expectOptimal(c, fit);
       if (!c.partitionStable) {
         // Equally good splits that cut the rows differently: sklearn's own answer depends on its
         // random feature order, so only the invariants are checked.
