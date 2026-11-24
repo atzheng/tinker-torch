@@ -25,6 +25,8 @@ export type WireProps = {
   /** Width in screen pixels of the transparent stroke that receives presses. */
   hitPx: number;
   onSelect: () => void;
+  /** Dash pattern cutting gaps where later wires cross over this one (`gapDashArray`). */
+  dash?: string;
 };
 
 /** One wire in layer view: the line, an arrowhead and a fat invisible hit stroke (a secondary target; the label is the primary one). */
@@ -51,6 +53,7 @@ export function Wire(p: WireProps) {
         d={d}
         className="tk-wire-line"
         strokeWidth={p.error ? 2.5 : 2}
+        strokeDasharray={p.dash}
         markerEnd={p.error ? 'url(#tk-arrow-error)' : 'url(#tk-arrow)'}
       />
     </g>
