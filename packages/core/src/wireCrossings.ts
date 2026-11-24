@@ -127,3 +127,32 @@ function merge(gaps: Gap[], total: number): Gap[] {
   }
   return out;
 }
+
+/**
+ * The dashed wire from a Linear to its Weights tap (CONTRACTS.md section 10, tinker-6wk): a cubic
+ * leaving the bottom-middle of `linear` and entering the left-middle of `weights`. `d` is the SVG
+ * path and `points` its flattening (`steps` segments), the form `wireGaps` takes.
+ */
+export function paramWireCurve(
+  linear: { x: number; y: number; w: number; h: number },
+  weights: { x: number; y: number; w: number; h: number },
+  steps = 24,
+): { d: string; points: [number, number][] } {
+  const sx = linear.x + linear.w / 2;
+  const sy = linear.y + linear.h;
+  const ex = weights.x;
+  const ey = weights.y + weights.h / 2;
+  const c1: Pt = [sx, sy + 36];
+  const c2: Pt = [ex - 40, ey];
+  const points: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const m = 1 - t;
+    const k = [m * m * m, 3 * m * m * t, 3 * m * t * t, t * t * t] as const;
+    points.push([
+      k[0] * sx + k[1] * c1[0] + k[2] * c2[0] + k[3] * ex,
+      k[0] * sy + k[1] * c1[1] + k[2] * c2[1] + k[3] * ey,
+    ]);
+  }
+  return { d: `M${sx} ${sy}C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${ex} ${ey}`, points };
+}
