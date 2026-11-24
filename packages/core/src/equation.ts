@@ -285,6 +285,8 @@ function build(
           return fn('\\mathrm{onehot}');
         case 'lookup':
           return fn('\\mathrm{lookup}');
+        case 'tree':
+          return fn('\\mathrm{leaf}');
         case 'dropout':
           return fn(`\\mathrm{drop}_{${short(n.p)}}`);
         case 'scale':
