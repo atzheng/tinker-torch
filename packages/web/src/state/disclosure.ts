@@ -67,13 +67,14 @@ export function useUiLabel(id: string, fallback: string): string {
 
 /**
  * A panel toggle's state (CONTRACTS.md section 12, `options`): the student's change, else the
- * preset's initial value, else false. A toggle hidden by `show.ui` is fixed to the preset's value.
+ * preset's initial value, else `dflt` (false unless the caller says otherwise). A toggle hidden by `show.ui` is fixed to the preset's value.
  * Held in the store so a remount keeps it.
  */
-export function useUiOption(id: string): [boolean, (v: boolean) => void] {
+export function useUiOption(id: string, dflt = false): [boolean, (v: boolean) => void] {
   const epoch = useStore((s) => s.loadEpoch);
   const value = useStore((s) => {
-    const init = s.preset?.options?.[id] === true;
+    const o = s.preset?.options?.[id];
+    const init = typeof o === 'boolean' ? o : dflt;
     const e = s.optionEdits;
     if (!isShown(s.show?.ui, id) || e === null || e.preset !== s.preset || e.epoch !== epoch) {
       return init;
