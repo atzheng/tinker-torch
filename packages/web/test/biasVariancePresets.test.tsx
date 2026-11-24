@@ -93,7 +93,7 @@ test('stage 1: depth only, training curve without validation, no data controls b
   ]) {
     expect(m.has(id), id).toBe(false);
   }
-  expect(m.has('tab-loss')).toBe(false);
+  expect(m.has('tab-loss')).toBe(true);
   expect(s().show?.ui).not.toContain('loss-val');
   m.done();
 });
@@ -113,7 +113,7 @@ test('stage 2: validation curve, n, noise, seed and the truth toggle; validation
   }
   expect(m.has('val-points-toggle')).toBe(false); // hidden and fixed off: no validation points
   expect(s().preset?.options?.['val-points-toggle']).toBe(false);
-  expect(m.has('tab-loss')).toBe(false);
+  expect(m.has('tab-loss')).toBe(true);
   m.done();
   const rows = [1, 2, 3, 4, 5, 6, 7, 8].map(runDepth);
   const val = rows.map((r) => r.val);
@@ -138,7 +138,7 @@ test('stage 3: minimum leaf size and Resample x20 and pins; depth and min leaf e
   ]) {
     expect(m.has(id), id).toBe(true);
   }
-  expect(m.has('tab-loss')).toBe(false);
+  expect(m.has('tab-loss')).toBe(true);
   expect(s().preset?.locked).toContain('tree');
   // the locked Tree still takes its listed fields (editSettingOpen) and nothing else
   editSettingOpen('tree', 'minLeaf', 4, 'tree-min-leaf');

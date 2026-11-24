@@ -19,6 +19,7 @@
       "instructions",
       "preset-prompt",
       "tab-model",
+      "tab-loss",
       "panel-fit",
       "panel-loss",
       "loss-readout",
@@ -27,7 +28,10 @@
       "btn-reset",
       "step-count",
       "data-resample"
-    ]
+    ],
+    "panelTabs": {
+      "loss": ["model", "loss"]
+    }
   },
   "options": {
     "val-points-toggle": false
