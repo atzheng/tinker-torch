@@ -17,3 +17,6 @@ Each case is built as a real `nn.Linear`/`nn.*Loss` model, so the numbers come
 from torch, not from a re-implementation. See the docstring in `gen.py` for the
 conventions (weight layout `[in, out]`, init, loss reductions, penalty, dropout
 mask, feature column order).
+
+The same script also writes the decision-tree fixtures (scikit-learn) to
+`packages/core/test/fixtures/tree_sklearn.json` (CONTRACTS.md section 11).

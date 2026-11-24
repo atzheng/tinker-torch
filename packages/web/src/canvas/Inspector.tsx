@@ -47,6 +47,7 @@ export const PIECE_LABEL: Record<PieceType, string> = {
   sum: 'Sum',
   onehot: 'One-hot',
   lookup: 'Lookup',
+  tree: 'Tree',
 };
 
 function Issues({ messages }: { messages: string[] }) {
