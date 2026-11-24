@@ -7,8 +7,8 @@
 import type { Analysis } from './analyse.js';
 import type { NodeId } from './common.js';
 import { unstandardizeRows, type Dataset } from './data/index.js';
-import type { Graph, Node } from './graph.js';
-import { CORE_PIECES, type CorePiece, type TorchCtx } from './registry.js';
+import type { DataInfo, Graph, Node } from './graph.js';
+import { CORE_PIECES, type CorePiece, type TorchCtx, type TorchEmit } from './registry.js';
 
 export type TorchSpan = { node: NodeId; from: number; to: number };
 export type TorchFold = { from: number; to: number; label: string };
@@ -47,6 +47,24 @@ const RESERVED: ReadonlySet<string> = new Set([...PY_KEYWORDS, ...SCRIPT_NAMES, 
 const reserved = (s: string): boolean =>
   RESERVED.has(s) || s.startsWith('register_') || s.startsWith('_');
 
+/**
+ * What `torchScript` emits for one node (its `init`, `pre` and `expr`), with the script's own
+ * names and init rule, for the piece cards. `nodes` is the whole graph's node list. Null when the
+ * node is missing or the analysis does not support it; never throws.
+ */
+export function nodeTorch(
+  nodes: readonly Node[],
+  analysis: Analysis,
+  info: DataInfo,
+  id: NodeId,
+): TorchEmit | null {
+  try {
+    return makeEmitter(nodes, analysis, info)?.emit(id, 'self') ?? null;
+  } catch {
+    return null;
+  }
+}
+
 const num = (v: number): string => String(Number(v.toPrecision(7)));
 const pyFloat = (x: number): string => (Number.isInteger(x) ? x.toFixed(1) : String(x));
 
@@ -64,48 +82,34 @@ export function torchScript(
   }
 }
 
-type Stmt = { nodes: NodeId[]; text: string };
+type Emitter = {
+  name: (id: NodeId) => string;
+  emit: (id: NodeId, owner: 'self' | 'model') => TorchEmit;
+  trees: (Node & { type: 'tree' })[];
+};
 
-function build(
-  graph: Graph,
-  analysis: Analysis,
-  dataset: Dataset,
-  steps: number,
-  params?: TorchParams,
-): TorchCode | null {
-  if (!analysis.trainable || analysis.lossNode === null) return null;
-  const lossNode = analysis.lossNode;
-  const info = dataset.info;
-  const d = info.columns.length;
-  const byId = new Map<NodeId, Node>(graph.nodes.map((n) => [n.id, n]));
-
+/**
+ * The script's naming and emitter context (shared with the piece cards through `nodeTorch`):
+ * variable names with `_` for collisions, Tree estimator names, the (0.25, 0.75) init rule. Null
+ * when a Tree is not wired from an Input.
+ */
+function makeEmitter(nodes: readonly Node[], analysis: Analysis, info: DataInfo): Emitter | null {
+  const byId = new Map<NodeId, Node>(nodes.map((n) => [n.id, n]));
   // ---- names: node ids, with a trailing `_` where one collides
   const names = new Map<NodeId, string>();
-  const taken = new Set<string>(graph.nodes.map((n) => n.id));
+  const taken = new Set<string>(nodes.map((n) => n.id));
   const fresh = (base: string): string => {
     let s = base;
     while (RESERVED.has(s) || taken.has(s)) s += '_';
     taken.add(s);
     return s;
   };
-  for (const n of graph.nodes) if (!reserved(n.id)) names.set(n.id, n.id);
-  for (const n of graph.nodes) if (!names.has(n.id)) names.set(n.id, fresh(n.id));
+  for (const n of nodes) if (!reserved(n.id)) names.set(n.id, n.id);
+  for (const n of nodes) if (!names.has(n.id)) names.set(n.id, fresh(n.id));
   const name = (id: NodeId): string => names.get(id) ?? id;
 
-  // ---- regions, wires, readers
-  const region = analysis.region;
-  const modelIds = analysis.order.filter((id) => region[id] === 'model');
-  const objectiveIds = analysis.order.filter((id) => region[id] === 'objective');
   const wires = (id: NodeId, port: string): NodeId[] =>
     (analysis.inputs[id]?.[port] ?? []).map((w) => w.from);
-  const readerCount = new Map<NodeId, number>();
-  const bump = (id: NodeId) => readerCount.set(id, (readerCount.get(id) ?? 0) + 1);
-  for (const id of analysis.order)
-    for (const port of Object.keys(analysis.inputs[id] ?? {}))
-      for (const from of wires(id, port)) bump(from);
-  for (const id of analysis.predictions) bump(id);
-  bump(lossNode);
-  const readers = (id: NodeId): number => readerCount.get(id) ?? 0;
 
   // ---- emitters
   const trees = analysis.order
@@ -114,7 +118,7 @@ function build(
   const treeNames = new Map<NodeId, { estimator: string; leaves: string; columns: number[] }>();
   for (const t of trees) {
     const src = byId.get(wires(t.id, 'in')[0] ?? '');
-    if (src?.type !== 'input') return null;
+    if (src?.type !== 'input') return null; // a Tree not wired from an Input
     treeNames.set(t.id, {
       estimator: fresh(`${name(t.id)}_tree`),
       leaves: fresh(`${name(t.id)}_leaves`),
@@ -178,6 +182,43 @@ function build(
     };
     return piece.torch(node, ctx);
   };
+
+  return { name, emit, trees };
+}
+
+type Stmt = { nodes: NodeId[]; text: string };
+
+function build(
+  graph: Graph,
+  analysis: Analysis,
+  dataset: Dataset,
+  steps: number,
+  params?: TorchParams,
+): TorchCode | null {
+  if (!analysis.trainable || analysis.lossNode === null) return null;
+  const lossNode = analysis.lossNode;
+  const info = dataset.info;
+  const d = info.columns.length;
+  const byId = new Map<NodeId, Node>(graph.nodes.map((n) => [n.id, n]));
+
+  const em = makeEmitter(graph.nodes, analysis, info);
+  if (em === null) return null;
+  const { name, emit, trees } = em;
+
+  // ---- regions, wires, readers
+  const region = analysis.region;
+  const modelIds = analysis.order.filter((id) => region[id] === 'model');
+  const objectiveIds = analysis.order.filter((id) => region[id] === 'objective');
+  const wires = (id: NodeId, port: string): NodeId[] =>
+    (analysis.inputs[id]?.[port] ?? []).map((w) => w.from);
+  const readerCount = new Map<NodeId, number>();
+  const bump = (id: NodeId) => readerCount.set(id, (readerCount.get(id) ?? 0) + 1);
+  for (const id of analysis.order)
+    for (const port of Object.keys(analysis.inputs[id] ?? {}))
+      for (const from of wires(id, port)) bump(from);
+  for (const id of analysis.predictions) bump(id);
+  bump(lossNode);
+  const readers = (id: NodeId): number => readerCount.get(id) ?? 0;
 
   // ---- the objective: idioms first, then one statement per remaining piece
   type Idiom = { expr: string; covered: NodeId[]; uses: NodeId[] };
