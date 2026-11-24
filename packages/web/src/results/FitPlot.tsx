@@ -33,8 +33,8 @@ import {
 import { PredictionPicker } from './PredictionPicker.js';
 import styles from './Results.module.css';
 
-/** Number of grid points for the model curve. Fixed: every new n makes the engine retrace. */
-export const GRID_N = 200;
+/** Number of grid points for the model curve: fine enough that a tree step is under a pixel wide. Fixed: every new n makes the engine retrace. */
+export const GRID_N = 1000;
 
 /**
  * Fit plot. Two or more continuous columns the model reads: FitPlot2D (its axes are continuous columns only).
