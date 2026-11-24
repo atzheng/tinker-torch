@@ -8,6 +8,7 @@ import {
   layoutLayers,
   layoutNeurons,
   parsePort,
+  partitionNodes,
   shownTabs,
   viewOfTab,
   type LayerLayout,
@@ -39,6 +40,7 @@ import { ScalarBar } from './ScalarBar.js';
 import { EquationStrip } from './EquationStrip.js';
 import { linearGroups, pickGroup } from '../state/scalarActions.js';
 import { HINTS } from '../hints.js';
+import { TAB_LABELS } from '../tabs/TabBar.js';
 import { startDrag } from '../gestures/drag.js';
 import { useViewGestures } from './useViewGestures.js';
 import { clampView, layerBaseView, neuronBaseView, NEURON_MAX_SCALE } from './viewport.js';
@@ -159,6 +161,7 @@ export function Canvas() {
     [fullGraph, analysis, tab, split],
   );
   const whole = !split || tab === 'full';
+  const partition = useMemo(() => partitionNodes(fullGraph, analysis), [fullGraph, analysis]);
   const showGrain = useUiShown('grain-toggle') && (tab === 'model' || whole);
   const showFit = useUiShown('fit-view');
   const showTidy = useUiShown('tidy-layout');
@@ -418,8 +421,24 @@ export function Canvas() {
               const ref = pin.role === 'loss' ? graph.loss : graph.predictions[pin.index];
               return ref === null || ref === undefined ? undefined : parsePort(ref).node;
             },
+        split && !whole
+          ? (issue) => {
+              // A global line about a piece that lives on another tab names that tab.
+              const { at } = issue;
+              const ref = at.pin
+                ? at.pin.role === 'loss'
+                  ? fullGraph.loss
+                  : fullGraph.predictions[at.pin.index]
+                : at.edge !== undefined
+                  ? fullGraph.edges[at.edge]?.[0]
+                  : at.node;
+              if (ref === null || ref === undefined) return undefined;
+              const owner = partition[parsePort(ref).node];
+              return owner === undefined || owner === tab ? undefined : TAB_LABELS[owner];
+            }
+          : undefined,
       ),
-    [analysis, layout, graph, isNeuron],
+    [analysis, layout, graph, fullGraph, isNeuron, split, whole, tab, partition],
   );
   const errNodes = useMemo(() => errorNodes(analysis.issues, !isNeuron), [analysis, isNeuron]);
   const errPins = useMemo(() => new Set(placed.byPin.keys()), [placed]);

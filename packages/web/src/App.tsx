@@ -6,7 +6,7 @@ import { PromptLine } from './presets/PromptLine.js';
 import { SuccessTick } from './presets/SuccessTick.js';
 import { InstructionsPanel } from './presets/InstructionsPanel.js';
 import { ResultsPanels } from './results/ResultsPanels.js';
-import { useRegionShown } from './state/disclosure.js';
+import { useRegionShown, useShownTabs, useViewTab } from './state/disclosure.js';
 import { useLayoutMode } from './layout/useLayoutMode.js';
 import { useStore } from './state/store.js';
 import { TabBar } from './tabs/TabBar.js';
@@ -111,6 +111,8 @@ export const PORTRAIT_RESULTS = 'clamp(150px, 32%, 380px)';
 export function App() {
   useEngine(); // the engine loads even when a preset hides the training bar (its other caller)
   const mode = useLayoutMode();
+  const tab = useViewTab();
+  const tabBarShown = useShownTabs().length >= 2;
   const route = useRoute();
   const top = useRegionShown('top-bar');
   const results = useRegionShown('results');
@@ -159,7 +161,12 @@ export function App() {
           <PromptLine />
           <InstructionsPanel />
           <SuccessTick />
-          <div className={styles.canvasBody} id="tab-panel" role="tabpanel">
+          <div
+            className={styles.canvasBody}
+            id="tab-panel"
+            role="tabpanel"
+            aria-labelledby={tabBarShown ? `tab-${tab}` : undefined}
+          >
             <Canvas />
           </div>
         </main>
