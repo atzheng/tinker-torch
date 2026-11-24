@@ -1,5 +1,7 @@
 import type { StateCreator } from 'zustand';
-import type { NodeId, PortRef, ViewTab } from '@tinker/core';
+import type { Dataset, Graph, NodeId, PortRef, Show, ViewTab } from '@tinker/core';
+import { analyseWithTrees } from './treeFits.js';
+import { selectionDrawnOn } from './selectionTab.js';
 import { PIN_LIMIT, type Pin } from '../results/pinsModel.js';
 import {
   DEFAULT_ORDER,
@@ -55,7 +57,11 @@ export type ViewSlice = {
    * never drawn: read it through `useViewTab`, which falls back to a shown one. View state only.
    */
   viewTab: ViewTab;
-  /** Switch tab. The selection is cleared: what was selected may not be on the other tab. */
+  /**
+   * Switch tab. The selection is cleared: what was selected may not be on the other tab. Except
+   * between the Code tab and a graph tab: the selected piece is in the script and (when drawn) on
+   * the graph, so the selection stays (tinker-img.2).
+   */
   setViewTab: (tab: ViewTab) => void;
   /** Switch grain. A selected edge or unit exists only in neuron view, so it is cleared. */
   setGrain: (grain: Grain) => void;
@@ -90,13 +96,33 @@ export type ViewSlice = {
   setFresh: (ids: ReadonlySet<NodeId>) => void;
 };
 
-export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set) => ({
+export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set, get) => ({
   selection: null,
   select: (selection) => set({ selection }),
   selectNode: (id) => set({ selection: { kind: 'node', id } }),
   grain: 'layer',
   viewTab: 'model',
-  setViewTab: (viewTab) => set((s) => (s.viewTab === viewTab ? s : { viewTab, selection: null })),
+  setViewTab: (viewTab) =>
+    set((s) => {
+      if (s.viewTab === viewTab) return s;
+      // Between Code and a graph tab the selection stays, but only when the graph tab draws it:
+      // a hidden piece must not stay selected (Delete would remove it unseen).
+      let keep = false;
+      if (s.selection && (s.viewTab === 'code' || viewTab === 'code')) {
+        if (viewTab === 'code') keep = true;
+        else {
+          const w = get() as unknown as { graph: Graph; dataset: Dataset; show: Show | null };
+          keep = selectionDrawnOn(
+            s.selection,
+            w.graph,
+            analyseWithTrees(w.graph, w.dataset),
+            viewTab,
+            w.show?.ui,
+          );
+        }
+      }
+      return keep ? { viewTab } : { viewTab, selection: null };
+    }),
   plotPrediction: null,
   setPlotPrediction: (plotPrediction) => set({ plotPrediction }),
   weightsOf: null,

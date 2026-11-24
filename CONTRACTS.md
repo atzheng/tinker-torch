@@ -563,7 +563,7 @@ Choices fixed by `layout.ts` (constants in the exported `LAYOUT`; all in abstrac
 One graph, three views of it (Model, Loss, "Full graph"). Nothing here is stored in the graph or the file; one undo history.
 
 ```ts
-type SplitTab = 'model' | 'loss';  type ViewTab = SplitTab | 'full';   // VIEW_TABS order: model, loss, full
+type SplitTab = 'model' | 'loss';  type ViewTab = SplitTab | 'full' | 'code';   // VIEW_TABS order: model, loss, full, code
 function partitionNodes(g: Graph, a: Analysis): Record<NodeId, SplitTab>;
 function viewOfTab(g: Graph, a: Analysis, tab: ViewTab, whole = false): { graph: Graph; ghosts: Record<NodeId, SplitTab> };
 function tabIsWhole(tab: ViewTab, ui): boolean;                  // full tab, or the only tab shown
@@ -678,7 +678,8 @@ function effectiveTab(want: ViewTab, ui: readonly string[] | undefined): ViewTab
 
 ### Tabs (tinker-d6x)
 
-`App` puts a `TabBar` (a `role="tablist"`: ArrowLeft/Right/Up/Down wrap, Home, End, roving tabindex; `data-testid` `tab-model`, `tab-loss`, `tab-full`) at the top of the canvas region. `viewSlice.viewTab` is the tab asked for; read it through `useViewTab()` (`state/disclosure.ts`), which is never a hidden tab (`effectiveTab`). Switching clears the selection and the canvas view (pan and zoom). A load (a new `loadEpoch`) opens the preset's `show.tab`, else `model`. With one tab shown the bar is not drawn.
+`App` puts a `TabBar` (a `role="tablist"`: ArrowLeft/Right/Up/Down wrap, Home, End, roving tabindex; `data-testid` `tab-model`, `tab-loss`, `tab-full`, `tab-code`) at the top of the canvas region. `viewSlice.viewTab` is the tab asked for; read it through `useViewTab()` (`state/disclosure.ts`), which is never a hidden tab (`effectiveTab`). Switching clears the selection and the canvas view (pan and zoom). A load (a new `loadEpoch`) opens the preset's `show.tab`, else `model`. With one tab shown the bar is not drawn.
+- **Code tab (tinker-img.2)**: the fourth tab, label `Code` (`tab-code`), after Full graph. It is not a canvas view: `viewOfTab` is never called with `'code'`, `tabsSplit` and `tabIsWhole` count only the graph tabs, the palette region and the results panels are not shown on it (`panelOnTab` is false), the top bar and the training bar are unchanged and training runs while it is open. `App` draws `web/src/code/CodeView.tsx` in place of the canvas: the script from `torchScript(graph, analysis, dataset)` (the app's own `useAnalysis()`, memoised on graph, analysis and dataset identity) in a monospace panel with line numbers and a small hand-written Python tokenizer (`code/pythonTokens.ts`: keywords, builtins, numbers, strings, comments; theme tokens `--code-*`). Long lines scroll inside the panel (`overflow: auto`), never the page. A fold from `TorchCode.folds` is drawn by replacing `[from, to)` with `[...]` and appending `  # <label>` to the line; tapping `[...]` opens it and a caret in the gutter closes it (open state is view state). Selection is shared with the graph tabs: switching to Code keeps it, and switching from Code to a graph tab keeps it only when that tab draws it as its own piece or wire (`state/selectionTab.ts` `selectionDrawnOn`, from `viewOfTab`; a stub does not count), else clears it; other switches clear it. `deleteSelection` does nothing for a selection the tab on screen does not draw (and nothing on Code). The fold `[...]` and caret are real buttons (`aria-expanded`, click, so Enter and Space work); a selected piece (node, pin, edge or unit: its node) highlights all its spans and the view scrolls to its first span unless the selection came from a tap on Code; a tap (Pointer Events, moved under 8 px, no text selected) selects the node whose span is the innermost one containing the tapped character (ties: first in the list), else the first span starting on that line, else clears the selection. A graph where `torchScript` is `null` shows the analysis issue lines (`issue-global`) and no code. Buttons `code-copy` (full unfolded `text` to the clipboard) and `code-download` (`<preset title slug>.py`, else `tinker.py`). `data-testid`: `tab-code`, `code-view`, `code-copy`, `code-download`.
 - Canvas: draws `viewOfTab(graph, analysis, tab).graph`; edits always use the real graph (section 9, "Tabs").
 - Palette: `paletteTabs(entry)` includes the tab; a preset's `show.palette` filters further.
 - Results panels by tab (`PANEL_TAB: Record<PanelId, SplitTab>` in `results/panelLayout.ts`, so a new panel must be assigned; `panelOnTab`): full tab: every panel the preset lists; model tab: `fit`, `histogram`; loss tab: `loss`, `surface`, `loss-1d`, `examples`, `step-log` (the defaults; a preset's `show.panelTabs` overrides them per panel, section 12). The results region is on screen only when a panel of the tab on screen is shown (`useRegionShown('results')`). Portrait layout: the tab bar sits above the prompt line in the canvas region; nothing else changes.
@@ -811,7 +812,7 @@ When they are cleared or ignored: loading a file replaces them (a file without `
 ### Progressive disclosure (`show`, tinker-6t7.1)
 
 ```ts
-type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' | 'full'; panelTabs?: ... };   // panelTabs: see "Panels on more than one tab";    // Preset gains: show?: Show (tab: see "Tabs" below)
+type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' | 'full' | 'code'; panelTabs?: ... };   // panelTabs: see "Panels on more than one tab";    // Preset gains: show?: Show (tab: see "Tabs" below)
 const PALETTE_GROUP_IDS: readonly string[];            // core/file.ts, palette order (now with 'categories' after 'inputs', tinker-6t7.7); web Palette GROUPS uses the same ids
 const UI_IDS: Record<'top-bar' | 'canvas' | 'results' | 'panel-controls' | 'tabs' | 'training-bar', readonly string[]>; // core/file.ts
 const ALL_UI_IDS: readonly string[];                   // every id in UI_IDS
@@ -833,11 +834,12 @@ Adding an id to `UI_IDS` changes nothing for a preset without `ui` (everything s
 ### Tabs (`show.tab`, tinker-d6x)
 
 ```ts
-type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' };
-UI_IDS.tabs = ['tab-model', 'tab-loss', 'tab-full'];               // also in LABEL_IDS: the tab names can be renamed
+type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' | 'full' | 'code' };
+UI_IDS.tabs = ['tab-model', 'tab-loss', 'tab-full', 'tab-code'];  // also in LABEL_IDS: the tab names can be renamed
+UI_IDS.canvas also lists 'code-copy', 'code-download' (the Code tab's buttons; listing `show.ui` ids without them hides them)
 ```
 
-Tab ids are not a region (they never make a region visible). `shownTabs(show.ui)`: when `ui` lists no tab id (or is absent) all three tabs show (Model, Loss, Full graph), so every preset without tab ids gains the full tab; when it lists some, exactly those show (so a preset listing `tab-model` and `tab-loss`, such as `lecture1-stage2` to `5`, stays two-tab; `lecture1-stage0` and `1` list them too, so they are two-tab as well). A hidden tab's pieces and panels are not reachable through it; the graph is unchanged. With exactly one tab shown, it draws the whole graph. `show.tab` is the tab the page opens on; absent: `model`. Validation, one plain sentence each: `The preset "show.tab" must be "model", "loss" or "full".`, and `The preset opens on the loss tab, but its "show.ui" hides that tab.` (likewise for model). There is no way to hide both tabs. `show.tab` travels with `show` (undo of a load, Save).
+Tab ids are not a region (they never make a region visible). `shownTabs(show.ui)`: when `ui` lists no tab id (or is absent) all four tabs show (Model, Loss, Full graph, Code), so every preset without tab ids gains the full and code tabs; when it lists some, exactly those show (so a preset listing `tab-model` and `tab-loss`, such as `lecture1-stage2` to `5`, stays two-tab; `lecture1-stage0` and `1` list them too, so they are two-tab as well; the bundled lecture presets are not widened: Code shows only when `tab-code` is listed). A hidden tab's pieces and panels are not reachable through it; the graph is unchanged. With exactly one tab shown, it draws the whole graph. `show.tab` is the tab the page opens on; absent: `model`. Validation, one plain sentence each: `The preset "show.tab" must be "model", "loss", "full" or "code".`, and `The preset opens on the loss tab, but its "show.ui" hides that tab.` (likewise for model). There is no way to hide both tabs. `show.tab` travels with `show` (undo of a load, Save).
 
 ### Panels on more than one tab (`show.panelTabs`, tinker-x6k)
 

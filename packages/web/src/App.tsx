@@ -1,6 +1,7 @@
 import { useRef, type CSSProperties } from 'react';
 import styles from './App.module.css';
 import { Canvas } from './canvas/Canvas.js';
+import { CodeView } from './code/CodeView.js';
 import { Palette } from './palette/Palette.js';
 import { PromptLine } from './presets/PromptLine.js';
 import { SuccessTick } from './presets/SuccessTick.js';
@@ -117,7 +118,8 @@ export function App() {
   const top = useRegionShown('top-bar');
   const results = useRegionShown('results');
   const train = useRegionShown('training-bar');
-  const palette = useStore((s) => s.show?.palette?.length !== 0);
+  // The Code tab has no palette (tinker-img.2).
+  const palette = useStore((s) => s.show?.palette?.length !== 0) && tab !== 'code';
   const sizes = useStore((s) => s.regionSizes);
   const setSize = useStore((s) => s.setRegionSize);
   const appRef = useRef<HTMLDivElement>(null);
@@ -167,7 +169,7 @@ export function App() {
             role="tabpanel"
             aria-labelledby={tabBarShown ? `tab-${tab}` : undefined}
           >
-            <Canvas />
+            {tab === 'code' ? <CodeView /> : <Canvas />}
           </div>
         </main>
         {results && (

@@ -1,0 +1,186 @@
+/* The Code tab (tinker-img.2). Fills the canvas body; long lines scroll inside .scroller, never the page. */
+.view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.btn {
+  min-height: 36px;
+  padding: 4px 14px;
+  font: inherit;
+  color: var(--ctl-fg);
+  background: var(--ctl-fill);
+  border: 1px solid var(--ctl-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.btn:hover {
+  background: var(--ctl-fill-hover);
+}
+.btn:active {
+  background: var(--ctl-fill-press);
+}
+.btn:focus-visible,
+.caret:focus-visible,
+.fold:focus-visible,
+.scroller:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.note {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--surface);
+  cursor: default;
+}
+
+.lines {
+  min-width: max-content;
+  padding: var(--sp-2) 0;
+}
+
+.row {
+  display: flex;
+  min-height: 1.55em;
+}
+.row[data-hl='true'] {
+  background: var(--code-hl-line);
+}
+
+.gutter {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  width: 5.5em;
+  padding-right: var(--sp-2);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  user-select: none;
+}
+.num {
+  flex: 1;
+  text-align: right;
+}
+
+.caret {
+  flex: none;
+  width: 2em;
+  padding: 0;
+  font: inherit;
+  line-height: inherit;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.text {
+  flex: none;
+  padding: 0 var(--sp-4) 0 var(--sp-3);
+  white-space: pre;
+  tab-size: 4;
+}
+.text > span[data-hl='true'] {
+  background: var(--code-hl);
+  border-radius: 2px;
+}
+
+.fold {
+  padding: 0 8px;
+  font: inherit;
+  line-height: 1.3;
+  color: var(--accent);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.plain {
+  color: var(--text);
+}
+.keyword {
+  color: var(--code-keyword);
+  font-weight: 600;
+}
+.builtin {
+  color: var(--code-builtin);
+}
+.self {
+  color: var(--code-comment);
+  font-style: italic;
+}
+.number {
+  color: var(--code-number);
+}
+.string {
+  color: var(--code-string);
+}
+.comment,
+.foldLabel {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.issues {
+  margin: var(--sp-3);
+  padding: 4px 8px;
+  color: var(--issue-fg);
+  background: var(--issue-bg);
+  border: 1px solid var(--issue-border);
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  align-self: flex-start;
+  max-width: calc(100% - 24px);
+}
+.issues p {
+  margin: 0;
+}
+
+/* Touch: the global 32 px hit-target minimum applies to the fold buttons, so the few rows that hold
+   one (the data literals) are 32 px tall and the button fits inside its own row. */
+@media (pointer: coarse) {
+  .foldRow {
+    min-height: 32px;
+    align-items: center;
+  }
+  .foldRow .gutter {
+    align-self: stretch;
+    align-items: center;
+  }
+}

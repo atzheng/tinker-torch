@@ -2,13 +2,19 @@ import { useEffect } from 'react';
 import { deleteEdge, deleteNode, parsePort, removePrediction } from '@tinker/core';
 import { pinRolesNow, uiShown } from '../state/disclosure.js';
 import { lockedIds } from '../state/locks.js';
+import { selectionDrawnOn } from '../state/selectionTab.js';
 import { useStore } from '../state/store.js';
+import { analyseWithTrees } from '../state/treeFits.js';
 import { edgeIndexOf } from './pure.js';
 
 /** Delete the selected piece or wire through the undo history; a refused edit shows its toast. */
 export function deleteSelection(): void {
-  const { graph, selection, apply, select } = useStore.getState();
+  const { graph, selection, apply, select, dataset, viewTab, show } = useStore.getState();
   if (!selection) return;
+  // Only what the tab on screen draws can be deleted (the Code tab draws none).
+  if (!selectionDrawnOn(selection, graph, analyseWithTrees(graph, dataset), viewTab, show?.ui)) {
+    return;
+  }
   if (selection.kind === 'node') {
     if (apply(deleteNode(graph, selection.id, { locked: lockedIds() })).ok) select(null);
     return;

@@ -33,6 +33,7 @@ export function panelOnTab(
   split: boolean,
   panelTabs?: Show['panelTabs'],
 ): boolean {
+  if (tab === 'code') return false; // the Code tab has no results panels (tinker-img.2)
   if (!split || tab === 'full') return true;
   return (panelTabs?.[id] ?? [PANEL_TAB[id]]).includes(tab);
 }

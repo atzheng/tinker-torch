@@ -89,6 +89,14 @@
   --issue-bg: var(--error-bg);
   --issue-border: var(--error);
   /* Typography: one UI stack and one mono stack, no network fonts; one size scale. */
+  /* Code tab syntax colours (tinker-img.2) */
+  --code-keyword: #7b2fa3;
+  --code-builtin: #0b6e7a;
+  --code-number: #a34700;
+  --code-string: #1b6b32;
+  --code-comment: #5b6472;
+  --code-hl: color-mix(in srgb, var(--accent) 16%, transparent);
+  --code-hl-line: color-mix(in srgb, var(--accent) 7%, transparent);
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --fs-xs: 11px;
   --fs-sm: 12px;
@@ -112,6 +120,11 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
+  --code-keyword: #d2a8ff;
+  --code-builtin: #7dd3dc;
+  --code-number: #ffb454;
+  --code-string: #7ee787;
+  --code-comment: #9aa3b2;
   --bg: #14171c;
   --surface: #1d2129;
   --surface-2: #272c36;
