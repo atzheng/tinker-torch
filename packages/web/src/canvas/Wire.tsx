@@ -41,6 +41,7 @@ export function Wire(p: WireProps) {
       data-valid={p.valid === true}
       data-lifted={p.lifted === true}
       data-replace={p.replace === true}
+      data-gapped={p.dash !== undefined ? 'true' : undefined}
       onPointerEnter={(e) => e.pointerType === 'mouse' && p.onHover?.(p.edge)}
       onPointerLeave={(e) => e.pointerType === 'mouse' && p.onHover?.(-1)}
       data-width={p.width ?? ''}

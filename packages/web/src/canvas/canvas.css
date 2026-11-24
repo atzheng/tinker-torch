@@ -592,6 +592,10 @@ path.tk-hit {
 }
 .tk-wire[data-replace='true'] .tk-wire-line {
   stroke: var(--error);
+}
+/* A wire with crossing gaps keeps its gap pattern (the stroke-dasharray attribute); the dashed
+   look of "will be replaced" only applies to a wire without gaps. */
+.tk-wire[data-replace='true']:not([data-gapped]) .tk-wire-line {
   stroke-dasharray: 5 4;
 }
 .tk-armed {
