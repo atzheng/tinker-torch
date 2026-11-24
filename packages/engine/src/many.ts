@@ -8,9 +8,9 @@
 import { jit, numpy as np, random, tree, vmap } from '@jax-js/jax';
 import type { Array as JArray } from '@jax-js/jax';
 import type * as optax from '@jax-js/optax';
-import { analyse, fitTrees, initParams, treeLeafCounts } from '@tinker/core';
-import type { Analysis, Batch, HostParams, NodeId, TreeFits } from '@tinker/core';
-import { compilePadded, disposeCompiled, internals, xHost } from './compile.js';
+import { analyse, fitTrees, initParams, resolveEdge, treeLeafCounts } from '@tinker/core';
+import type { Analysis, Batch, Graph, HostParams, NodeId, TreeFits } from '@tinker/core';
+import { compile, compilePadded, disposeCompiled, internals, xHost } from './compile.js';
 import type { Internals } from './compile.js';
 import type { ParamTree } from './convert.js';
 import type { ManyResult, Model } from './types.js';
@@ -197,10 +197,13 @@ export function trainMany(
       null,
     );
   }
-  // Trees: each copy fits its own trees on its own training rows. The copies are trained as one
-  // vmapped step on a sibling model whose one-hots are padded to the largest leaf count of each
-  // tree (zero columns); the Linear weights of the padded columns start at 0, get zero gradient
-  // and never change a prediction. The padding is stripped from the returned params.
+  // Trees: each copy fits its own trees on its own training rows. When every Tree output goes
+  // straight into a Linear (`paddingIsNeutral`) the copies are trained as one vmapped step on a
+  // sibling model whose one-hots are padded to the largest leaf count of each tree (zero columns);
+  // the Linear weights of the padded columns start at 0, get zero gradient and never change a
+  // prediction. The padding is stripped from the returned params. Otherwise (a link, Add, ... reads
+  // a Tree) zeros are not neutral, so copies with different leaf counts are trained one at a time
+  // on a model compiled from their own fits.
   const info = user.data;
   const fits = data.map((b) =>
     fitTrees(user.graph, { info, nTrain: b.n, xTrain: b.x, yTrain: b.y }),
@@ -213,6 +216,28 @@ export function trainMany(
       most[t.id] = Math.max(most[t.id] ?? 1, fit.leaves);
     }
   }
+  const same = user.trees.every((t) =>
+    fits.every((f) => f[t.id]?.leaves === fits[0]?.[t.id]?.leaves),
+  );
+  if (!same && !paddingIsNeutral(user.graph)) {
+    const out: ManyResult[] = [];
+    data.forEach((b, c) => {
+      let own: Model;
+      try {
+        own = compile(user.graph, info, fits[c] ?? {});
+      } catch (e) {
+        const why = e instanceof Error ? e.message : 'the graph does not fit';
+        throw new Error(`Copy ${c + 1} cannot be trained with its own trees: ${why}`);
+      }
+      try {
+        const [r] = trainCopies(internals(own), [seeds[c] ?? 0], [b], steps, [fits[c] ?? {}], null);
+        if (r) out.push(r);
+      } finally {
+        disposeCompiled(own);
+      }
+    });
+    return out;
+  }
   const padded = compilePadded(user, most);
   try {
     // init with each copy's real leaf counts (fan-in = its real leaf count), then pad
@@ -222,6 +247,21 @@ export function trainMany(
   } finally {
     disposeCompiled(padded);
   }
+}
+
+/**
+ * True when zero-padding a Tree's one-hot cannot change a copy: every wire out of every Tree goes
+ * into the `in` port of a Linear and no prediction or the loss is a Tree itself.
+ */
+export function paddingIsNeutral(graph: Graph): boolean {
+  const trees = new Set(graph.nodes.filter((n) => n.type === 'tree').map((n) => n.id));
+  const type = new Map(graph.nodes.map((n) => [n.id, n.type]));
+  for (const e of graph.edges) {
+    const r = resolveEdge(graph.nodes, e);
+    if (!r.ok || !trees.has(r.from.node)) continue;
+    if (type.get(r.to.node) !== 'linear' || r.to.port !== 'in') return false;
+  }
+  return ![...graph.predictions, graph.loss].some((p) => trees.has(p?.split('.')[0] ?? ''));
 }
 
 /** What trainCopies needs of a tree model: each copy's own analysis (init and unpadded shapes). */

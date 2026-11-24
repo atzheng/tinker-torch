@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 import { fitTrees, initParams, parseGraph, sample } from '@tinker/core';
 import type { DataInfo, Graph } from '@tinker/core';
 import { createEngine } from '../src/index.js';
+import { paddingIsNeutral } from '../src/many.js';
 import type { Engine, ParamAxis } from '../src/index.js';
 import { compare } from './util.js';
 
@@ -201,6 +202,44 @@ describe('trainMany with trees', () => {
       expect(compare(pred ?? [], ref ?? [], 1e-5).ok).toBe(true);
       engine.dispose(p);
       engine.disposeModel(ownModel);
+      engine.dispose(st);
+      engine.disposeModel(m);
+    });
+    engine.disposeModel(model);
+  });
+
+  test('Tree -> sigmoid -> Linear: differing leaf counts train like one-by-one (no padding)', () => {
+    const base = treeGraph(8, 'adam', 0.05);
+    const g: Graph = {
+      ...base,
+      nodes: [...base.nodes, { id: 'sg', type: 'activation', fn: 'sigmoid' }],
+      edges: [
+        ['x', 'tree'],
+        ['tree', 'sg'],
+        ['sg', 'lin1'],
+        ['lin1', 'diff.a'],
+        ['y', 'diff.b'],
+        ['diff', 'err'],
+        ['err', 'loss'],
+      ],
+    };
+    expect(paddingIsNeutral(g)).toBe(false);
+    expect(paddingIsNeutral(base)).toBe(true);
+    const sets = [stepData(24), noisyData(24), noisyData(24)];
+    const seeds = [5, 6, 7];
+    const fits = sets.map((b) => fitOf(g, b));
+    expect(new Set(fits.map((f) => f['tree']?.leaves)).size).toBeGreaterThan(1);
+    const model = engine.compile(g, info, fits[0]);
+    const many = engine.trainMany(model, seeds, sets, 25);
+    many.forEach((res, c) => {
+      const m = engine.compile(g, info, fits[c]);
+      let st = engine.startTraining(m, engine.init(m, seeds[c] ?? 0), seeds[c] ?? 0);
+      for (let i = 0; i < 25; i++) st = engine.step(m, st, sets[c] as never).state;
+      const want = engine.toHost(st.params);
+      for (const key of ['W', 'b']) {
+        const cmp = compare(res.params['lin1']?.[key] ?? [], want['lin1']?.[key] ?? [], 1e-5);
+        expect(cmp.ok, `copy ${c} ${key} max abs error ${cmp.maxAbs}`).toBe(true);
+      }
       engine.dispose(st);
       engine.disposeModel(m);
     });
