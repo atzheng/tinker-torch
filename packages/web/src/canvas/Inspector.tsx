@@ -1,6 +1,7 @@
-import type { ComponentType } from 'react';
+import { useEffect, useRef, type ComponentType } from 'react';
 import {
   addPrediction,
+  docViewFor,
   parsePort,
   setLoss,
   type Analysis,
@@ -21,6 +22,7 @@ import { ValueField } from './ValueField.js';
 import { TexText } from '../tex/Tex.js';
 import { hostShape } from '../state/hostShape.js';
 import { useStore } from '../state/store.js';
+import { PieceCard, cardOwner, useCardOpen } from '../palette/PieceCard.js';
 import type { Selection } from '../state/viewSlice.js';
 
 export const PIECE_LABEL: Record<PieceType, string> = {
@@ -62,6 +64,45 @@ function Issues({ messages }: { messages: string[] }) {
   );
 }
 
+/**
+ * The "?" in a piece inspector's title row, next to the close button (CONTRACTS.md section 15). Opens
+ * the live card for the node beside the inspector; it follows width edits (it re-renders with the
+ * graph and analysis) and closes when the selection moves to another node or away.
+ */
+function NodeDoc({ node, analysis }: { node: Node; analysis: Analysis }) {
+  const id = 'inspector';
+  const open = useCardOpen(id);
+  const btn = useRef<HTMLButtonElement>(null);
+  const graph = useStore((s) => s.graph);
+  const data = useStore((s) => s.dataInfo);
+  useEffect(() => () => cardOwner.close(id), [node.id]);
+  const panel = btn.current?.closest<HTMLElement>('.tk-inspector') ?? null;
+  const canvas = btn.current?.closest<HTMLElement>('.tk-canvas') ?? null;
+  return (
+    <>
+      <button
+        ref={btn}
+        type="button"
+        className="tk-doc-btn tk-inspector-doc"
+        data-testid="piece-doc-inspector"
+        aria-label={`About ${PIECE_LABEL[node.type]}`}
+        aria-expanded={open}
+        onClick={() => (open ? cardOwner.close(id) : cardOwner.open(id))}
+      >
+        ?
+      </button>
+      {open && panel && canvas && (
+        <PieceCard
+          view={docViewFor(node, analysis, data, graph)}
+          opener={btn.current}
+          placement={{ kind: 'inspector', panel, canvas }}
+          onClose={() => cardOwner.close(id)}
+        />
+      )}
+    </>
+  );
+}
+
 function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
   const Fields = WEB_PIECES[node.type].Fields as ComponentType<{ node: Node }>;
   const inW = analysis.inWidth[node.id];
@@ -74,6 +115,7 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
   const select = useStore((s) => s.select);
   const openWeights = useStore((s) => s.openWeights);
   const roles = usePinRoles();
+  const docs = useStore((s) => s.show?.docs) !== false; // `show.docs: false` removes the "?"
   const canPred = roles.includes('pred') && !pinLive(graph, 'pred', node.id);
   const canLoss = roles.includes('loss') && !pinLive(graph, 'loss', node.id);
   const pin = (role: 'pred' | 'loss') => {
@@ -83,7 +125,8 @@ function NodeInspector({ node, analysis }: { node: Node; analysis: Analysis }) {
   };
   return (
     <>
-      <h2 className="tk-inspector-title">
+      {docs && <NodeDoc node={node} analysis={analysis} />}
+      <h2 className="tk-inspector-title" data-docs={docs}>
         {PIECE_LABEL[node.type]} <code>{node.id}</code>
       </h2>
       {node.type === 'linear' && (
@@ -303,10 +346,16 @@ export function Inspector({
   const graph = useStore((s) => s.graph);
   const select = useStore((s) => s.select);
   const roles = usePinRoles();
+  const docs = useStore((s) => s.show?.docs) !== false;
   const node =
     selection.kind === 'node' ? graph.nodes.find((n) => n.id === selection.id) : undefined;
   return (
-    <aside className="tk-inspector" data-testid="inspector" aria-label="Inspector">
+    <aside
+      className="tk-inspector"
+      data-testid="inspector"
+      aria-label="Inspector"
+      data-docs={docs && selection.kind === 'node'}
+    >
       <button
         type="button"
         className="tk-inspector-close"

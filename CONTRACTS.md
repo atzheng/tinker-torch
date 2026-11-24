@@ -813,7 +813,7 @@ When they are cleared or ignored: loading a file replaces them (a file without `
 ### Progressive disclosure (`show`, tinker-6t7.1)
 
 ```ts
-type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' | 'full' | 'code'; panelTabs?: ... };   // panelTabs: see "Panels on more than one tab";    // Preset gains: show?: Show (tab: see "Tabs" below)
+type Show = { palette?: string[]; ui?: string[]; tab?: 'model' | 'loss' | 'full' | 'code'; panelTabs?: ...; docs?: boolean };   // docs: section 15, a non-boolean is refused (`The preset "show.docs" must be true or false.`); panelTabs: see "Panels on more than one tab";    // Preset gains: show?: Show (tab: see "Tabs" below)
 const PALETTE_GROUP_IDS: readonly string[];            // core/file.ts, palette order (now with 'categories' after 'inputs', tinker-6t7.7); web Palette GROUPS uses the same ids
 const UI_IDS: Record<'top-bar' | 'canvas' | 'results' | 'panel-controls' | 'tabs' | 'training-bar', readonly string[]>; // core/file.ts
 const ALL_UI_IDS: readonly string[];                   // every id in UI_IDS
