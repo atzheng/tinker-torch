@@ -1,0 +1,114 @@
+{
+  "kind": "tinker",
+  "version": 2,
+  "title": "Trees for classification, stage 3: choose the depth",
+  "prompt": "Pick the depth you would use on new data. Show the validation points to see which ones the tree gets wrong.",
+  "instructions": [
+    "Show the validation points. Which of them does the best depth get wrong, and which does the deepest tree get wrong?",
+    "Raise Min samples per leaf at depth 8. Does it move the validation loss towards the best depth?",
+    "Press New sample and run your chosen depth again. Is the best depth the same on every sample?"
+  ],
+  "locked": ["x", "tree", "lin1", "yhat", "y", "err", "loss"],
+  "show": {
+    "palette": [],
+    "tab": "model",
+    "ui": [
+      "preset-menu",
+      "btn-undo",
+      "btn-redo",
+      "instructions",
+      "preset-prompt",
+      "tab-model",
+      "tab-loss",
+      "panel-fit",
+      "panel-loss",
+      "loss-readout",
+      "tree-depth",
+      "btn-run",
+      "btn-reset",
+      "step-count",
+      "data-resample",
+      "loss-val",
+      "truth-toggle",
+      "val-points-toggle",
+      "data-n",
+      "data-noise",
+      "data-seed",
+      "tree-min-leaf",
+      "loss-log-toggle"
+    ],
+    "panelTabs": {
+      "loss": ["model", "loss"]
+    }
+  },
+  "labels": {
+    "loss-readout": "Score",
+    "data-resample": "New sample"
+  },
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "x",
+        "type": "input",
+        "columns": ["x1", "x2"]
+      },
+      {
+        "id": "tree",
+        "type": "tree",
+        "criterion": "gini",
+        "depth": 1,
+        "minSplit": 2,
+        "minLeaf": 1,
+        "minDecrease": 0
+      },
+      {
+        "id": "lin1",
+        "type": "linear",
+        "out": 1,
+        "bias": true
+      },
+      {
+        "id": "yhat",
+        "type": "link",
+        "fn": "sigmoid"
+      },
+      {
+        "id": "y",
+        "type": "target"
+      },
+      {
+        "id": "err",
+        "type": "log_loss"
+      },
+      {
+        "id": "loss",
+        "type": "mean"
+      }
+    ],
+    "edges": [
+      ["x", "tree"],
+      ["tree", "lin1"],
+      ["lin1", "yhat"],
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
+    ],
+    "predictions": ["yhat"],
+    "loss": "loss",
+    "data": {
+      "set": "moons",
+      "n": 120,
+      "noise": 0.5,
+      "val": 0.4,
+      "seed": 5,
+      "standardize": true
+    },
+    "train": {
+      "optimizer": "adam",
+      "lr": 0.1,
+      "batch": "full",
+      "seed": 11
+    }
+  }
+}
