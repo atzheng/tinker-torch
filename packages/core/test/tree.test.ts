@@ -481,8 +481,18 @@ describe('Tree node: parse, analyse, fitTrees', () => {
     const a = analyse(g, ds.info, treeLeafCounts(fitTrees(g, ds)));
     const eq = modelEquations(g, a, ds.info);
     expect(JSON.stringify(eq)).toContain('\\mathrm{leaf}');
-    expect(CORE_PIECES.tree.torch(g.nodes[1] as never)).toContain(
-      'DecisionTreeRegressor(criterion=',
-    );
+    const emitted = CORE_PIECES.tree.torch(g.nodes[1] as never, {
+      ins: { in: ['x'] },
+      inWidth: 1,
+      dataColumns: ['x1'],
+      categories: 0,
+      bound: 1,
+      owner: 'self',
+      training: 'self.training',
+      self: 'self.t',
+      name: (id) => id,
+      tree: { estimator: 't_tree', leaves: 't_leaves', columns: [0] },
+    });
+    expect(emitted.pre).toContain('DecisionTreeRegressor(criterion=');
   });
 });

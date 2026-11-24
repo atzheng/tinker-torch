@@ -14,6 +14,7 @@ import {
   type Edge,
   type Graph,
   type Node,
+  type TorchCtx,
 } from '../src/index.js';
 
 const info = (d: number): DataInfo => ({
@@ -53,6 +54,19 @@ function scalarGraph(d: number): Graph {
   edges.push(['sum', 'b'], ['b', 'diff.a'], ['y', 'diff.b'], ['diff', 'sq'], ['sq', 'm']);
   return g(nodes, edges, ['b'], 'm');
 }
+
+const ctxOf = (p: Partial<TorchCtx>): TorchCtx => ({
+  ins: {},
+  inWidth: 0,
+  dataColumns: ['x1', 'x2', 'x3'],
+  categories: 0,
+  bound: 1,
+  owner: 'self',
+  training: 'self.training',
+  self: 'self.n',
+  name: (id) => id,
+  ...p,
+});
 
 describe('scalar regression', () => {
   test('is trainable with d + 1 parameters', () => {
@@ -129,10 +143,21 @@ describe('scalar pieces: registry', () => {
     expect(PALETTE.find((p) => p.key === 'scalew')?.label).toBe('Weight');
   });
 
-  test('torch strings', () => {
-    expect(CORE_PIECES.scalew.torch({ id: 'w', type: 'scalew' })).toBe('w * x');
-    expect(CORE_PIECES.bias.torch({ id: 'b', type: 'bias' })).toBe('x + b');
-    expect(CORE_PIECES.column.torch({ id: 'c', type: 'column', name: 'x3' })).toBe('x[:, [2]]');
+  test('torch emitters', () => {
+    const ctx = ctxOf({ ins: { in: ['h'] }, self: 'self.w', bound: 0.5 });
+    expect(CORE_PIECES.scalew.torch({ id: 'w', type: 'scalew' }, ctx)).toEqual({
+      init: 'nn.Parameter(torch.empty(1, 1).uniform_(-0.5, 0.5))',
+      expr: 'self.w * h',
+    });
+    expect(
+      CORE_PIECES.bias.torch(
+        { id: 'b', type: 'bias' },
+        ctxOf({ ins: { in: ['h'] }, self: 'self.b' }),
+      ).expr,
+    ).toBe('h + self.b');
+    expect(CORE_PIECES.column.torch({ id: 'c', type: 'column', name: 'x3' }, ctxOf({})).expr).toBe(
+      'x[:, [2]]',
+    );
   });
 
   test('swap rules', () => {
@@ -237,8 +262,10 @@ describe('optional input (tinker-7ab): an unwired Bias is the mean as a weight',
     expect(CORE_PIECES.bias.optionalPorts).toEqual(['in']);
     expect(isOptionalPort('bias', 'in')).toBe(true);
     expect(isOptionalPort('scalew', 'in')).toBe(false);
-    expect(CORE_PIECES.bias.torch({ id: 'b', type: 'bias' }, 0)).toBe('b.expand(n, 1)');
-    expect(CORE_PIECES.bias.torch({ id: 'b', type: 'bias' }, 1)).toBe('x + b');
+    expect(
+      CORE_PIECES.bias.torch({ id: 'b', type: 'bias' }, ctxOf({ ins: { in: [] }, self: 'self.b' }))
+        .expr,
+    ).toBe('self.b.expand(x.shape[0], 1)');
   });
 
   test('wiring and unwiring keep b (reconcileParams)', () => {
