@@ -24,6 +24,7 @@ import {
 import { LockBadge } from './drawings/LockBadge.js';
 import type { LayerProps } from './drawings/types.js';
 import { layerProps } from './LayerView.js';
+import { useWeights } from '../state/derived.js';
 import {
   edgeStyle,
   neuronHitShapes,
@@ -523,7 +524,29 @@ function OtherBox({
   p: NeuronViewProps;
 }) {
   const Layer = WEB_PIECES[node.type].Layer as ComponentType<LayerProps<typeof node.type>>;
-  return <Layer {...layerProps(node, box, p.analysis, undefined)} />;
+  if (node.type === 'scalew' || node.type === 'bias') {
+    return <ScalarBox node={node} box={box} p={p} Layer={Layer} />;
+  }
+  return <Layer {...layerProps(node, box, p.analysis, undefined, p.scale)} />;
+}
+
+/**
+ * A Weight or a Bias in the neuron view: its layer box with the live value pill (tinker-p29). Only
+ * this box follows `host`, so a training frame re-renders these few pieces and not the whole view.
+ */
+function ScalarBox({
+  node,
+  box,
+  p,
+  Layer,
+}: {
+  node: Node;
+  box: { w: number; h: number };
+  p: NeuronViewProps;
+  Layer: ComponentType<LayerProps<typeof node.type>>;
+}) {
+  const weights = useWeights(p.analysis);
+  return <Layer {...layerProps(node, box, p.analysis, weights, p.scale)} />;
 }
 
 /** The value of the hovered edge, drawn beside the pointer in screen-sized text. */
