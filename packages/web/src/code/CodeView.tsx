@@ -135,11 +135,7 @@ export function CodeView() {
     });
 
   const tap = (target: Element) => {
-    const fold = target.closest<HTMLElement>('[data-fold]');
-    if (fold) {
-      toggle(Number(fold.dataset['fold']));
-      return;
-    }
+    if (target.closest('button')) return; // the fold buttons handle their own click
     const seg = target.closest<HTMLElement>('[data-from]');
     const row = target.closest<HTMLElement>('[data-line]');
     if (!row) return;
@@ -220,7 +216,9 @@ export function CodeView() {
                     type="button"
                     className={styles.caret}
                     aria-label="Collapse the data"
+                    aria-expanded={true}
                     data-fold={r.openFold}
+                    onClick={() => toggle(r.openFold ?? 0)}
                   >
                     ▾
                   </button>
@@ -235,7 +233,9 @@ export function CodeView() {
                       type="button"
                       className={styles.fold}
                       aria-label="Expand the data"
+                      aria-expanded={false}
                       data-fold={s.fold}
+                      onClick={() => toggle(s.fold ?? 0)}
                     >
                       {s.text}
                     </button>

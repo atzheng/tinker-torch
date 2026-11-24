@@ -95,6 +95,8 @@
 }
 
 .caret {
+  min-height: 0;
+  min-width: 0;
   flex: none;
   width: 2em;
   padding: 0;
@@ -119,7 +121,10 @@
 }
 
 .fold {
-  padding: 0 4px;
+  /* stays inside its row on touch: the global 32 px minimum would overlap the next row */
+  min-height: 0;
+  min-width: 0;
+  padding: 0 8px;
   margin: -3px 0;
   font: inherit;
   line-height: 1.3;

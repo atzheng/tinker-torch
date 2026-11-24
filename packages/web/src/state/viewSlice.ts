@@ -1,5 +1,7 @@
 import type { StateCreator } from 'zustand';
-import type { NodeId, PortRef, ViewTab } from '@tinker/core';
+import type { Dataset, Graph, NodeId, PortRef, Show, ViewTab } from '@tinker/core';
+import { analyseWithTrees } from './treeFits.js';
+import { selectionDrawnOn } from './selectionTab.js';
 import { PIN_LIMIT, type Pin } from '../results/pinsModel.js';
 import {
   DEFAULT_ORDER,
@@ -94,7 +96,7 @@ export type ViewSlice = {
   setFresh: (ids: ReadonlySet<NodeId>) => void;
 };
 
-export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set) => ({
+export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set, get) => ({
   selection: null,
   select: (selection) => set({ selection }),
   selectNode: (id) => set({ selection: { kind: 'node', id } }),
@@ -103,7 +105,22 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
   setViewTab: (viewTab) =>
     set((s) => {
       if (s.viewTab === viewTab) return s;
-      const keep = s.viewTab === 'code' || viewTab === 'code';
+      // Between Code and a graph tab the selection stays, but only when the graph tab draws it:
+      // a hidden piece must not stay selected (Delete would remove it unseen).
+      let keep = false;
+      if (s.selection && (s.viewTab === 'code' || viewTab === 'code')) {
+        if (viewTab === 'code') keep = true;
+        else {
+          const w = get() as unknown as { graph: Graph; dataset: Dataset; show: Show | null };
+          keep = selectionDrawnOn(
+            s.selection,
+            w.graph,
+            analyseWithTrees(w.graph, w.dataset),
+            viewTab,
+            w.show?.ui,
+          );
+        }
+      }
       return keep ? { viewTab } : { viewTab, selection: null };
     }),
   plotPrediction: null,

@@ -123,6 +123,39 @@ test('the Code tab keeps the selection both ways; other switches clear it', () =
   expect(s().selection).toBeNull();
 });
 
+test('leaving Code keeps the selection only if the graph tab draws it; Delete never removes a hidden piece', () => {
+  mount();
+  act(() => s().setViewTab('code'));
+  act(() => s().selectNode('diff')); // a loss piece
+  act(() => s().setViewTab('model'));
+  expect(s().selection).toBeNull();
+  act(() => s().setViewTab('code'));
+  act(() => s().selectNode('diff'));
+  const before = s().graph;
+  act(() => deleteSelection()); // on Code nothing is drawn: no-op
+  expect(s().graph).toBe(before);
+  act(() => s().setViewTab('loss'));
+  expect(s().selection).toEqual({ kind: 'node', id: 'diff' });
+  act(() => s().select({ kind: 'node', id: 'lin2' })); // a model piece, hidden on the loss tab (stub)
+  act(() => deleteSelection());
+  expect(s().graph).toBe(before);
+});
+
+test('the Code tab folds open and close with a real click (keyboard activation), aria-expanded follows', () => {
+  mount();
+  act(() => s().setViewTab('code'));
+  const rows = () => host.querySelectorAll('[data-line]').length;
+  const before = rows();
+  const open = host.querySelector<HTMLButtonElement>('button[aria-label="Expand the data"]');
+  expect(open?.getAttribute('aria-expanded')).toBe('false');
+  act(() => open?.click());
+  expect(rows()).toBeGreaterThan(before);
+  const close = host.querySelector<HTMLButtonElement>('button[aria-label="Collapse the data"]');
+  expect(close?.getAttribute('aria-expanded')).toBe('true');
+  act(() => close?.click());
+  expect(rows()).toBe(before);
+});
+
 test('a wire across the boundary shows on the loss and full tabs only and is removed from either', () => {
   mount();
   // model tab: no stub of the Subtract and no wire into it
