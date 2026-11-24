@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, test } from 'vitest';
 import { fitTrees, initParams, parseGraph, sample } from '@tinker/core';
 import type { DataInfo, Graph } from '@tinker/core';
 import { createEngine } from '../src/index.js';
-import type { Engine } from '../src/index.js';
+import type { Engine, ParamAxis } from '../src/index.js';
 import { compare } from './util.js';
 
 let engine: Engine;
@@ -93,10 +93,10 @@ describe('a Tree model on the host one-hot', () => {
     const ex = engine.exampleLosses(model, params, b);
     expect(ex).not.toBeNull();
     expect(ex?.length).toBe(24);
-    const axes = [
-      { node: 'lin1', tensor: 'W' as const, index: 0 },
-      { node: 'lin1', tensor: 'W' as const, index: 1 },
-    ] as [(typeof axes)[0], (typeof axes)[0]];
+    const axes: [ParamAxis, ParamAxis] = [
+      { node: 'lin1', tensor: 'W', index: 0 },
+      { node: 'lin1', tensor: 'W', index: 1 },
+    ];
     const surf = engine.lossGrid(
       model,
       params,
