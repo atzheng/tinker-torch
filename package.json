@@ -14,13 +14,15 @@
     "build": "pnpm -r run build",
     "dev": "pnpm --filter @tinker/web run dev",
     "torch-ref": "uv run tools/torch-ref/gen.py",
-    "data-ref": "node tools/data-ref/build.mjs"
+    "data-ref": "node tools/data-ref/build.mjs",
+    "torch-smoke": "node tools/torch-smoke/smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.15.0",
     "prettier": "^3.10.1",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.73.0"
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^4.1.12"
   }
 }
