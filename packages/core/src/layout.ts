@@ -487,7 +487,23 @@ function layoutCore(
     if (!isManual)
       autoWires.push({ wire: wires.length - 1, from: e.from, fan: fanned && cb - ca === 1 });
   }
-  if (lanesEnabled) separateLanes(wires, autoWires, gap);
+  if (lanesEnabled) {
+    // Vertical runs of manually routed wires are fixed obstacles for the lanes (tinker-9zn).
+    const fixed: { x: number; lo: number; hi: number }[] = [];
+    if (manual.size > 0) {
+      const autoSet = new Set(autoWires.map((a) => a.wire));
+      wires.forEach((w, wi) => {
+        if (autoSet.has(wi)) return;
+        for (let i = 0; i + 1 < w.points.length; i++) {
+          const p = w.points[i] as [number, number];
+          const q = w.points[i + 1] as [number, number];
+          if (p[0] === q[0] && Math.abs(p[1] - q[1]) >= 1e-6)
+            fixed.push({ x: p[0], lo: Math.min(p[1], q[1]), hi: Math.max(p[1], q[1]) });
+        }
+      });
+    }
+    separateLanes(wires, autoWires, gap, fixed);
+  }
   if (manual.size === 0) return { boxes, wires, size: [width, height] };
   // With manual positions the drawing is as large as what is actually there (pieces and routes).
   let right = 0;
@@ -511,12 +527,15 @@ function layoutCore(
  * line. Per gap, the runs of one source (a fan-out tree) form one item; items that overlap or lie
  * within `LAYOUT.laneClear` of each other get different lanes, `laneStep` apart (the first stays
  * on the gap's x, later ones go right and left alternately). Items without such a neighbour do not
- * move, so layouts without overlaps are unchanged. Only automatically routed wires take part.
+ * move, so layouts without overlaps are unchanged. Only automatically routed wires take part; the
+ * vertical runs of manually routed wires (`fixed`) are obstacles: an item whose y-range comes within
+ * `laneClear` of one avoids every slot whose x lies within `laneStep` of it (tinker-9zn).
  */
 function separateLanes(
   wires: LayerLayout['wires'],
   auto: { wire: number; from: NodeId; fan: boolean }[],
   gap: number,
+  fixed: { x: number; lo: number; hi: number }[] = [],
 ): void {
   type Run = { w: number; i: number; lo: number; hi: number };
   type Item = { lo: number; hi: number; runs: Run[]; order: number; lane: number };
@@ -595,34 +614,53 @@ function separateLanes(
     const slotOf = (lane: number) => (lane % 2 === 1 ? (lane + 1) / 2 : -lane / 2);
     const clash = (a: Item, b: Item) =>
       a.lo < b.hi + LAYOUT.laneClear && b.lo < a.hi + LAYOUT.laneClear;
-    items.forEach((it, n) => {
-      const used = new Set<number>();
-      for (let m = 0; m < n; m++) {
-        const o = items[m] as Item;
-        if (clash(it, o)) used.add(o.lane);
-      }
-      const ok = (lane: number): boolean => {
-        if (used.has(lane)) return false;
-        const s = slotOf(lane);
+    const reach = gap / 2 - LAYOUT.laneMargin;
+    // Manual verticals within the gap's lane range, as offsets from the gap centre.
+    const obstacles = fixed
+      .filter((f) => Math.abs(f.x - gx) <= reach + LAYOUT.laneStep)
+      .map((f) => ({ dx: f.x - gx, lo: f.lo, hi: f.hi }));
+    const assign = (step: number) => {
+      items.forEach((it, n) => {
+        const used = new Set<number>();
         for (let m = 0; m < n; m++) {
           const o = items[m] as Item;
-          if (left.get(it)?.has(o) && s - slotOf(o.lane) < LAYOUT.breakLanes) return false;
-          if (left.get(o)?.has(it) && slotOf(o.lane) - s < LAYOUT.breakLanes) return false;
+          if (clash(it, o)) used.add(o.lane);
         }
-        return true;
-      };
-      let lane = 0;
-      while (lane < 24 && !ok(lane)) lane++;
-      if (lane === 24) {
-        lane = 0; // no placement honours the break: fall back to distinct lanes only
-        while (used.has(lane)) lane++;
-      }
-      it.lane = lane;
-    });
-    // All lanes of the gap must fit between the boxes either side: shrink the step when needed.
-    const maxIdx = items.reduce((m, it) => Math.max(m, Math.abs(slotOf(it.lane))), 0);
-    const step =
-      maxIdx === 0 ? 0 : Math.min(LAYOUT.laneStep, (gap / 2 - LAYOUT.laneMargin) / maxIdx);
+        const near = obstacles.filter(
+          (f) => it.lo < f.hi + LAYOUT.laneClear && f.lo < it.hi + LAYOUT.laneClear,
+        );
+        const onObstacle = (lane: number) =>
+          near.some((f) => Math.abs(slotOf(lane) * step - f.dx) < LAYOUT.laneStep);
+        const ok = (lane: number): boolean => {
+          if (used.has(lane) || onObstacle(lane)) return false;
+          const s = slotOf(lane);
+          for (let m = 0; m < n; m++) {
+            const o = items[m] as Item;
+            if (left.get(it)?.has(o) && s - slotOf(o.lane) < LAYOUT.breakLanes) return false;
+            if (left.get(o)?.has(it) && slotOf(o.lane) - s < LAYOUT.breakLanes) return false;
+          }
+          return true;
+        };
+        let lane = 0;
+        while (lane < 24 && !ok(lane)) lane++;
+        if (lane === 24) {
+          lane = 0; // no placement honours the break: fall back to distinct lanes only
+          while (used.has(lane)) lane++;
+        }
+        it.lane = lane;
+      });
+      // All lanes of the gap must fit between the boxes either side: shrink the step when needed.
+      const maxIdx = items.reduce((m, it) => Math.max(m, Math.abs(slotOf(it.lane))), 0);
+      return maxIdx === 0 ? 0 : Math.min(LAYOUT.laneStep, reach / maxIdx);
+    };
+    let step = assign(LAYOUT.laneStep);
+    // A smaller step moves the slots under the obstacles: assign again (a few rounds at most; the
+    // step only shrinks, so this ends, and the last assignment stands).
+    for (let round = 0; obstacles.length > 0 && step > 0 && round < 4; round++) {
+      const next = assign(step);
+      if (next >= step) break;
+      step = next;
+    }
     for (const it of items) {
       if (it.lane === 0) continue;
       const dx = slotOf(it.lane) * step;
