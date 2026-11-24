@@ -27,7 +27,7 @@
       ["diff", "err"],
       ["err", "loss"]
     ],
-    "positions": { "y": [272, 150], "diff": [456, 150], "err": [624, 150], "loss": [792, 150] },
+    "positions": { "y": [392, 208], "diff": [576, 208], "err": [760, 208], "loss": [944, 208] },
     "predictions": ["bias"],
     "loss": "loss",
     "data": { "set": "plane", "n": 40, "noise": 0.1, "val": 0.3, "seed": 7, "standardize": false },

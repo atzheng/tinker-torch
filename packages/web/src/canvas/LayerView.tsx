@@ -16,7 +16,6 @@ import {
   layerHitShapes,
   pinHitRect,
   pinKey,
-  pillTexts,
   pinsOf,
   placePins,
   pointsToPath,
@@ -36,7 +35,6 @@ import {
 } from '@tinker/core';
 import { pointerDownWith } from './tap.js';
 import { Wire, WireLabel } from './Wire.js';
-import { WeightPill } from './WeightPill.js';
 import type { Selection } from '../state/viewSlice.js';
 import { useStore } from '../state/store.js';
 import {
@@ -141,6 +139,10 @@ export function layerProps(
     const b = weights?.[node.id]?.b;
     if (b?.length === 1) props['biasValue'] = b[0];
   }
+  if (node.type === 'scalew') {
+    const w = weights?.[node.id]?.W;
+    if (w?.length === 1) props['weightValue'] = w[0];
+  }
   if (node.type === 'linear' && inWidth !== undefined) {
     const entry = weights?.[node.id]; // undefined for a Linear off the loss path
     if (entry?.W && entry.W.length === inWidth * node.out) {
@@ -223,8 +225,7 @@ export function LayerView(p: LayerViewProps) {
   const { graph, analysis, layout, scale } = p;
   const hitPx = p.coarse ? 32 : 20;
   const outputs = new Set(graph.nodes.map((n) => n.id));
-  const pills = pillTexts(layout);
-  const shapes = layerHitShapes(layout, scale, analysis.edgeWidth, outputs, pills);
+  const shapes = layerHitShapes(layout, scale, analysis.edgeWidth, outputs);
   const target = p.drag?.target ?? null;
   const dropEdge = target?.kind === 'wire' ? target.edge : -1;
   const dropNode = target?.kind === 'node' ? target.id : target?.kind === 'port' ? target.node : '';
@@ -274,23 +275,14 @@ export function LayerView(p: LayerViewProps) {
   }
   const spots = placePins(layout.nodes, pinMarks, graph.positions !== undefined);
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
-  // A weight wire is its Weight piece: selecting the wire selects the piece (a Weight has no box).
-  const wireSelected = (w: LayerLayout['wires'][number]): boolean =>
-    w.weightNode !== undefined
-      ? sel?.kind === 'node' && sel.id === w.weightNode
-      : selectedEdge === w.edge;
+  const wireSelected = (w: LayerLayout['wires'][number]): boolean => selectedEdge === w.edge;
   const selectWire = (w: LayerLayout['wires'][number]) => {
     const edge = graph.edges[w.edge];
-    if (w.weightNode !== undefined) p.select({ kind: 'node', id: w.weightNode });
-    else if (edge) p.select({ kind: 'wire', from: edge[0], to: edge[1] });
+    if (edge) p.select({ kind: 'wire', from: edge[0], to: edge[1] });
   };
   const isFresh = (edge: readonly [string, string]): boolean =>
     p.fresh !== undefined &&
     (p.fresh.has(parsePort(edge[0]).node) || p.fresh.has(parsePort(edge[1]).node));
-  const weightValue = (id: string): number | undefined => {
-    const v = p.weights?.[id]?.['W'];
-    return v?.length === 1 ? v[0] : undefined;
-  };
   return (
     <g data-testid="layer-view">
       <defs>
@@ -563,28 +555,6 @@ export function LayerView(p: LayerViewProps) {
         const edge = graph.edges[w.edge];
         const hit = shapes.find((s) => s.kind === 'wire' && s.edge === w.edge);
         if (!edge || !hit) return null;
-        if (w.weightNode !== undefined) {
-          return (
-            <g key={w.edge} className={isFresh(edge) ? 'tk-fadein' : undefined}>
-              <WeightPill
-                node={w.weightNode}
-                edge={w.edge}
-                at={w.labelAt}
-                value={weightValue(w.weightNode)}
-                selected={wireSelected(w)}
-                error={p.errorEdges.has(w.edge)}
-                drop={dropEdge === w.edge}
-                valid={cand?.edges.has(w.edge)}
-                replace={replaced === w.edge}
-                scale={scale}
-                hit={hit}
-                sizing={pills.get(w.edge) ?? w.weightNode}
-                onSelect={() => selectWire(w)}
-                onHover={hoverWire}
-              />
-            </g>
-          );
-        }
         return (
           <WireLabel
             key={w.edge}
