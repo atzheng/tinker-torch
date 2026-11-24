@@ -17,7 +17,6 @@ import {
   resolvePin,
   resolveEdge,
   inputPortsOf,
-  collapsedWeights,
   isVariadicPort,
   optionalPortsOf,
   variadicPortsOf,
@@ -779,11 +778,8 @@ export function moveNodes(
   // and row, so a far drag cannot make the drawing (and the fit) grow without limit.
   const [maxX, maxY] = positionLimits(g.nodes.length, limit);
   const positions: Record<NodeId, [number, number]> = { ...g.positions };
-  const collapsed = collapsedWeights(g);
   for (const [id, xy] of Object.entries(moves)) {
     if (!findNode(g, id)) return noNode(id);
-    if (collapsed.has(id))
-      return fail('A weight drawn on its wire has no box: it follows its wire.');
     if (!Number.isFinite(xy[0]) || !Number.isFinite(xy[1])) {
       return fail('A piece can only be moved to a position given as numbers.');
     }

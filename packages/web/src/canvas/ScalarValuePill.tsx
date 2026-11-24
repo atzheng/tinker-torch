@@ -9,8 +9,7 @@ const FS = 12;
 const PH = 20;
 
 /**
- * The live value of a Bias, drawn on its piece as `b = 0.50` (tinker-gw6). The same control as the
- * weight-wire pill: raised, outlined, `ns-resize`; a vertical drag sets the value through
+ * The live value of a Bias or a Weight, drawn on its piece as `b = 0.50` (tinker-gw6, tinker-g3w): raised, outlined, `ns-resize`; a vertical drag sets the value through
  * `beginWeightEdit` (one undo step, refused while running with the usual toast), a tap selects the
  * piece. It has its own press rectangle (at least 32 px tall, growing downward past the box at small scales so the upper body stays free to move the piece) so the rest of the body still moves
  * the piece. Drawn in the piece's local units, bottom of the box, clear of the output port's
@@ -27,7 +26,9 @@ export function ScalarValuePill(p: {
   w: number;
   h: number;
   scale?: number;
-  /** Current `b[0]`, from `layerProps`; nothing is drawn without it. */
+  /** Which learned number: a Bias (`b`, default) or a Weight (`w`, tinker-g3w). */
+  kind?: 'bias' | 'scalew';
+  /** Current `b[0]` / `W[0]`, from `layerProps`; nothing is drawn without it. */
   value: number | undefined;
 }) {
   const v = p.value;
@@ -36,11 +37,12 @@ export function ScalarValuePill(p: {
   const x = 12;
   const pw = p.w - 12 - 20; // keeps 20 units clear of the right edge (the output handle)
   const cy = p.h - 5 - PH / 2;
+  const kind = p.kind ?? 'bias';
   const hit = pillHit(p.w, p.h, p.scale);
-  const handlers = weightDragHandlers(() => ({ kind: 'bias', node: p.node }));
+  const handlers = weightDragHandlers(() => ({ kind, node: p.node }));
   return (
     <g
-      data-testid={`bias-pill-${p.node}`}
+      data-testid={kind === 'bias' ? `bias-pill-${p.node}` : `weight-pill-${p.node}`}
       data-value={String(v)}
       data-selected={selected}
       className="tk-wpill"
@@ -52,7 +54,7 @@ export function ScalarValuePill(p: {
       <rect className="tk-hit" x={hit.x} y={hit.y} width={hit.w} height={hit.h} />
       <rect className="tk-wpill-bg" x={x} y={cy - PH / 2} width={pw} height={PH} rx={PH / 2} />
       <SvgTex
-        src={`$b$${NBSP}=${NBSP}${fmtWeight(v)}`}
+        src={`$${kind === 'bias' ? 'b' : 'w'}$${NBSP}=${NBSP}${fmtWeight(v)}`}
         mixed
         box={{ x, y: cy - PH / 2, width: pw, height: PH }}
         fontSize={FS}

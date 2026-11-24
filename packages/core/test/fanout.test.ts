@@ -147,7 +147,7 @@ describe('layout', () => {
     );
   });
 
-  test('plain wires and weight pills out of one output do not overlap', () => {
+  test('wires out of one output into Weight boxes do not overlap', () => {
     const r = parseGraph({
       version: 2,
       nodes: [
@@ -173,12 +173,12 @@ describe('layout', () => {
     });
     if (!r.ok) throw new Error(r.error);
     const l = layoutLayers(r.graph, analyse(r.graph, info));
-    expect(l.wires.filter((w) => w.weightNode)).toHaveLength(2);
-    // pills are about 90 wide and 24 tall, plain labels about 24 by 17
+    expect(Object.keys(l.nodes)).toContain('w1');
+    // labels are about 24 by 17
     const items = l.wires.map((w) => ({
       at: w.labelAt,
-      hw: w.weightNode ? 45 : 12,
-      hh: w.weightNode ? 12 : 9,
+      hw: 12,
+      hh: 9,
     }));
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {

@@ -10,14 +10,7 @@ import {
   type PaletteEntry,
 } from '@tinker/core';
 import { editForDrop, inputEndAt, placeable, resolveDrop } from '../src/canvas/dnd.js';
-import {
-  fmtWeight,
-  HIT_MIN_PX,
-  layerHitShapes,
-  pillSize,
-  pillTexts,
-  weightTex,
-} from '../src/canvas/pure.js';
+import { fmtWeight, HIT_MIN_PX, layerHitShapes, weightTex } from '../src/canvas/pure.js';
 import { beginWeightEdit, WEIGHT_LIMIT } from '../src/canvas/weightEdit.js';
 import { loadEngine } from '../src/engine.js';
 import { useStore } from '../src/state/store.js';
@@ -111,22 +104,18 @@ test('a Bias is set by hand like a weight', () => {
   expect(beginWeightEdit({ kind: 'scalew', node: 'bias1' })).toBeNull();
 });
 
-test('a weight pill is at least 32 px each way and sized by a fixed text', () => {
+test('a Weight is a piece box with ports; no wire carries it', () => {
   const g = scalar();
   const layout = layoutLayers(g, analyse(g, info));
-  expect(layout.nodes['w1']).toBeUndefined();
-  const pills = pillTexts(layout);
-  expect([...pills.values()]).toEqual(['w1 = -0.00', 'w2 = -0.00']);
+  expect(layout.nodes['w1']).toBeDefined();
+  expect(layout.nodes['w2']).toBeDefined();
+  expect(layout.wires).toHaveLength(g.edges.length);
   for (const scale of [0.5, 1, 1.4]) {
-    const shapes = layerHitShapes(layout, scale, [], new Set(), pills);
-    for (const w of layout.wires.filter((x) => x.weightNode)) {
-      const hit = shapes.find((x) => x.kind === 'wire' && x.edge === w.edge);
-      expect(hit).toBeDefined();
-      expect((hit?.w ?? 0) * scale).toBeGreaterThanOrEqual(HIT_MIN_PX - 1e-6);
-      expect((hit?.h ?? 0) * scale).toBeGreaterThanOrEqual(HIT_MIN_PX - 1e-6);
-    }
+    const shapes = layerHitShapes(layout, scale, [], new Set(['w1']));
+    const hit = shapes.find((x) => x.kind === 'node' && x.id === 'w1');
+    expect((hit?.h ?? 0) * scale).toBeGreaterThanOrEqual(HIT_MIN_PX - 1e-6);
+    expect(shapes.some((x) => x.kind === 'port' && x.node === 'w1')).toBe(true);
   }
-  expect(pillSize('w1 = -0.00', 1).lw).toBeGreaterThan(pillSize('w1', 1).lw);
   expect(weightTex('w1')).toBe('w_{1}');
   expect(weightTex('w_a')).toBe('\\mathrm{w\\_a}');
   expect(fmtWeight(0.4249)).toBe('0.42');
@@ -179,8 +168,8 @@ test('dropping a Column on empty canvas is one edit: a new unconnected node at t
   );
   if (!left?.ok) throw new Error('no edit');
   expect(Object.keys(left.graph.positions ?? {}).sort()).toEqual(['sum2', 'x3']);
-  // (LAYOUT.pad, LAYOUT.pad) is where the shifted pieces now sit, so the new piece is nudged one box right
-  expect(left.graph.positions?.['sum2']).toEqual([LAYOUT.pad + LAYOUT.boxW + 8, LAYOUT.pad]);
+  // (LAYOUT.pad, LAYOUT.pad) is where the shifted pieces now sit, so the new piece is nudged down
+  expect(left.graph.positions?.['sum2']).toEqual([LAYOUT.pad, 168]);
   expect(left.graph.positions?.['x3']).toEqual([324, 216]);
 });
 
@@ -191,8 +180,8 @@ test('a wire dragged to the Sum enters at its own slot of the port, ordered by s
   if (!sum) throw new Error('no sum');
   const centre = layout.nodes['sum1'];
   expect(centre).toBeDefined();
-  const first = layout.wires.find((w) => w.weightNode === 'w1')?.points.at(-1);
-  const second = layout.wires.find((w) => w.weightNode === 'w2')?.points.at(-1);
+  const first = layout.wires.find((w) => w.edge === 2)?.points.at(-1);
+  const second = layout.wires.find((w) => w.edge === 3)?.points.at(-1);
   // existing ends are the layout's; a third wire from above x1 would take the top slot of three
   const above = inputEndAt(
     g,
