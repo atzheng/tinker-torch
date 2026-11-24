@@ -60,6 +60,9 @@ test('every bundled preset parses, is titled, has no prompt and analyses as trai
     'bias-variance-stage1',
     'bias-variance-stage2',
     'bias-variance-stage3',
+    'tree-class-stage1',
+    'tree-class-stage2',
+    'tree-class-stage3',
   ]);
   for (const name of PRESET_NAMES) {
     const f = bundledPreset(name);
@@ -67,7 +70,9 @@ test('every bundled preset parses, is titled, has no prompt and analyses as trai
     if (!f) continue;
     expect('title' in f).toBe(true);
     expect('prompt' in f, name).toBe(
-      name.startsWith('lecture1-') || name.startsWith('bias-variance-'),
+      name.startsWith('lecture1-') ||
+        name.startsWith('bias-variance-') ||
+        name.startsWith('tree-class-'),
     );
     expect(f.graph.version, name).toBe(2); // bundled files are native version 2
     expect(f.graph.predictions, name).toHaveLength(1);
