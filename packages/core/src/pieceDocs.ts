@@ -5,7 +5,7 @@
  * Pure text and data: no DOM, no jax-js. `docView` and `docViewFor` never throw.
  */
 import type { Analysis } from './analyse.js';
-import type { DataInfo, Node, NodeBody } from './graph.js';
+import { optionalPortsOf, type DataInfo, type Graph, type Node, type NodeBody } from './graph.js';
 import {
   CORE_PIECES,
   PALETTE,
@@ -15,7 +15,7 @@ import {
   type ShapeCtx,
   type TorchCtx,
 } from './registry.js';
-import { isReservedPyName } from './torchgen.js';
+import { nodeTorch } from './torchgen.js';
 
 export type PieceDoc = {
   summary: string;
@@ -130,7 +130,7 @@ export const PIECE_DOCS: Record<string, PieceDoc> = {
   dropout: {
     summary: 'In training, sets each number to 0 with probability p and divides the rest by 1 - p.',
     equation:
-      '\\mathrm{drop}_{p}(h) = \\frac{m \\odot h}{1 - p},\\quad m_j \\sim \\mathrm{Bernoulli}(1 - p)',
+      '\\mathrm{drop}_{p}(h) = \\frac{r \\odot h}{1 - p},\\quad r_j \\sim \\mathrm{Bernoulli}(1 - p)',
     settings: { p: 'The probability that a number is set to 0.' },
     notes: ['Off during evaluation and prediction: the output equals the input.'],
     seeAlso: ['linear'],
@@ -381,7 +381,9 @@ const hasSentinel = (shapes: number[][]): boolean => shapes.flat().some((n) => S
 function fmtParams(shapes: Record<string, number[]>): string | undefined {
   const tensors = Object.values(shapes);
   if (tensors.length === 0) return undefined;
-  const terms = tensors.map((t) => (t.every((n) => n === 1) ? '1' : t.map(dim).join(' \\cdot ')));
+  const terms = tensors.map((t) =>
+    tensors.length === 1 && t.every((n) => n === 1) ? '1' : t.map(dim).join(' \\cdot '),
+  );
   const expr = terms.join(' + ');
   if (hasSentinel(tensors)) return expr;
   const total = tensors.reduce((s, t) => s + t.reduce((p, n) => p * n, 1), 0);
@@ -440,6 +442,12 @@ function symbolicIn(node: Node, port: string): Shape {
   return { kind: 'example', width: D };
 }
 
+/** A scalar piece's init bound is 1/sqrt(d) (the emitter prints the number). */
+const symInit = (node: Node, line: string): string =>
+  node.type === 'scalew' || node.type === 'bias'
+    ? line.replace('uniform_(-1.0, 1.0)', 'uniform_(-1/sqrt(d), 1/sqrt(d))')
+    : line;
+
 function symbolicParts(key: string): Parts {
   const macro = MACROS[key];
   if (macro) return { shapes: { in: macro.in, out: '1' }, torch: macro.torch };
@@ -470,14 +478,17 @@ function symbolicParts(key: string): Parts {
   for (const port of piece.inputPorts) inText[port] = fmtShape(ins[port] as Shape);
   const first = ins[piece.inputPorts[0] ?? ''];
   const params = fmtParams(piece.paramShapes(node, D, first));
-  const torch = wordSyms(
-    torchLine(
-      node,
-      baseCtx({
-        ins: insNames,
-        categories: K,
-        tree: { estimator: 'tree', leaves: 'leaves', columns: [] },
-      }),
+  const torch = symInit(
+    node,
+    wordSyms(
+      torchLine(
+        node,
+        baseCtx({
+          ins: insNames,
+          categories: K,
+          tree: { estimator: 'tree', leaves: 'leaves', columns: [] },
+        }),
+      ),
     ),
   );
   return {
@@ -487,56 +498,73 @@ function symbolicParts(key: string): Parts {
   };
 }
 
-function liveParts(node: Node, analysis: Analysis, data: DataInfo): Parts {
+function liveParts(node: Node, analysis: Analysis, data: DataInfo, nodes: readonly Node[]): Parts {
   const piece = typed(node);
   const sym = symbolicParts(paletteKeyOf(node));
   const wiresOf = (port: string) => analysis.inputs[node.id]?.[port] ?? [];
-  const name = (id: string): string => (isReservedPyName(id) ? `${id}_` : id);
+  const optional = optionalPortsOf(node.type);
 
+  // Known widths come from the analysis, then from the node's own settings; the rest are symbols.
+  const inShapes: Record<string, Shape> = {};
   const inText: Record<string, string> = {};
   let firstShape: Shape | undefined;
   piece.inputPorts.forEach((port, i) => {
     const from = wiresOf(port)[0]?.from;
     const s = from === undefined ? undefined : analysis.shape[from];
     if (i === 0) firstShape = s;
-    inText[port] = s === undefined ? (sym.shapes?.in[port] ?? 'n \\times d') : fmtShape(s);
+    if (s !== undefined) {
+      inShapes[port] = s;
+      inText[port] = fmtShape(s);
+    } else if (from === undefined && optional.includes(port)) {
+      // an unwired optional port has no shape
+    } else {
+      inShapes[port] = symbolicIn(node, port);
+      inText[port] = sym.shapes?.in[port] ?? 'n \\times d';
+    }
   });
-  const outShape = analysis.shape[node.id];
-  const shapes = {
-    in: inText,
-    out: outShape === undefined ? (sym.shapes?.out ?? 'n \\times d') : fmtShape(outShape),
-  };
+  const known = analysis.shape[node.id];
+  let out: string;
+  if (known !== undefined) out = fmtShape(known);
+  else if (OUT_WIDTH[node.type] !== undefined) out = sym.shapes?.out ?? 'n \\times d';
+  else {
+    const r = piece.outShape(node, inShapes, {
+      dataColumns: D,
+      numClasses: K,
+      weightShape: () => [D, M],
+      treeLeaves: { [node.id]: LEAVES },
+    });
+    out = 'error' in r ? (sym.shapes?.out ?? 'n \\times d') : fmtShape(r);
+  }
 
-  // Widths the analysis does not know stay symbols.
   const inWidth = analysis.inWidth[node.id] ?? D;
-  const tensors = analysis.paramShapes[node.id] ?? piece.paramShapes(node, inWidth, firstShape);
+  const first = piece.inputPorts[0];
+  const tensors =
+    analysis.paramShapes[node.id] ??
+    piece.paramShapes(
+      node,
+      inWidth,
+      firstShape ?? (first === undefined ? undefined : symbolicIn(node, first)),
+    );
   const params = fmtParams(tensors);
 
-  const cat = firstShape?.kind === 'example' ? firstShape.category?.count : undefined;
-  const init = analysis.paramInit[node.id];
-  const ins: Record<string, string[]> = {};
-  for (const port of piece.inputPorts) ins[port] = wiresOf(port).map((w) => name(w.from));
-  const torch = wordSyms(
-    torchLine(
-      node,
-      baseCtx({
-        ins,
-        // A Feature's emitter loops over the width for its products: never over the sentinel.
-        inWidth: node.type === 'feature' ? (analysis.inWidth[node.id] ?? 0) : inWidth,
-        dataColumns: data.columns,
-        categories: cat ?? K,
-        bound: init?.kind === 'uniform' ? init.bound : 1,
-        name,
-        self: `self.${name(node.id)}`,
-        tree: {
-          estimator: `${name(node.id)}_tree`,
-          leaves: `${name(node.id)}_leaves`,
-          columns: [],
-        },
-      }),
-    ),
-  );
-  return { shapes, ...(params !== undefined ? { params } : {}), torch };
+  // The script's own emitter (names, init rule); widths it was not given stay symbols.
+  const patched: Analysis = {
+    ...analysis,
+    inWidth:
+      node.type === 'feature' ? analysis.inWidth : { ...analysis.inWidth, [node.id]: inWidth },
+  };
+  const emitted = nodeTorch(nodes, patched, data, node.id);
+  let torch = emitted === null ? sym.torch : wordSyms(emitted.init ?? emitted.expr);
+  if (emitted !== null && torch !== undefined) {
+    if (node.type === 'lookup') torch = torch.replace('Embedding(0,', 'Embedding(K,');
+    if (node.type === 'onehot') torch = torch.replace(', 0).float()', ', K).float()');
+    if (analysis.paramInit[node.id] === undefined) torch = symInit(node, torch);
+  }
+  return {
+    shapes: { in: inText, out },
+    ...(params !== undefined ? { params } : {}),
+    ...(torch !== undefined ? { torch } : {}),
+  };
 }
 
 // ---------------------------------------------------------------- views
@@ -549,11 +577,13 @@ function assemble(key: string, parts: Parts, variant?: string): DocView {
     label: labelOf(key),
     summary: v?.summary ?? doc?.summary ?? labelOf(key),
     equation: v?.equation ?? doc?.equation ?? '',
-    ...(parts.shapes !== undefined ? { shapes: parts.shapes } : {}),
+    ...(parts.shapes !== undefined
+      ? { shapes: { in: { ...parts.shapes.in }, out: parts.shapes.out } }
+      : {}),
     ...(parts.params !== undefined ? { params: parts.params } : {}),
     settings: Object.entries(doc?.settings ?? {}).map(([field, text]) => ({ field, text })),
     ...(parts.torch !== undefined ? { torch: parts.torch } : {}),
-    notes: doc?.notes ?? [],
+    notes: [...(doc?.notes ?? [])],
     seeAlso: (doc?.seeAlso ?? []).map((k) => ({ key: k, label: labelOf(k) })),
   };
 }
@@ -570,11 +600,11 @@ export function docView(key: string): DocView {
 }
 
 /** The live card of a node on the canvas, from its analysis. Never throws: unknown widths stay symbols. */
-export function docViewFor(node: Node, analysis: Analysis, data: DataInfo): DocView {
+export function docViewFor(node: Node, analysis: Analysis, data: DataInfo, graph?: Graph): DocView {
   const key = paletteKeyOf(node);
   const variant = node.type === 'activation' ? node.fn : undefined;
   try {
-    return assemble(key, liveParts(node, analysis, data), variant);
+    return assemble(key, liveParts(node, analysis, data, graph?.nodes ?? [node]), variant);
   } catch {
     try {
       return assemble(key, symbolicParts(key), variant);

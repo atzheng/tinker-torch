@@ -254,8 +254,9 @@ const scalarRange = (ctx: TorchCtx): string => {
   return `${py.float(lo)}, ${py.float(hi)}`;
 };
 
-/** The variable of the one wire into a plain port (a placeholder name while unwired). */
-const one = (ctx: TorchCtx, port: string): string => ctx.ins[port]?.[0] ?? port;
+/** The variable of the one wire into a plain port (a placeholder name while unwired: `h` for `in`, else the port name). */
+const one = (ctx: TorchCtx, port: string): string =>
+  ctx.ins[port]?.[0] ?? (port === 'in' ? 'h' : port);
 
 /** Output width of a feature expansion of d columns (CONTRACTS.md section 3). */
 export function featureWidth(

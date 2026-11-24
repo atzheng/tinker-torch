@@ -8,6 +8,8 @@ import {
   PALETTE,
   paletteKeyOf,
   PIECE_DOCS,
+  sample,
+  torchScript,
   type DataInfo,
   type Edge,
   type Graph,
@@ -206,7 +208,7 @@ describe('docViewFor (live)', () => {
       ['a'],
       null,
     );
-    const v = docViewFor(graph.nodes[1] as Node, analyse(graph, info(1)), info(1));
+    const v = docViewFor(graph.nodes[1] as Node, analyse(graph, info(1)), info(1), graph);
     expect(v.equation).toBe(PIECE_DOCS['activation']?.variants?.['tanh']?.equation);
     expect(v.summary).toBe(PIECE_DOCS['activation']?.variants?.['tanh']?.summary);
     expect(v.torch).toBe('torch.tanh(in_)');
@@ -217,6 +219,91 @@ describe('docViewFor (live)', () => {
     const v = docViewFor(graph.nodes[0] as Node, analyse(graph, info(3)), info(3));
     expect(v.params).toBe('d \\cdot 8 + 8');
     expect(v.torch).toBe('nn.Linear(d, 8, bias=True)');
+  });
+
+  const loneView = (node: Node, cols = 3) => {
+    const graph = g([node], [], [], null);
+    return docViewFor(node, analyse(graph, info(cols)), info(cols), graph);
+  };
+
+  test('unwired pieces use their own settings and keep only unknown factors symbolic', () => {
+    const lk = loneView({ id: 'lk', type: 'lookup', width: 4 });
+    expect(lk.params).toBe('K \\cdot 4');
+    expect(lk.shapes?.out).toBe('n \\times 4');
+    expect(lk.torch).toBe('nn.Embedding(K, 4)');
+    const l = loneView({ id: 'l', type: 'linear', out: 3, bias: true });
+    expect(l.shapes?.out).toBe('n \\times 3');
+    expect(l.params).toBe('d \\cdot 3 + 3');
+    expect(loneView({ id: 'oh', type: 'onehot' }).torch).toContain(', K).float()');
+  });
+
+  test('Linear 1 -> 1 keeps the product form', () => {
+    const graph = g(
+      [
+        { id: 'in', type: 'input', columns: ['x1'] },
+        { id: 'l', type: 'linear', out: 1, bias: true },
+      ],
+      [['in', 'l']],
+      ['l'],
+      null,
+    );
+    const v = docViewFor(graph.nodes[1] as Node, analyse(graph, info(1)), info(1), graph);
+    expect(v.params).toBe('1 \\cdot 1 + 1 = 2');
+  });
+
+  test('an unwired Bias has no input shape; an unwired port reads h', () => {
+    const b = loneView({ id: 'b', type: 'bias' });
+    expect(b.shapes?.in).toEqual({});
+    expect(b.torch).toContain('uniform_(-0.577');
+    expect(docView('bias').torch).toContain('uniform_(-1/sqrt(d), 1/sqrt(d))');
+    expect(loneView({ id: 'a', type: 'activation', fn: 'relu' }).torch).toBe('torch.relu(h)');
+  });
+
+  test('the live torch line is the line torchScript emits for the node', () => {
+    // ids that collide with Python names, and a Weight that feeds an unfused log loss
+    const graph = g(
+      [
+        { id: 'in', type: 'input', columns: ['x1'] },
+        { id: 'class', type: 'linear', out: 1, bias: true },
+        { id: 'class_', type: 'activation', fn: 'tanh' },
+        { id: 'w', type: 'scalew' },
+        { id: 'tgt', type: 'target' },
+        { id: 'll', type: 'log_loss' },
+        { id: 'loss', type: 'mean' },
+      ],
+      [
+        ['in', 'class'],
+        ['class', 'class_'],
+        ['class_', 'w'],
+        ['w', 'll.pred'],
+        ['tgt', 'll.target'],
+        ['ll', 'loss'],
+      ],
+      ['w'],
+      'loss',
+    );
+    graph.data.set = 'moons';
+    const ds = sample(graph.data);
+    const a = analyse(graph, ds.info);
+    expect(a.issues).toEqual([]);
+    const code = torchScript(graph, a, ds);
+    expect(code).not.toBeNull();
+    const text = code?.text ?? '';
+    for (const id of ['class', 'w']) {
+      const v = docViewFor(graph.nodes.find((n) => n.id === id) as Node, a, ds.info, graph);
+      expect(text).toContain(v.torch ?? 'MISSING');
+    }
+    const w = docViewFor(graph.nodes[3] as Node, a, ds.info, graph);
+    expect(w.torch).toContain('uniform_(0.25, 0.75)');
+    const act = docViewFor(graph.nodes[2] as Node, a, ds.info, graph);
+    expect(act.torch).toBe('torch.tanh(class__)'); // `class` is renamed past the id `class_`
+    expect(text).toContain('class_ = torch.tanh(class__)');
+  });
+
+  test('views do not share arrays with PIECE_DOCS', () => {
+    const v = docView('feature');
+    v.notes.push('x');
+    expect(PIECE_DOCS['feature']?.notes).not.toContain('x');
   });
 
   test('never throws on broken graphs', () => {
