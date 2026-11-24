@@ -948,8 +948,8 @@ function docViewFor(node: Node, analysis: Analysis, data: DataInfo): DocView; //
 ```
 
 - Derived, not written: `shapes` from `outShape`, `params` from `paramShapes`, `torch` from the registry emitter (section 3, "Torch emitters"). An Activation's view uses `variants[node.fn]` for its equation (and summary when given).
-- Macros (`loss_*`, `weight_penalty`) have cards from the palette only. On the canvas they are their pieces (Subtract, Square, Mean, ...), each with its own card. Their `torch` is the idiom from section 14 (`F.mse_loss(\hat{y}, y)` etc.).
-- Tests (core): every `PALETTE` key has a doc and there are no extra keys; `settings` keys are fields of that type's `defaults()`; `seeAlso` keys exist; length caps above; no string contains "you", "your", "should", "try" or "helps" (reference voice); `docViewFor` gives the live numbers for a Linear 3 → 8 with bias (`3 \cdot 8 + 8 = 32`, `nn.Linear(3, 8)`).
+- Macros (`loss_*`, `weight_penalty`) have cards from the palette only. On the canvas they are their pieces (Subtract, Square, Mean, ...), each with its own card. Their `torch` is the idiom from section 14 (`F.mse_loss(y_hat, y)` etc., plain text).
+- Tests (core): every `PALETTE` key has a doc and there are no extra keys; `settings` keys are fields of that type's `defaults()`; `seeAlso` keys exist; length caps above; no string contains "you", "your", "should", "try" or "helps" (reference voice); `docViewFor` gives the live numbers for a Linear 3 → 8 with bias (`3 \cdot 8 + 8 = 32`, `nn.Linear(3, 8, bias=True)`, the emitter's `init`).
 
 **UI** (`palette/PieceCard.tsx`, one component for both entry points). Non-modal popover, `--surface` card with the panel border, at most 320 px wide; it closes on Escape (focus returns to its "?"), on an outside pointerdown and on its ×. Only one card is open at a time. Test ids `piece-card`, `piece-card-close`, `piece-doc-<key>` on the "?" buttons.
 

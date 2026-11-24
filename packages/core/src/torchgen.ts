@@ -45,6 +45,9 @@ const RESERVED: ReadonlySet<string> = new Set([...PY_KEYWORDS, ...SCRIPT_NAMES, 
 const reserved = (s: string): boolean =>
   RESERVED.has(s) || s.startsWith('register_') || s.startsWith('_');
 
+/** Whether a node id needs a trailing `_` to be a safe Python variable (used by the piece cards' torch line). */
+export const isReservedPyName = reserved;
+
 const num = (v: number): string => String(Number(v.toPrecision(7)));
 const pyFloat = (x: number): string => (Number.isInteger(x) ? x.toFixed(1) : String(x));
 
