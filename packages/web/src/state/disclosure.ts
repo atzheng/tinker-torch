@@ -42,13 +42,19 @@ export function pinRolesNow(): ('pred' | 'loss')[] {
   return pinRolesOf(tab, tabIsWhole(tab, s.show?.ui));
 }
 
-/** Hook form of `pinRolesNow`: a new array each call when the roles change. */
+const PIN_ROLES_BY_KEY: Record<string, ('pred' | 'loss')[]> = {
+  pred: ['pred'],
+  loss: ['loss'],
+  'pred,loss': ['pred', 'loss'],
+};
+
+/** Hook form of `pinRolesNow`: the same shared array for the same roles, so effects keyed on it do not re-run each render. Do not mutate. */
 export function usePinRoles(): ('pred' | 'loss')[] {
   const key = useStore((s) => {
     const tab = effectiveTab(s.viewTab, s.show?.ui);
     return pinRolesOf(tab, tabIsWhole(tab, s.show?.ui)).join(',');
   });
-  return key.split(',') as ('pred' | 'loss')[];
+  return PIN_ROLES_BY_KEY[key] ?? (key.split(',') as ('pred' | 'loss')[]);
 }
 
 /** The tabs the preset leaves visible, in tab order (a new array each call: compare by `join`). */

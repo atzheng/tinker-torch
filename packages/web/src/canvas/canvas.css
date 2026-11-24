@@ -275,7 +275,8 @@ path.tk-hit {
 }
 .tk-global-issues {
   left: 8px;
-  top: 8px;
+  /* below the header strip (grain toggle, Fit, Tidy), never under its buttons */
+  top: 52px;
   max-width: calc(100% - 16px);
 }
 .tk-callout p,
