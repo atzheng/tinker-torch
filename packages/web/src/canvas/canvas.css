@@ -951,3 +951,45 @@ path.tk-hit {
   font: 12px var(--font);
   pointer-events: none;
 }
+
+/* Inline weight matrix in the piece inspector (tinker-nj1, CONTRACTS.md section 10). */
+.tk-imatrix {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0;
+  overflow-x: auto;
+}
+.tk-imrow {
+  display: grid;
+  grid-template-columns: 56px repeat(var(--icols), 36px);
+  gap: 2px;
+}
+.tk-imlabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--diag-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 24px;
+}
+.tk-imcol {
+  text-align: center;
+}
+.tk-imbias {
+  margin-top: 2px;
+}
+.tk-imcell {
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--cell-bg);
+  border-radius: 3px;
+}
+.tk-imcell:focus-visible {
+  outline: 2px solid var(--accent);
+}
