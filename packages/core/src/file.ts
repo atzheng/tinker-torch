@@ -124,6 +124,7 @@ export const UI_IDS = {
     'preset-prompt',
     'instructions',
     'success-check',
+    'inspector-matrix',
   ],
   results: [
     'panel-fit',
