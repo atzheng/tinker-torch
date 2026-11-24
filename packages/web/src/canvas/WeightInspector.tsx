@@ -188,7 +188,8 @@ const Panel = memo(function Panel({ node }: { node: Node }) {
   weightStats.renders++;
   const analysis = useAnalysis();
   const graph = useStore((s) => s.graph);
-  const info = useStore((s) => s.dataInfo);
+  const dataset = useStore((s) => s.dataset);
+  const info = dataset.info;
   const running = useStore((s) => s.running);
   const diverged = useStore((s) => s.diverged);
   const canTrain = useStore((s) => s.canTrain);
@@ -200,8 +201,8 @@ const Panel = memo(function Panel({ node }: { node: Node }) {
   const host = live ?? initial;
   const inW = analysis.inWidth[node.id];
   const grid: WeightGrid | null = useMemo(
-    () => gridOf(host, node, inW, hostShape(host, node.id, info)),
-    [host, node, inW, info],
+    () => gridOf(host, node, inW, hostShape(host, node.id, dataset)),
+    [host, node, inW, dataset],
   );
   const names = useMemo(
     () =>

@@ -1,6 +1,8 @@
 import type { StateCreator, StoreApi } from 'zustand';
 import {
   analyse,
+  treeLeafCounts,
+  type TreeFits,
   batchSchedule,
   exampleStats,
   gatherBatch,
@@ -15,6 +17,7 @@ import {
   type HostParams,
   type LossMode,
 } from '@tinker/core';
+import { analyseWithTrees, treeFitsOf } from './treeFits.js';
 import type { Engine, Model, ParamAxis, Params, TrainState } from '@tinker/engine';
 import { getEngine, onEngineError, onEngineReady } from '../engine.js';
 import { listParams } from '../plot/lossCurve1d.js';
@@ -225,6 +228,7 @@ type Runtime = {
   hostAnalysis: Analysis | null;
   lastGraph: Graph | null;
   lastDataset: unknown;
+  lastFits: TreeFits | null;
   history: HistoryPoint[];
   best: Best | null;
   stepLog: StepLogRow[];
@@ -248,6 +252,7 @@ const rt: Runtime = {
   hostAnalysis: null,
   lastGraph: null,
   lastDataset: null,
+  lastFits: null,
   history: [],
   best: null,
   stepLog: [],
@@ -277,7 +282,7 @@ function structuralKey(g: Graph): string {
 
 function initialAnalysis(): Analysis {
   const g = initialGraph();
-  return analyse(g, sample(g.data).info);
+  return analyseWithTrees(g, sample(g.data));
 }
 
 function disposeState(): void {
@@ -422,7 +427,12 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     rt.model = null;
     stopLoop();
 
-    const analysis = analyse(graph, dataInfo);
+    const fits = treeFitsOf(graph, dataset);
+    // a refit (data or tree setting changed) makes the leaf weights meaningless: start them again
+    const refit = fits !== rt.lastFits && Object.keys(fits).length > 0;
+    rt.lastFits = fits;
+    if (refit) bumpWeightGeneration();
+    const analysis = analyse(graph, dataInfo, treeLeafCounts(fits));
     if (fresh) rt.host = null;
     if (structural) clearRun();
 
@@ -450,7 +460,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
     // 3. Weights: keep what still fits, draw the rest.
     rt.host = carry
       ? carry.host
-      : rt.host && rt.hostGraph && rt.hostAnalysis
+      : rt.host && rt.hostGraph && rt.hostAnalysis && !refit
         ? reconcileParams(rt.host, rt.hostAnalysis, analysis, rt.seed)
         : withStartParams(
             initParams(analysis, rt.seed),
@@ -474,7 +484,7 @@ export const createTrainSlice: StateCreator<Store, [], [], TrainSlice> = (set, g
       let model: Model | null = null;
       let params: Params | null = null;
       try {
-        model = engine.compile(graph, dataInfo);
+        model = engine.compile(graph, dataInfo, fits);
         params = engine.fromHost(model, rt.host);
         rt.state = engine.startTraining(model, params, rt.seed);
         rt.model = model;

@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import {
-  analyse,
   embedCsv,
   getTable,
   hasTable,
@@ -12,6 +11,7 @@ import {
   type EmbeddedCsv,
 } from '@tinker/core';
 import { neuronSelectionLive } from '../canvas/pure.js';
+import { analyseWithTrees } from './treeFits.js';
 import { noteHost } from './hostShape.js';
 import { createDataSlice, type DataSlice } from './dataSlice.js';
 import { createGraphSlice, type GraphSlice } from './graphSlice.js';
@@ -95,5 +95,5 @@ useStore.subscribe((s, prev) => {
   const sel = s.selection;
   if (!sel || (sel.kind !== 'edge' && sel.kind !== 'unit')) return;
   if (s.graph === prev.graph && s.dataInfo === prev.dataInfo) return;
-  if (!neuronSelectionLive(sel, s.graph, analyse(s.graph, s.dataInfo))) s.select(null);
+  if (!neuronSelectionLive(sel, s.graph, analyseWithTrees(s.graph, s.dataset))) s.select(null);
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { analyse, initParams, type Analysis, type HostParams } from '@tinker/core';
+import { initParams, type Analysis, type HostParams } from '@tinker/core';
 import { edgeIndexOf, neuronSelectionLive, pinLive } from '../canvas/pure.js';
 import {
   PROB_BAR_EVERY_MS,
@@ -10,13 +10,14 @@ import {
   type ProbBar,
 } from '../canvas/probBarPure.js';
 import { useStore, type Store } from './store.js';
+import { analyseWithTrees } from './treeFits.js';
 import type { Selection } from './viewSlice.js';
 
 /** Analysis of the current graph against the current dataset. Memoised on both. */
 export function useAnalysis(): Analysis {
   const graph = useStore((s) => s.graph);
-  const info = useStore((s) => s.dataInfo);
-  return useMemo(() => analyse(graph, info), [graph, info]);
+  const dataset = useStore((s) => s.dataset);
+  return useMemo(() => analyseWithTrees(graph, dataset), [graph, dataset]);
 }
 
 /** Host snapshot from the train slice, when it has one. */

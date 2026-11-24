@@ -82,7 +82,7 @@ export function beginWeightEdit(t: WeightTarget): WeightEdit | null {
     start = layer[name]?.length === 1 ? layer[name]?.[0] : undefined;
   } else {
     // A Lookup (tinker-4w2) is a table [categories, width] edited as `W[i][j]` like a Linear.
-    const shape = hostShape(host, t.node, s.dataInfo);
+    const shape = hostShape(host, t.node, s.dataset);
     const inW = node.type === 'lookup' ? shape?.[0] : s.analysis.inWidth[t.node];
     const out = node.type === 'lookup' ? node.width : node.type === 'linear' ? node.out : 0;
     if ((node.type !== 'linear' && node.type !== 'lookup') || inW === undefined || !layer['W']) {

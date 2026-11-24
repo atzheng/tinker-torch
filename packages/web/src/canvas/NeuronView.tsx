@@ -93,7 +93,7 @@ const EdgeLayer = memo(function EdgeLayer(p: {
           e.j,
           d.inW,
           d.out,
-          hostShape(host, e.node, useStore.getState().dataInfo),
+          hostShape(host, e.node, useStore.getState().dataset),
         );
         if (w === undefined) {
           el.setAttribute('data-sign', 'none');
@@ -460,6 +460,7 @@ const UNIT_COLUMN_NAME: Partial<Record<Node['type'], string>> = {
   input: 'Input',
   linear: 'Linear',
   link: 'Link',
+  tree: 'Tree',
   target: 'Target',
 };
 
@@ -568,7 +569,7 @@ function EdgeTip(p: {
     e.j,
     d.inW,
     d.out,
-    hostShape(host, e.node, useStore.getState().dataInfo),
+    hostShape(host, e.node, useStore.getState().dataset),
   );
   if (w === undefined) return null;
   const text = w.toFixed(3);

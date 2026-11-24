@@ -551,6 +551,11 @@ export function layoutNeurons(g: Graph, a: Analysis): NeuronLayout {
       }
       case 'target':
         return unitPlan('target', 1);
+      case 'tree': {
+        // one dot per leaf of the fitted tree, a column like the units of a layer
+        const w = a.outWidth[n.id];
+        return small(w) ? unitPlan('in', w) : boxPlan();
+      }
       case 'onehot': {
         const w = a.outWidth[n.id];
         return small(w) ? unitPlan('cat', w) : boxPlan();

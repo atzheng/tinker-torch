@@ -1,10 +1,5 @@
-import {
-  analyse,
-  lookupCategories,
-  type Graph,
-  type HostParams,
-  type DataInfo,
-} from '@tinker/core';
+import { lookupCategories, type Graph, type HostParams, type Dataset } from '@tinker/core';
+import { analyseWithTrees } from './treeFits.js';
 
 /**
  * `HostParams` carries flat arrays only, so [2, 3] and [3, 2] look the same. The train slice
@@ -24,13 +19,13 @@ export function noteHost(host: HostParams | null | undefined, graph: Graph): voi
 export function hostShape(
   host: HostParams | undefined,
   node: string,
-  info: DataInfo,
+  dataset: Pick<Dataset, 'info' | 'nTrain' | 'xTrain' | 'yTrain'>,
 ): [number, number] | undefined {
   const g = host && graphOf.get(host);
   if (!g) return undefined;
   let shapes = shapesOf.get(g);
   if (!shapes) {
-    const a = analyse(g, info);
+    const a = analyseWithTrees(g, dataset);
     shapes = Object.create(null) as Record<string, [number, number] | undefined>;
     for (const n of g.nodes) {
       const inW = a.inWidth[n.id];

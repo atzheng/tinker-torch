@@ -152,6 +152,12 @@ export const UI_IDS = {
     'loss-1d-tangent',
     'pins',
     'histogram-squares',
+    // Tree settings in the inspector (tinker-6h1.4); listing one also lets it be edited on a locked Tree
+    'tree-criterion',
+    'tree-depth',
+    'tree-min-split',
+    'tree-min-leaf',
+    'tree-min-decrease',
   ],
   // The model and loss tabs (CONTRACTS.md section 9). Listing none keeps all three; listing some hides the others.
   tabs: ['tab-model', 'tab-loss', 'tab-full'],
