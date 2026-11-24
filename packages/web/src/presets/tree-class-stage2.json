@@ -7,7 +7,7 @@
     "Run the tree at depth 1, then at each depth up to 8, comparing training and validation loss.",
     "At which depth is the validation loss lowest?",
     "Switch on the true boundary: does the deepest tree follow it, or the noisy points?",
-    "Change the noise or the seed and repeat. Does the best depth move?"
+    "Change the noise or the seed and repeat. Does the deepest tree always do worse than the best depth? What changes when the sample changes?"
   ],
   "locked": ["x", "tree", "lin1", "yhat", "y", "err", "loss"],
   "show": {

@@ -4,9 +4,9 @@
   "title": "Trees for classification, stage 3: choose the depth",
   "prompt": "Pick the depth you would use on new data. Show the validation points to see which ones the tree gets wrong.",
   "instructions": [
-    "Show the validation points. Which of them does the best depth misclassify, and which does the deepest tree?",
-    "Raise the smallest leaf size at depth 8. Does it move the validation loss towards the best depth?",
-    "Press New sample and run your chosen depth again. Would you choose the same depth?"
+    "Show the validation points. Which of them does the best depth get wrong, and which does the deepest tree get wrong?",
+    "Raise Min samples per leaf at depth 8. Does it move the validation loss towards the best depth?",
+    "Press New sample and run your chosen depth again. Is the best depth the same on every sample?"
   ],
   "locked": ["x", "tree", "lin1", "yhat", "y", "err", "loss"],
   "show": {
