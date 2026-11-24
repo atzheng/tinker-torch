@@ -32,6 +32,7 @@ import {
   parsePort,
   gapDashArray,
   polylineLength,
+  paramWireCurve,
   wireGaps,
   resolveEdge,
   setLoss,
@@ -285,7 +286,14 @@ export function LayerView(p: LayerViewProps) {
   const raised = (w: LayerLayout['wires'][number]) =>
     w.edge === lifted ? -1 : w.edge === selectedEdge || w.edge === dropEdge ? 1 : 0;
   const wireOrder = [...layout.wires].sort((a, b) => raised(a) - raised(b) || a.edge - b.edge);
-  const wireGapList = wireGaps(wireOrder.map((w) => w.points));
+  // Param wires (weights.of taps) always pass over data wires: they come last in the order, so the
+  // data wires are the ones that get gaps; the dashed taps themselves are never cut.
+  const params = analysis.paramWires.flatMap((pw) => {
+    const a = layout.nodes[pw.linear];
+    const b = layout.nodes[pw.weights];
+    return a && b ? [{ pw, ...paramWireCurve(a, b) }] : [];
+  });
+  const wireGapList = wireGaps([...wireOrder.map((w) => w.points), ...params.map((q) => q.points)]);
   const dashes = new Map(
     wireOrder.map((w, i) => [w.edge, gapDashArray(wireGapList[i] ?? [], polylineLength(w.points))]),
   );
@@ -314,25 +322,16 @@ export function LayerView(p: LayerViewProps) {
         </marker>
       </defs>
       <Regions graph={graph} analysis={analysis} layout={layout} />
-      {analysis.paramWires.map((pw) => {
+      {params.map(({ pw, d }) => (
         // A Weights tap reads the parameters of its Linear: a dashed wire, not a data wire.
-        const a = layout.nodes[pw.linear];
-        const b = layout.nodes[pw.weights];
-        if (!a || !b) return null;
-        const sx = a.x + a.w / 2;
-        const sy = a.y + a.h;
-        const ex = b.x;
-        const ey = b.y + b.h / 2;
-        return (
-          <path
-            key={`pw-${pw.weights}`}
-            data-testid={`param-wire-${pw.weights}`}
-            className="tk-param-wire"
-            d={`M${sx} ${sy}C${sx} ${sy + 36} ${ex - 40} ${ey} ${ex} ${ey}`}
-            markerEnd="url(#tk-arrow)"
-          />
-        );
-      })}
+        <path
+          key={`pw-${pw.weights}`}
+          data-testid={`param-wire-${pw.weights}`}
+          className="tk-param-wire"
+          d={d}
+          markerEnd="url(#tk-arrow)"
+        />
+      ))}
       {wireOrder.map((w) => {
         const edge = graph.edges[w.edge];
         if (!edge) return null;
