@@ -204,7 +204,11 @@ export function CodeView() {
           {rows.map((r) => (
             <div
               key={r.n}
-              className={styles.row}
+              className={`${styles.row} ${
+                r.openFold !== undefined || r.segs.some((x) => x.kind === 'fold')
+                  ? styles.foldRow
+                  : ''
+              }`}
               data-line={r.n}
               data-start={r.start}
               data-end={r.end}

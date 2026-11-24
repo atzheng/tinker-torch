@@ -95,8 +95,6 @@
 }
 
 .caret {
-  min-height: 0;
-  min-width: 0;
   flex: none;
   width: 2em;
   padding: 0;
@@ -121,11 +119,7 @@
 }
 
 .fold {
-  /* stays inside its row on touch: the global 32 px minimum would overlap the next row */
-  min-height: 0;
-  min-width: 0;
   padding: 0 8px;
-  margin: -3px 0;
   font: inherit;
   line-height: 1.3;
   color: var(--accent);
@@ -176,4 +170,17 @@
 }
 .issues p {
   margin: 0;
+}
+
+/* Touch: the global 32 px hit-target minimum applies to the fold buttons, so the few rows that hold
+   one (the data literals) are 32 px tall and the button fits inside its own row. */
+@media (pointer: coarse) {
+  .foldRow {
+    min-height: 32px;
+    align-items: center;
+  }
+  .foldRow .gutter {
+    align-self: stretch;
+    align-items: center;
+  }
 }
