@@ -34,9 +34,16 @@ const MODULE_ATTRS = [
   'load_state_dict', 'zero_grad', 'apply', 'to', 'cpu', 'cuda', 'float', 'double', 'half',
   'bfloat16', 'requires_grad_', 'add_module', 'register_buffer', 'register_parameter',
   'register_module', 'get_parameter', 'get_submodule', 'get_buffer', 'extra_repr', 'share_memory',
-  'compile', 'to_empty', 'ipu', 'xpu', 'mtia', 'call_super_init', 'dump_patches',
+  'compile', 'to_empty', 'T_destination', 'get_extra_state', 'set_extra_state',
+  'register_forward_hook', 'register_forward_pre_hook', 'register_full_backward_hook',
+  'register_full_backward_pre_hook', 'register_backward_hook', 'register_state_dict_pre_hook',
+  'register_load_state_dict_post_hook', 'ipu', 'xpu', 'mtia', 'call_super_init', 'dump_patches',
 ]; // prettier-ignore
 const RESERVED: ReadonlySet<string> = new Set([...PY_KEYWORDS, ...SCRIPT_NAMES, ...MODULE_ATTRS]);
+
+/** Reserved names, and any `register_*` (nn.Module methods) or leading-underscore name. */
+const reserved = (s: string): boolean =>
+  RESERVED.has(s) || s.startsWith('register_') || s.startsWith('_');
 
 const num = (v: number): string => String(Number(v.toPrecision(7)));
 const pyFloat = (x: number): string => (Number.isInteger(x) ? x.toFixed(1) : String(x));
@@ -78,7 +85,7 @@ function build(
     taken.add(s);
     return s;
   };
-  for (const n of graph.nodes) if (!RESERVED.has(n.id)) names.set(n.id, n.id);
+  for (const n of graph.nodes) if (!reserved(n.id)) names.set(n.id, n.id);
   for (const n of graph.nodes) if (!names.has(n.id)) names.set(n.id, fresh(n.id));
   const name = (id: NodeId): string => names.get(id) ?? id;
 
@@ -111,6 +118,36 @@ function build(
       columns: src.columns.map((c) => info.columns.indexOf(c)),
     });
   }
+  // A scalar parameter that reaches the `pred` of an unfused log loss or cross-entropy through
+  // parameterless pieces only (no link) starts inside (0, 1), so the loss is defined at step 0.
+  const consumers = new Map<NodeId, { id: NodeId; port: string }[]>();
+  for (const id of analysis.order)
+    for (const port of Object.keys(analysis.inputs[id] ?? {}))
+      for (const from of wires(id, port)) {
+        const list = consumers.get(from) ?? [];
+        list.push({ id, port });
+        consumers.set(from, list);
+      }
+  const feedsRawProbability = (start: NodeId): boolean => {
+    const seen = new Set<NodeId>();
+    const stack = [start];
+    while (stack.length > 0) {
+      const cur = stack.pop() as NodeId;
+      for (const c of consumers.get(cur) ?? []) {
+        const n = byId.get(c.id);
+        if (n === undefined || seen.has(c.id)) continue;
+        if (n.type === 'log_loss' || n.type === 'cross_entropy') {
+          if (c.port === 'pred' && !analysis.fusable.some((f) => f.loss === c.id)) return true;
+          continue;
+        }
+        if (n.type === 'link' || n.type === 'linear' || n.type === 'lookup') continue;
+        if (n.type === 'scalew' || n.type === 'bias') continue;
+        seen.add(c.id);
+        stack.push(c.id);
+      }
+    }
+    return false;
+  };
   const emit = (id: NodeId, owner: 'self' | 'model') => {
     const node = byId.get(id) as Node;
     const piece = CORE_PIECES[node.type] as unknown as CorePiece<Node>;
@@ -119,12 +156,17 @@ function build(
     const firstIn = wires(id, piece.inputPorts[0] ?? '')[0];
     const shape = firstIn === undefined ? undefined : analysis.shape[firstIn];
     const init = analysis.paramInit[id];
+    const node0 = node.type;
     const ctx: TorchCtx = {
       ins,
       inWidth: analysis.inWidth[id] ?? 0,
       dataColumns: info.columns,
       categories: shape?.kind === 'example' ? (shape.category?.count ?? 0) : 0,
       bound: init?.kind === 'uniform' ? init.bound : 1,
+      initRange:
+        (node0 === 'scalew' || node0 === 'bias') && feedsRawProbability(id)
+          ? [0.25, 0.75]
+          : undefined,
       owner,
       training: `${owner}.training`,
       self: `${owner}.${name(id)}`,

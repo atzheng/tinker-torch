@@ -942,8 +942,44 @@ describe('torchScript', () => {
       { set: 'blobs', predictions: ['p'], loss: 'loss' },
     );
     const text = script(g);
-    expect(text).toContain("err = F.binary_cross_entropy(p, tgt, reduction='none')");
+    expect(text).toContain('err = -(tgt * torch.log(p) + (1 - tgt) * torch.log(1 - p))');
+    expect(text).not.toContain('F.binary_cross_entropy(');
     expect(text).toContain('loss = err.mean()');
+  });
+
+  test('a Bias feeding an unfused log loss starts inside (0, 1); others keep +/- bound', () => {
+    const g = graphOf(
+      [
+        { id: 'b', type: 'bias' },
+        { id: 'tgt', type: 'target' },
+        { id: 'err', type: 'log_loss' },
+        { id: 'loss', type: 'mean' },
+      ],
+      [
+        ['b', 'err.pred'],
+        ['tgt', 'err.target'],
+        ['err', 'loss'],
+      ],
+      { set: 'blobs', predictions: ['b'], loss: 'loss' },
+    );
+    expect(script(g)).toContain('self.b = nn.Parameter(torch.empty(1, 1).uniform_(0.25, 0.75))');
+    expect(script(mlp())).not.toContain('uniform_(0.25');
+    const plain = graphOf(
+      [{ id: 'b', type: 'bias' }, { id: 'tgt', type: 'target' }, ...sq()[0]],
+      [['b', 'diff.a'], ['tgt', 'diff.b'], ...sq()[1]],
+      { predictions: ['b'], loss: 'loss' },
+    );
+    expect(script(plain)).toContain('uniform_(-1.0, 1.0)');
+  });
+
+  test('ids that match nn.Module methods or start with an underscore are renamed', () => {
+    const g = mlp();
+    g.nodes = g.nodes.map((n) => (n.id === 'l1' ? { ...n, id: 'register_hook' } : n));
+    g.edges = g.edges.map(([a, b]) => [
+      a === 'l1' ? 'register_hook' : a,
+      b === 'l1' ? 'register_hook' : b,
+    ]);
+    expect(script(g)).toContain('self.register_hook_ = nn.Linear(1, 4');
   });
 
   test('data section: standardisation as explicit lines, folds for each literal', () => {

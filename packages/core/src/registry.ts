@@ -122,6 +122,8 @@ export type TorchCtx = {
   categories: number;
   /** Uniform init bound of the node's own parameters (`analysis.paramInit`); 1 when it owns none. */
   bound: number;
+  /** Set when a scalar parameter must start inside (0, 1) (it feeds an unfused log loss as a probability): `uniform_(lo, hi)` replaces +/- bound. */
+  initRange?: [lo: number, hi: number];
   /** `self` in `Model.forward`, `model` in `objective`: what a parameter owner is reached through. */
   owner: 'self' | 'model';
   /** `<owner>.training`. */
@@ -246,6 +248,12 @@ function dataIndex(ctx: TorchCtx, name: string, position: number): number {
   return m?.[1] !== undefined ? Number(m[1]) - 1 : position;
 }
 
+/** The `lo, hi` of a scalar parameter's uniform init. */
+const scalarRange = (ctx: TorchCtx): string => {
+  const [lo, hi] = ctx.initRange ?? [-ctx.bound, ctx.bound];
+  return `${py.float(lo)}, ${py.float(hi)}`;
+};
+
 /** The variable of the one wire into a plain port (a placeholder name while unwired). */
 const one = (ctx: TorchCtx, port: string): string => ctx.ins[port]?.[0] ?? port;
 
@@ -326,7 +334,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       bound: 1 / Math.sqrt(Math.max(1, data.columns.length)),
     }),
     torch: (_node, ctx) => ({
-      init: `nn.Parameter(torch.empty(1, 1).uniform_(-${py.float(ctx.bound)}, ${py.float(ctx.bound)}))`,
+      init: `nn.Parameter(torch.empty(1, 1).uniform_(${scalarRange(ctx)}))`,
       expr: `${ctx.self} * ${one(ctx, 'in')}`,
     }),
   },
@@ -346,7 +354,7 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
       bound: 1 / Math.sqrt(Math.max(1, data.columns.length)),
     }),
     torch: (_node, ctx) => ({
-      init: `nn.Parameter(torch.empty(1, 1).uniform_(-${py.float(ctx.bound)}, ${py.float(ctx.bound)}))`,
+      init: `nn.Parameter(torch.empty(1, 1).uniform_(${scalarRange(ctx)}))`,
       expr:
         ctx.ins['in']?.[0] === undefined
           ? `${ctx.self}.expand(x.shape[0], 1)`
@@ -591,9 +599,9 @@ export const CORE_PIECES: { [T in PieceType]: CorePiece<NodeOf<T>> } = {
     },
     paramShapes: noParams,
     paramInit: noInit,
-    // The literal form; torchScript writes the with-logits idiom when a sigmoid link is fused in front.
+    // The literal formula (NaN outside (0, 1), where F.binary_cross_entropy would raise); torchScript writes the with-logits idiom when a sigmoid link is fused in front.
     torch: (_node, ctx) => ({
-      expr: `F.binary_cross_entropy(${one(ctx, 'pred')}, ${one(ctx, 'target')}, reduction='none')`,
+      expr: `-(${one(ctx, 'target')} * torch.log(${one(ctx, 'pred')}) + (1 - ${one(ctx, 'target')}) * torch.log(1 - ${one(ctx, 'pred')}))`,
     }),
   },
   cross_entropy: {
