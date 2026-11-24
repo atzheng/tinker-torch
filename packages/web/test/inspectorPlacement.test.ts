@@ -57,3 +57,32 @@ test('never reaches above minTop (the header strip)', () => {
   expect(p.top).toBeGreaterThanOrEqual(44);
   expect(p.top + p.maxHeight).toBeLessThanOrEqual(200 - 16);
 });
+
+test('no room above or below and no x extent: clamps to the larger side, never over the target', () => {
+  // view 768x200, target 80..120, minTop 44, height 300
+  const a = fitInspector({ cx: 300, top: 80, bottom: 120 }, { w: 768, h: 200 }, 248, 300, 16, 44);
+  expect(overlaps(a, 300, { top: 80, bottom: 120 })).toBe(false);
+  // view 768x440, target 100..400
+  const t = { top: 100, bottom: 400 };
+  const b = fitInspector({ cx: 300, ...t }, { w: 768, h: 440 }, 248, 300, 16, 44);
+  expect(overlaps(b, 300, t)).toBe(false);
+  expect(b.maxHeight).toBeGreaterThanOrEqual(0);
+});
+
+test('goes beside the target when neither side has room', () => {
+  const t = { cx: 200, top: 100, bottom: 400, x0: 150, x1: 250 };
+  const r = fitInspector(t, { w: 768, h: 440 }, 248, 300, 16, 44);
+  expect(r.left).toBe(266);
+  expect(r.top).toBeGreaterThanOrEqual(44);
+  expect(r.top + Math.min(300, r.maxHeight)).toBeLessThanOrEqual(436);
+  // right edge too close: goes left
+  const l = fitInspector(
+    { cx: 600, top: 100, bottom: 400, x0: 550, x1: 650 },
+    { w: 768, h: 440 },
+    248,
+    300,
+    16,
+    44,
+  );
+  expect(l.left).toBe(550 - 16 - 248);
+});

@@ -1,5 +1,5 @@
 import { fitInspector, INSPECTOR_GUESS_H, type InspectorFit } from './inspectorPlacement';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   LAYOUT,
   clearPositions,
@@ -492,10 +492,13 @@ export function Canvas() {
 
   // Natural height of the open inspector, measured so a tall one (a Linear) is placed whole or
   // scrolls inside the space left, never cut off by the canvas edge.
-  const inspRef = useRef<HTMLDivElement>(null);
+  const inspRo = useRef<ResizeObserver | null>(null);
   const [inspH, setInspH] = useState(INSPECTOR_GUESS_H);
-  useEffect(() => {
-    const el = inspRef.current;
+  // A callback ref: the observer attaches whenever the box mounts, and the height is read in the
+  // commit phase, so the first paint already uses it.
+  const inspRef = useCallback((el: HTMLDivElement | null) => {
+    inspRo.current?.disconnect();
+    inspRo.current = null;
     if (!el) return;
     const read = () => {
       const h = el.offsetHeight;
@@ -503,10 +506,9 @@ export function Canvas() {
     };
     read();
     if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [selection]);
+    inspRo.current = new ResizeObserver(read);
+    inspRo.current.observe(el);
+  }, []);
 
   // The inspector goes below the piece (or wire label), above when there is no room below, so it
   // does not cover the wires beside the piece.
@@ -516,7 +518,13 @@ export function Canvas() {
     if (box) {
       anchor = fitInspector(
         // clear of the pins (and the add pins) above and below the piece
-        { cx: px(box.x + box.w / 2), top: py(box.y - 30), bottom: py(box.y + box.h + 30) },
+        {
+          cx: px(box.x + box.w / 2),
+          top: py(box.y - 30),
+          bottom: py(box.y + box.h + 30),
+          x0: px(box.x),
+          x1: px(box.x + box.w),
+        },
         view,
         INSPECTOR_W,
         inspH,
