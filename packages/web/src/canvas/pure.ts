@@ -258,6 +258,8 @@ export function placeIssues(
   wireOfNode: (node: NodeId) => number | undefined = () => undefined,
   /** The node a pin issue's pin sits on; when given, pin issues are drawn at the pin, not the node. */
   pinNode?: (pin: NonNullable<Issue['at']['pin']>) => NodeId | undefined,
+  /** The name of the other tab an issue's piece lives on; a global line is then prefixed with it. */
+  otherTab?: (issue: Issue) => string | undefined,
 ): PlacedIssues {
   const out: PlacedIssues = { byPin: new Map(), byEdge: new Map(), byNode: new Map(), global: [] };
   const add = <K>(m: Map<K, string[]>, k: K, msg: string) => {
@@ -274,7 +276,11 @@ export function placeIssues(
       const wire = wireOfNode(at.node);
       if (wire !== undefined && wireEdges.has(wire)) add(out.byEdge, wire, message);
       else add(out.byNode, at.node, message);
-    } else if (!out.global.includes(message)) out.global.push(message);
+    } else {
+      const where = otherTab?.({ at, message });
+      const line = where === undefined ? message : `${where}: ${message}`;
+      if (!out.global.includes(line)) out.global.push(line);
+    }
   }
   return out;
 }
@@ -334,29 +340,6 @@ export function heatMap(
 
 export function pointsToPath(points: readonly (readonly [number, number])[]): string {
   return points.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x} ${y}`).join(' ');
-}
-
-export type InspectorPlacement = { left: number } & ({ top: number } | { bottom: number });
-
-/**
- * Where to put the inspector (`width` px wide, about `needH` px tall) for a target spanning
- * `top`..`bottom` px at horizontal centre `cx` inside a `view`: centred under the target when there
- * is room below, else above it (anchored by `bottom`, so its height need not be known), kept
- * inside the view horizontally.
- */
-export function placeInspector(
-  target: { cx: number; top: number; bottom: number },
-  view: { w: number; h: number },
-  width: number,
-  needH = 230,
-  gap = 16,
-): InspectorPlacement {
-  const left = Math.min(Math.max(4, target.cx - width / 2), Math.max(4, view.w - width - 4));
-  if (view.h - (target.bottom + gap) >= needH) return { left, top: target.bottom + gap };
-  if (target.top - gap >= needH) return { left, bottom: view.h - (target.top - gap) };
-  // Neither side has room: sit as low as the canvas allows with the whole panel inside it, over the
-  // target if need be (a short portrait canvas), never cut off at the bottom.
-  return { left, top: Math.max(4, Math.min(target.bottom + gap, view.h - needH - 4)) };
 }
 
 /** Size in abstract units of the pill drawn behind a wire's width text, at `scale` px per unit. */
