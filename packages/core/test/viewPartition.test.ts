@@ -238,9 +238,10 @@ describe('viewOfTab', () => {
 });
 
 describe('tabs in a preset', () => {
-  test('no tab id listed: all three tabs; some listed: only those', () => {
-    expect(shownTabs(undefined)).toEqual(['model', 'loss', 'full']);
-    expect(shownTabs(['panel-fit'])).toEqual(['model', 'loss', 'full']);
+  test('no tab id listed: all four tabs; some listed: only those', () => {
+    expect(shownTabs(undefined)).toEqual(['model', 'loss', 'full', 'code']);
+    expect(shownTabs(['panel-fit'])).toEqual(['model', 'loss', 'full', 'code']);
+    expect(shownTabs(['tab-model', 'tab-code'])).toEqual(['model', 'code']);
     expect(shownTabs(['tab-loss', 'tab-full'])).toEqual(['loss', 'full']);
     expect(shownTabs(['tab-full'])).toEqual(['full']);
     expect(shownTabs(['tab-loss', 'panel-loss'])).toEqual(['loss']);
@@ -273,11 +274,21 @@ describe('tabs in a preset', () => {
     expect(preset({ tab: 'full' }).ok).toBe(true);
     expect(preset({ ui: ['tab-model', 'tab-loss'], tab: 'full' }).ok).toBe(false);
     expect(preset({ ui: ['tab-full'] }).ok).toBe(true);
+    expect(preset({ tab: 'code' }).ok).toBe(true);
+    expect(preset({ ui: ['tab-model', 'tab-code'], tab: 'code' }).ok).toBe(true);
+    expect(preset({ ui: ['tab-model', 'tab-loss'], tab: 'code' }).ok).toBe(false);
+  });
+
+  test('the Code tab is not a split tab', () => {
+    expect(tabsSplit(['tab-model', 'tab-code'])).toBe(false);
+    expect(tabsSplit(undefined)).toBe(true);
   });
 
   test('plain sentences for a bad tab', () => {
     const bad = preset({ tab: 'both' });
-    expect(!bad.ok && bad.error).toBe('The preset "show.tab" must be "model", "loss" or "full".');
+    expect(!bad.ok && bad.error).toBe(
+      'The preset "show.tab" must be "model", "loss", "full" or "code".',
+    );
     const hidden = preset({ ui: ['tab-model'], tab: 'loss' });
     expect(!hidden.ok && hidden.error).toBe(
       'The preset opens on the loss tab, but its "show.ui" hides that tab.',

@@ -23,7 +23,7 @@ export type Show = {
   /** Control and panel ids (`UI_IDS`). A region with none of its ids listed is removed. */
   ui?: string[];
   /** The tab the page opens on (CONTRACTS.md section 9, "Tabs"). Default `model`; never a tab `ui` hides. */
-  tab?: 'model' | 'loss' | 'full';
+  tab?: 'model' | 'loss' | 'full' | 'code';
   /**
    * Which of the model and loss tabs each results panel appears on (CONTRACTS.md section 12,
    * "Panels on more than one tab"). A panel not listed keeps its default tab.
@@ -126,6 +126,9 @@ export const UI_IDS = {
     'instructions',
     'success-check',
     'inspector-matrix',
+    // The Code tab's Copy and Download buttons (tinker-img.2)
+    'code-copy',
+    'code-download',
   ],
   results: [
     'panel-fit',
@@ -165,8 +168,8 @@ export const UI_IDS = {
     'tree-min-leaf',
     'tree-min-decrease',
   ],
-  // The model and loss tabs (CONTRACTS.md section 9). Listing none keeps all three; listing some hides the others.
-  tabs: ['tab-model', 'tab-loss', 'tab-full'],
+  // The model and loss tabs (CONTRACTS.md section 9). Listing none keeps all four; listing some hides the others.
+  tabs: ['tab-model', 'tab-loss', 'tab-full', 'tab-code'],
   'training-bar': [
     'btn-step',
     'btn-run',
@@ -387,8 +390,8 @@ function parseShow(v: unknown): Show | string | undefined {
   }
   const tab = v['tab'];
   if (tab !== undefined) {
-    if (tab !== 'model' && tab !== 'loss' && tab !== 'full')
-      return 'The preset "show.tab" must be "model", "loss" or "full".';
+    if (tab !== 'model' && tab !== 'loss' && tab !== 'full' && tab !== 'code')
+      return 'The preset "show.tab" must be "model", "loss", "full" or "code".';
     if (!shownTabs(out.ui).includes(tab)) {
       return `The preset opens on the ${tab} tab, but its "show.ui" hides that tab.`;
     }

@@ -8,6 +8,7 @@ export const TAB_LABELS: Record<ViewTab, string> = {
   model: 'Model',
   loss: 'Loss',
   full: 'Full graph',
+  code: 'Code',
 };
 
 function Tab({

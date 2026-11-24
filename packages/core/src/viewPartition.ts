@@ -11,18 +11,22 @@ import type { PaletteEntry } from './registry.js';
 
 /** The two halves a node can live on. */
 export type SplitTab = 'model' | 'loss';
-/** The tabs, in tab order: the model half, the loss half, and the whole graph ("Full graph"). */
-export type ViewTab = SplitTab | 'full';
-export const VIEW_TABS: readonly ViewTab[] = ['model', 'loss', 'full'];
+/**
+ * The tabs, in tab order: the model half, the loss half, the whole graph ("Full graph") and the
+ * generated PyTorch script ("Code"). `code` is not a canvas view: `viewOfTab` is never called with it.
+ */
+export type ViewTab = SplitTab | 'full' | 'code';
+export const VIEW_TABS: readonly ViewTab[] = ['model', 'loss', 'full', 'code'];
 /** The `UI_IDS` id of each tab. */
 export const TAB_UI_IDS: Record<ViewTab, string> = {
   model: 'tab-model',
   loss: 'tab-loss',
   full: 'tab-full',
+  code: 'tab-code',
 };
 
 /**
- * The tabs a preset leaves visible. `show.ui` lists no tab id: all three are shown (presets written
+ * The tabs a preset leaves visible. `show.ui` lists no tab id: all four are shown (presets written
  * before tabs, and presets that say nothing about them). Otherwise exactly the listed tabs, so a
  * preset that lists `tab-model` and `tab-loss` stays a two-tab preset.
  */
@@ -80,7 +84,7 @@ export function partitionNodes(graph: Graph, analysis: Analysis): Record<NodeId,
 
 /** Whether the preset leaves more than one tab (with one, that tab draws the whole graph). */
 export function tabsSplit(ui: readonly string[] | undefined): boolean {
-  return shownTabs(ui).length >= 2;
+  return shownTabs(ui).filter((t) => t !== 'code').length >= 2;
 }
 
 /** Whether `tab` draws the whole graph: the full tab, or the only tab the preset leaves. */

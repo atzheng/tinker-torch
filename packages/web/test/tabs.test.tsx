@@ -99,10 +99,28 @@ test('the tabs are a tablist: arrow keys switch and move focus', () => {
   expect(document.activeElement).toBe(q('tab-loss'));
   press(q('tab-loss') as HTMLElement, 'ArrowRight');
   expect(s().viewTab).toBe('full');
-  press(q('tab-full') as HTMLElement, 'ArrowRight'); // wraps
+  press(q('tab-full') as HTMLElement, 'ArrowRight');
+  expect(s().viewTab).toBe('code');
+  press(q('tab-code') as HTMLElement, 'ArrowRight'); // wraps
   expect(s().viewTab).toBe('model');
   press(q('tab-model') as HTMLElement, 'End');
-  expect(s().viewTab).toBe('full');
+  expect(s().viewTab).toBe('code');
+});
+
+test('the Code tab keeps the selection both ways; other switches clear it', () => {
+  mount();
+  act(() => s().selectNode('lin2'));
+  act(() => s().setViewTab('code'));
+  expect(s().selection).toEqual({ kind: 'node', id: 'lin2' });
+  expect(q('code-view')).not.toBeNull();
+  expect(host.querySelector('[data-region="palette"]')).toBeNull();
+  expect(host.querySelector('[data-region="results"]')).toBeNull();
+  expect(q('code-view')?.textContent).toContain('class Model(nn.Module)');
+  expect(q('code-view')?.querySelector('[data-hl="true"]')).not.toBeNull(); // lin2's spans
+  act(() => s().setViewTab('full'));
+  expect(s().selection).toEqual({ kind: 'node', id: 'lin2' });
+  act(() => s().setViewTab('loss'));
+  expect(s().selection).toBeNull();
 });
 
 test('a wire across the boundary shows on the loss and full tabs only and is removed from either', () => {
@@ -187,7 +205,7 @@ test('a bad tab in a preset is refused with one plain sentence and leaves the pa
   expect(r.ok).toBe(false);
   expect(r.message).toBe('The preset opens on the loss tab, but its "show.ui" hides that tab.');
   expect(loadText(presetText({ tab: 'both' })).message).toBe(
-    'The preset "show.tab" must be "model", "loss" or "full".',
+    'The preset "show.tab" must be "model", "loss", "full" or "code".',
   );
 });
 

@@ -55,7 +55,11 @@ export type ViewSlice = {
    * never drawn: read it through `useViewTab`, which falls back to a shown one. View state only.
    */
   viewTab: ViewTab;
-  /** Switch tab. The selection is cleared: what was selected may not be on the other tab. */
+  /**
+   * Switch tab. The selection is cleared: what was selected may not be on the other tab. Except
+   * between the Code tab and a graph tab: the selected piece is in the script and (when drawn) on
+   * the graph, so the selection stays (tinker-img.2).
+   */
   setViewTab: (tab: ViewTab) => void;
   /** Switch grain. A selected edge or unit exists only in neuron view, so it is cleared. */
   setGrain: (grain: Grain) => void;
@@ -96,7 +100,12 @@ export const createViewSlice: StateCreator<ViewSlice, [], [], ViewSlice> = (set)
   selectNode: (id) => set({ selection: { kind: 'node', id } }),
   grain: 'layer',
   viewTab: 'model',
-  setViewTab: (viewTab) => set((s) => (s.viewTab === viewTab ? s : { viewTab, selection: null })),
+  setViewTab: (viewTab) =>
+    set((s) => {
+      if (s.viewTab === viewTab) return s;
+      const keep = s.viewTab === 'code' || viewTab === 'code';
+      return keep ? { viewTab } : { viewTab, selection: null };
+    }),
   plotPrediction: null,
   setPlotPrediction: (plotPrediction) => set({ plotPrediction }),
   weightsOf: null,
