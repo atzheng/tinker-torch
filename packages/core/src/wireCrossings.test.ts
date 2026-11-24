@@ -24,6 +24,24 @@ describe('wireGaps', () => {
     expect(g[1]).toHaveLength(1);
     expect(wireGaps([h, v], [1, 0])).toEqual(g);
   });
+  it('cuts a gap where wires sharing a start point cross away from it', () => {
+    const a: Pt[] = [
+      [0, 0],
+      [50, 0],
+      [50, 100],
+      [120, 100],
+    ];
+    const b: Pt[] = [
+      [0, 0],
+      [30, 0],
+      [30, 50],
+      [120, 50],
+    ];
+    const [ga, gb] = wireGaps([a, b]);
+    expect(ga?.length).toBe(1);
+    expect(gb).toEqual([]);
+  });
+
   it('ignores collinear overlaps, shared ends and crossings near an end', () => {
     const inner: Pt[] = [
       [20, 50],

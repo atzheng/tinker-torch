@@ -21,8 +21,8 @@ const EPS = 1e-9;
 /**
  * `gaps[i]` lists the sorted, non-overlapping gaps of `wires[i]`. `order` is the stacking order
  * (indices into `wires`, bottom first; default 0..n-1). Only proper crossings of two segments count:
- * collinear overlaps and wires that share a start or end point (fan-out, fan-in) merely meet and
- * get no gap. Deterministic: depends only on the geometry and `order`.
+ * collinear overlaps and touches (a shared trunk, a shared start or end point, an elbow) merely
+ * meet and get no gap; two wires that share an endpoint but also cross further on do get one. Deterministic: depends only on the geometry and `order`.
  */
 export function wireGaps(
   wires: readonly (readonly Pt[])[],
@@ -40,7 +40,6 @@ export function wireGaps(
       const a = wires[i] as readonly Pt[];
       const b = wires[j] as readonly Pt[];
       if (a.length < 2 || b.length < 2) continue;
-      if (same(a[0], b[0]) || same(a[a.length - 1], b[b.length - 1])) continue;
       const under = (rank[i] ?? 0) < (rank[j] ?? 0) ? i : j;
       const over = under === i ? j : i;
       const u = wires[under] as readonly Pt[];
@@ -85,10 +84,6 @@ export function polylineLength(pts: readonly Pt[]): number {
 
 function round(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-function same(p: Pt | undefined, q: Pt | undefined): boolean {
-  return !!p && !!q && Math.abs(p[0] - q[0]) < 0.5 && Math.abs(p[1] - q[1]) < 0.5;
 }
 
 function cumulative(pts: readonly Pt[]): number[] {

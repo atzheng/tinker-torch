@@ -280,9 +280,10 @@ export function LayerView(p: LayerViewProps) {
   const selectedEdge = sel?.kind === 'wire' ? edgeIndexOf(graph, sel.from, sel.to) : -1;
   const wireSelected = (w: LayerLayout['wires'][number]): boolean => selectedEdge === w.edge;
   // Over/under at crossings (CONTRACTS.md section 10): graph.edges order bottom to top, with the
-  // selected, drop-target and dragged wires last; a later wire cuts gaps in the earlier ones.
+  // selected and drop-target wires last; a later wire cuts gaps in the earlier ones. The wire being
+  // dragged is lifted (faded) and goes first, so it cuts no gaps in solid wires.
   const raised = (w: LayerLayout['wires'][number]) =>
-    w.edge === selectedEdge || w.edge === dropEdge || w.edge === lifted ? 1 : 0;
+    w.edge === lifted ? -1 : w.edge === selectedEdge || w.edge === dropEdge ? 1 : 0;
   const wireOrder = [...layout.wires].sort((a, b) => raised(a) - raised(b) || a.edge - b.edge);
   const wireGapList = wireGaps(wireOrder.map((w) => w.points));
   const dashes = new Map(
