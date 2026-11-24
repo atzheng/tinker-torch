@@ -67,6 +67,25 @@ test('crossing gaps reach the visible line as stroke-dasharray', () => {
   for (const p of dashed) expect(p.closest('g')?.getAttribute('data-gapped')).toBe('true');
 });
 
+function ptr(el: Element, type: string, x: number, y: number) {
+  const e = new Event(type, { bubbles: true, cancelable: true });
+  Object.assign(e, { pointerId: 1, clientX: x, clientY: y, button: 0, pointerType: 'touch' });
+  act(() => void el.dispatchEvent(e));
+}
+
+test('the wire being rewire-dragged is lifted and drawn first (it cuts no gaps)', () => {
+  act(() => s().select({ kind: 'wire', from: 'l1', to: 's.in' }));
+  expect(wireIds().at(-1)).toBe('wire-6');
+  const end = host.querySelector('[data-testid="wire-end-6"]');
+  if (!end) throw new Error('missing wire end handle');
+  ptr(end, 'pointerdown', 100, 100);
+  ptr(end, 'pointermove', 140, 140);
+  ptr(end, 'pointermove', 180, 180);
+  expect(host.querySelector('[data-testid="wire-6"]')?.getAttribute('data-lifted')).toBe('true');
+  expect(wireIds()[0]).toBe('wire-6');
+  ptr(end, 'pointerup', 180, 180);
+});
+
 test('the selected wire is drawn last (on top)', () => {
   expect(wireIds().at(-1)).toBe('wire-7');
   act(() => s().select({ kind: 'wire', from: 'x', to: 's.in' }));

@@ -56,6 +56,8 @@ export const LAYOUT = {
   laneStep: 5,
   /** Two such runs closer than this (end to end, or overlapping) are separated into lanes. */
   laneClear: 14,
+  /** Lanes stay at least this far from the box edges either side of the gap (the step shrinks to fit). */
+  laneMargin: 6,
   pad: 24,
   /** A Linear expands only while both sides have at most this many units. */
   maxUnits: 8,
@@ -298,6 +300,18 @@ function manualRoute(a: Rect, b: Rect, y1: number, obstacles: Rect[]): [number, 
   return routes.find(free) ?? routes[0] ?? [];
 }
 
+let lanesEnabled = true;
+
+/** For tests: the layer layout with lane separation off (what `layoutLayers` gave before tinker-fsv). */
+export function layoutLayersWithoutLanes(g: Graph, a: Analysis): LayerLayout {
+  lanesEnabled = false;
+  try {
+    return layoutLayers(g, a);
+  } finally {
+    lanesEnabled = true;
+  }
+}
+
 function layoutCore(
   g: Graph,
   plan: (n: Node) => Plan,
@@ -423,7 +437,7 @@ function layoutCore(
   for (const e of edges) outCount.set(e.from, (outCount.get(e.from) ?? 0) + 1);
 
   const wires: LayerLayout['wires'] = [];
-  const autoWires: { wire: number; from: NodeId; relabel: boolean }[] = [];
+  const autoWires: { wire: number; from: NodeId; fan: boolean }[] = [];
   for (const e of edges) {
     const a = boxes[e.from];
     const b = boxes[e.to];
@@ -469,9 +483,9 @@ function layoutCore(
       labelAt,
     });
     if (!isManual)
-      autoWires.push({ wire: wires.length - 1, from: e.from, relabel: !(fanned && cb - ca === 1) });
+      autoWires.push({ wire: wires.length - 1, from: e.from, fan: fanned && cb - ca === 1 });
   }
-  separateLanes(wires, autoWires);
+  if (lanesEnabled) separateLanes(wires, autoWires, gap);
   if (manual.size === 0) return { boxes, wires, size: [width, height] };
   // With manual positions the drawing is as large as what is actually there (pieces and routes).
   let right = 0;
@@ -499,7 +513,8 @@ function layoutCore(
  */
 function separateLanes(
   wires: LayerLayout['wires'],
-  auto: { wire: number; from: NodeId; relabel: boolean }[],
+  auto: { wire: number; from: NodeId; fan: boolean }[],
+  gap: number,
 ): void {
   type Run = { w: number; i: number; lo: number; hi: number };
   type Item = { lo: number; hi: number; runs: Run[]; order: number; lane: number };
@@ -548,10 +563,14 @@ function separateLanes(
       }
       while (used.has(it.lane)) it.lane++;
     });
+    // All lanes of the gap must fit between the boxes either side: shrink the step when needed.
+    const maxIdx = Math.ceil(items.reduce((m, it) => Math.max(m, it.lane), 0) / 2);
+    const step =
+      maxIdx === 0 ? 0 : Math.min(LAYOUT.laneStep, (gap / 2 - LAYOUT.laneMargin) / maxIdx);
     for (const it of items) {
       if (it.lane === 0) continue;
-      const step = Math.ceil(it.lane / 2) * LAYOUT.laneStep;
-      const dx = it.lane % 2 === 1 ? step : -step;
+      const off = Math.ceil(it.lane / 2) * step;
+      const dx = it.lane % 2 === 1 ? off : -off;
       for (const r of it.runs) {
         const pts = wires[r.w]?.points;
         const p = pts?.[r.i];
@@ -563,9 +582,13 @@ function separateLanes(
       }
     }
   }
-  for (const { wire, relabel } of auto) {
+  for (const { wire, fan } of auto) {
     const w = wires[wire];
-    if (w && relabel && moved.has(wire)) w.labelAt = labelAnchor(w.points);
+    if (!w || !moved.has(wire)) continue;
+    const last = w.points[w.points.length - 1];
+    const prev = w.points[w.points.length - 2];
+    // A fanned output's label sits mid-way along the last run; any other on the longest run.
+    w.labelAt = fan && last && prev ? [(prev[0] + last[0]) / 2, last[1]] : labelAnchor(w.points);
   }
 }
 

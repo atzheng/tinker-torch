@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   analyse,
   layoutLayers,
+  layoutLayersWithoutLanes,
   LAYOUT,
   parseFile,
   sample,
@@ -78,14 +79,6 @@ function overlaps(g: Graph): string[] {
   return found;
 }
 
-type Before = Record<
-  string,
-  { size: [number, number]; wires: [number, [number, number][], [number, number]][] }
->;
-const before = JSON.parse(
-  readFileSync(new URL('./fixtures/preset-wires-before-lanes.json', import.meta.url), 'utf8'),
-) as Before;
-
 describe('no two non-fan wires share a collinear run (tinker-fsv)', () => {
   test.each(names)('%s', (name) => {
     const r = parseFile(JSON.parse(readFileSync(new URL(`${name}.json`, dir), 'utf8')));
@@ -95,32 +88,32 @@ describe('no two non-fan wires share a collinear run (tinker-fsv)', () => {
 });
 
 describe('layouts without overlaps are unchanged', () => {
-  // `fixtures/preset-wires-before-lanes.json` holds every bundled preset's wires from before lanes
-  // existed. A wire moves only if its old route had a run that clashed with another source's.
-  test.each(Object.keys(before))('%s', (name) => {
+  // Compare with the same layout with lane separation off. A wire moves only if its unlaned route
+  // had a run that clashed with another source's; the drawing's size never changes.
+  test.each(names)('%s', (name) => {
     const r = parseFile(JSON.parse(readFileSync(new URL(`${name}.json`, dir), 'utf8')));
     if (!r.ok) throw new Error(r.error);
     const g = r.file.graph;
-    const old = before[name];
-    if (!old) throw new Error(name);
-    const L = layoutLayers(g, analyse(g, infoOf(g)));
+    const a = analyse(g, infoOf(g));
+    const L = layoutLayers(g, a);
+    const old = layoutLayersWithoutLanes(g, a);
     expect(L.size).toEqual(old.size);
-    const oldSegs = old.wires.map(([edge, pts]) => ({ edge, segs: segs(pts) }));
-    for (const [edge, pts, label] of old.wires) {
-      const w = L.wires.find((x) => x.edge === edge);
+    expect(L.nodes).toEqual(old.nodes);
+    const oldSegs = old.wires.map((w) => ({ edge: w.edge, segs: segs(w.points) }));
+    for (const o of old.wires) {
+      const w = L.wires.find((x) => x.edge === o.edge);
       expect(w).toBeDefined();
-      if (JSON.stringify(w?.points) === JSON.stringify(pts)) {
-        expect(w?.labelAt).toEqual(label);
+      if (JSON.stringify(w?.points) === JSON.stringify(o.points)) {
+        expect(w?.labelAt).toEqual(o.labelAt);
         continue;
       }
-      // Moved: some other source's old run must have been within `laneClear` of one of its runs.
-      const from = g.edges[edge]?.[0];
+      const from = g.edges[o.edge]?.[0];
       const clashed = oldSegs.some(
-        (o) =>
-          g.edges[o.edge]?.[0] !== from &&
-          o.segs.some((p) => segs(pts).some((q) => overlap(p, q) > -LAYOUT.laneClear)),
+        (x) =>
+          g.edges[x.edge]?.[0] !== from &&
+          x.segs.some((p) => segs(o.points).some((q) => overlap(p, q) > -LAYOUT.laneClear)),
       );
-      expect(clashed, `${name} wire ${edge} moved without a clash`).toBe(true);
+      expect(clashed, `${name} wire ${o.edge} moved without a clash`).toBe(true);
     }
   });
 
@@ -194,5 +187,54 @@ describe('lanes with several skip wires into one variadic port', () => {
       ),
     );
     expect(lanes.size).toBeGreaterThan(3);
+  });
+});
+
+describe('many sources into one Sum keep every lane inside the gap', () => {
+  const n = 30;
+  const nodes: Graph['nodes'] = [{ id: 'x', type: 'input', columns: ['x1'] }];
+  const edges: Graph['edges'] = [];
+  for (let i = 0; i < n; i++) {
+    nodes.push({ id: `l${i}`, type: 'linear', out: 3, bias: true });
+    edges.push([i === 0 ? 'x' : `l${i - 1}`, `l${i}`]);
+    edges.push([`l${i}`, 's.in']);
+  }
+  nodes.push({ id: 's', type: 'sum' });
+  const graph: Graph = {
+    version: 2,
+    nodes,
+    edges,
+    predictions: [],
+    loss: null,
+    data: { set: 'line', n: 100, noise: 0.1, val: 0.2, seed: 1, standardize: false },
+    train: { optimizer: 'adam', lr: 0.01, batch: 'full', seed: 1 },
+  };
+  test('vertical runs stay strictly between the boxes and no segment runs backwards', () => {
+    const L = layoutLayers(graph, analyse(graph, fallback));
+    for (const w of L.wires) {
+      const e = graph.edges[w.edge];
+      const from = L.nodes[e?.[0] ?? ''];
+      const to = L.nodes[e?.[1].split('.')[0] ?? ''];
+      if (!from || !to) throw new Error('missing box');
+      const first = w.points[0];
+      const last = w.points[w.points.length - 1];
+      expect(first?.[0]).toBe(from.x + from.w);
+      expect(last?.[0]).toBe(to.x);
+      for (const [x0, y0, x1, y1] of segs(w.points)) {
+        if (x0 === x1 && y0 !== y1) {
+          expect(x0).toBeGreaterThan(from.x + from.w);
+          expect(x0).toBeLessThan(to.x);
+        }
+      }
+      // x never decreases along the three-segment route of an adjacent wire
+      if ((to.col ?? 0) - (from.col ?? 0) === 1) {
+        for (let i = 0; i + 1 < w.points.length; i++) {
+          expect((w.points[i + 1] as [number, number])[0]).toBeGreaterThanOrEqual(
+            (w.points[i] as [number, number])[0],
+          );
+        }
+      }
+    }
+    expect(overlaps(graph)).toEqual([]);
   });
 });
