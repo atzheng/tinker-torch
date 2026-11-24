@@ -9,6 +9,7 @@ import { App } from '../src/App.js';
 import { loadEngine } from '../src/engine.js';
 import { bundledPreset } from '../src/presets/index.js';
 import { useStore } from '../src/state/store.js';
+import { editSettingOpen } from '../src/canvas/drawings/fields.js';
 import { loadBundled } from '../src/topbar/PresetMenu.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -115,20 +116,21 @@ test('stage 2: validation curve, n, noise, seed and the truth toggle; validation
   expect(rows.at(-1)?.train).toBeLessThan(0.01);
 });
 
-test('stage 3: minimum leaf size, the penalty on the loss tab, Resample x20 and pins', () => {
+test('stage 3: minimum leaf size and Resample x20 and pins; depth and min leaf edit through the real lock list', () => {
   load(NAMES[2] as string);
   const m = mount();
-  for (const id of ['truth-toggle', 'data-n', 'tab-loss', 'loss-readout-val', 'resample-run']) {
+  for (const id of ['truth-toggle', 'data-n', 'loss-readout-val', 'resample-run', 'pins']) {
     expect(m.has(id), id).toBe(true);
   }
-  expect(s().graph.nodes.find((n) => n.id === 'pen')).toMatchObject({ type: 'scale', c: 0 });
-  // everything but the penalty's Scale is locked: the Scale takes lambda, the Tree only its listed fields
-  expect(s().preset?.locked).not.toContain('pen');
+  expect(m.has('tab-loss')).toBe(false);
   expect(s().preset?.locked).toContain('tree');
-  const lam = setSetting(s().graph, 'pen', 'c', 0.05, { locked: s().preset?.locked });
-  expect(lam.ok).toBe(true);
-  const leaf = setSetting(s().graph, 'tree', 'minLeaf', 4, { locked: [] });
-  act(() => s().apply(leaf));
+  // the locked Tree still takes its listed fields (editSettingOpen) and nothing else
+  editSettingOpen('tree', 'minLeaf', 4, 'tree-min-leaf');
+  expect(s().graph.nodes.find((n) => n.id === 'tree')).toMatchObject({ minLeaf: 4 });
+  editSettingOpen('tree', 'depth', 5, 'tree-depth');
+  expect(s().graph.nodes.find((n) => n.id === 'tree')).toMatchObject({ depth: 5 });
+  editSettingOpen('tree', 'minSplit', 5, 'tree-min-split');
+  expect(s().graph.nodes.find((n) => n.id === 'tree')).toMatchObject({ minSplit: 2 });
   expect(s().canTrain).toBe(true);
   m.done();
 });

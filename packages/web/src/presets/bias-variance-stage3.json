@@ -5,10 +5,9 @@
   "prompt": "Train the same tree on 20 different samples of the data and see how much the curves differ.",
   "instructions": [
     "Press Resample x20 at depth 2 and at depth 8. Compare the bias squared and the variance.",
-    "Raise the smallest leaf size and train again. What happens to the variance?",
-    "On the Loss tab, raise the penalty on the Linear weights. How does it change the curve?"
+    "Raise the smallest leaf size and Resample x20 again. What happens to the variance and to the bias squared?"
   ],
-  "locked": ["x", "tree", "lin1", "y", "diff", "err", "loss_mean", "w_lin1", "n_lin1", "loss"],
+  "locked": ["x", "tree", "lin1", "y", "diff", "err", "loss"],
   "show": {
     "palette": [],
     "tab": "model",
@@ -32,15 +31,11 @@
       "data-n",
       "data-noise",
       "data-seed",
-      "tab-loss",
       "tree-min-leaf",
       "resample-run",
       "pins",
       "loss-log-toggle"
-    ],
-    "panelTabs": {
-      "loss": ["model", "loss"]
-    }
+    ]
   },
   "labels": {
     "loss-readout": "Score",
@@ -82,27 +77,8 @@
         "type": "square"
       },
       {
-        "id": "loss_mean",
-        "type": "mean"
-      },
-      {
-        "id": "w_lin1",
-        "type": "weights",
-        "of": "lin1"
-      },
-      {
-        "id": "n_lin1",
-        "type": "norm",
-        "kind": "l2"
-      },
-      {
-        "id": "pen",
-        "type": "scale",
-        "c": 0
-      },
-      {
         "id": "loss",
-        "type": "add"
+        "type": "mean"
       }
     ],
     "edges": [
@@ -111,11 +87,7 @@
       ["lin1", "diff.a"],
       ["y", "diff.b"],
       ["diff", "err"],
-      ["err", "loss_mean"],
-      ["w_lin1", "n_lin1"],
-      ["n_lin1", "pen"],
-      ["loss_mean", "loss.a"],
-      ["pen", "loss.b"]
+      ["err", "loss"]
     ],
     "predictions": ["lin1"],
     "loss": "loss",
