@@ -8,15 +8,7 @@
     "Raise the smallest leaf size at depth 8. Does it move the validation loss towards the best depth?",
     "Press New sample and run your chosen depth again. Would you choose the same depth?"
   ],
-  "locked": [
-    "x",
-    "tree",
-    "lin1",
-    "yhat",
-    "y",
-    "err",
-    "loss"
-  ],
+  "locked": ["x", "tree", "lin1", "yhat", "y", "err", "loss"],
   "show": {
     "palette": [],
     "tab": "model",
@@ -46,10 +38,7 @@
       "loss-log-toggle"
     ],
     "panelTabs": {
-      "loss": [
-        "model",
-        "loss"
-      ]
+      "loss": ["model", "loss"]
     }
   },
   "labels": {
@@ -62,10 +51,7 @@
       {
         "id": "x",
         "type": "input",
-        "columns": [
-          "x1",
-          "x2"
-        ]
+        "columns": ["x1", "x2"]
       },
       {
         "id": "tree",
@@ -101,34 +87,14 @@
       }
     ],
     "edges": [
-      [
-        "x",
-        "tree"
-      ],
-      [
-        "tree",
-        "lin1"
-      ],
-      [
-        "lin1",
-        "yhat"
-      ],
-      [
-        "yhat",
-        "err.pred"
-      ],
-      [
-        "y",
-        "err.target"
-      ],
-      [
-        "err",
-        "loss"
-      ]
+      ["x", "tree"],
+      ["tree", "lin1"],
+      ["lin1", "yhat"],
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
     ],
-    "predictions": [
-      "yhat"
-    ],
+    "predictions": ["yhat"],
     "loss": "loss",
     "data": {
       "set": "moons",

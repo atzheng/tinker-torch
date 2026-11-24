@@ -8,15 +8,7 @@
     "Raise the depth, press Reset and Run again. How do the rectangles change?",
     "Where does the training loss stop improving? Does a deeper tree always draw a better boundary?"
   ],
-  "locked": [
-    "x",
-    "tree",
-    "lin1",
-    "yhat",
-    "y",
-    "err",
-    "loss"
-  ],
+  "locked": ["x", "tree", "lin1", "yhat", "y", "err", "loss"],
   "show": {
     "palette": [],
     "tab": "model",
@@ -38,10 +30,7 @@
       "data-resample"
     ],
     "panelTabs": {
-      "loss": [
-        "model",
-        "loss"
-      ]
+      "loss": ["model", "loss"]
     }
   },
   "options": {
@@ -57,10 +46,7 @@
       {
         "id": "x",
         "type": "input",
-        "columns": [
-          "x1",
-          "x2"
-        ]
+        "columns": ["x1", "x2"]
       },
       {
         "id": "tree",
@@ -96,34 +82,14 @@
       }
     ],
     "edges": [
-      [
-        "x",
-        "tree"
-      ],
-      [
-        "tree",
-        "lin1"
-      ],
-      [
-        "lin1",
-        "yhat"
-      ],
-      [
-        "yhat",
-        "err.pred"
-      ],
-      [
-        "y",
-        "err.target"
-      ],
-      [
-        "err",
-        "loss"
-      ]
+      ["x", "tree"],
+      ["tree", "lin1"],
+      ["lin1", "yhat"],
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
     ],
-    "predictions": [
-      "yhat"
-    ],
+    "predictions": ["yhat"],
     "loss": "loss",
     "data": {
       "set": "moons",

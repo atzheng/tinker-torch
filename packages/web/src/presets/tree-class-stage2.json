@@ -9,15 +9,7 @@
     "Switch on the true boundary: does the deepest tree follow it, or the noisy points?",
     "Change the noise or the seed and repeat. Does the best depth move?"
   ],
-  "locked": [
-    "x",
-    "tree",
-    "lin1",
-    "yhat",
-    "y",
-    "err",
-    "loss"
-  ],
+  "locked": ["x", "tree", "lin1", "yhat", "y", "err", "loss"],
   "show": {
     "palette": [],
     "tab": "model",
@@ -44,10 +36,7 @@
       "data-seed"
     ],
     "panelTabs": {
-      "loss": [
-        "model",
-        "loss"
-      ]
+      "loss": ["model", "loss"]
     }
   },
   "options": {
@@ -63,10 +52,7 @@
       {
         "id": "x",
         "type": "input",
-        "columns": [
-          "x1",
-          "x2"
-        ]
+        "columns": ["x1", "x2"]
       },
       {
         "id": "tree",
@@ -102,34 +88,14 @@
       }
     ],
     "edges": [
-      [
-        "x",
-        "tree"
-      ],
-      [
-        "tree",
-        "lin1"
-      ],
-      [
-        "lin1",
-        "yhat"
-      ],
-      [
-        "yhat",
-        "err.pred"
-      ],
-      [
-        "y",
-        "err.target"
-      ],
-      [
-        "err",
-        "loss"
-      ]
+      ["x", "tree"],
+      ["tree", "lin1"],
+      ["lin1", "yhat"],
+      ["yhat", "err.pred"],
+      ["y", "err.target"],
+      ["err", "loss"]
     ],
-    "predictions": [
-      "yhat"
-    ],
+    "predictions": ["yhat"],
     "loss": "loss",
     "data": {
       "set": "moons",
