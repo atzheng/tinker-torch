@@ -29,6 +29,9 @@
       "data-resample"
     ]
   },
+  "options": {
+    "val-points-toggle": false
+  },
   "labels": {
     "loss-readout": "Score",
     "data-resample": "New sample"
