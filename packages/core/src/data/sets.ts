@@ -21,6 +21,11 @@ export type SetSpec = {
    * (0..K-1) as a float; Standardise skips it and it never feeds a numeric piece directly.
    */
   categories?: Record<number, string[]>;
+  /**
+   * Regression: the distribution of each x column; default (absent) is uniform on the domain.
+   * `normal` draws N(mean, sd) and clips to the domain (point masses at the ends).
+   */
+  xDist?: { kind: 'normal'; mean: number; sd: number };
   /** A real dataset: fixed rows, `n` and `noise` do not apply (`f` is unused). */
   real?: boolean;
   /** A generated set whose labels or targets do not use `noise` (the top bar hides Noise). */
@@ -142,6 +147,15 @@ export const SETS: Record<DatasetName, SetSpec> = {
     d: 1,
     domain: D3,
     f: (x) => 0.5 * Math.sin(3 * at(x, 0)) + 0.3 * at(x, 0),
+  },
+  // The bias-variance game's data: x ~ N(5, 2) clipped to [0, 10] (see xDist).
+  trend_sine: {
+    name: 'trend_sine',
+    kind: 'regression',
+    d: 1,
+    domain: [[0, 10]],
+    xDist: { kind: 'normal', mean: 5, sd: 2 },
+    f: (x) => 0.5 * at(x, 0) + Math.sin(at(x, 0)),
   },
   plane: {
     name: 'plane',
@@ -297,7 +311,7 @@ function uniform(rng: Rng, lo: number, hi: number): number {
 /**
  * Draws n rows. Classification rows cycle through the labels 0, 1, (2, ...) so every contiguous
  * slice (the train and validation parts) is balanced to within one point.
- * Regression x is uniform on the domain; y = f*(x) + noise * s * eps.
+ * Regression x is uniform on the domain (or `xDist`, clipped to it); y = f*(x) + noise * s * eps.
  */
 export function generate(set: DatasetName, n: number, noise: number, rng: Rng): Row[] {
   const spec = SETS[set];
@@ -314,7 +328,12 @@ export function generate(set: DatasetName, n: number, noise: number, rng: Rng): 
     const s = spread(set);
     for (let i = 0; i < n; i++) {
       // fround so that the stored Float32 x reproduces f* exactly at noise 0.
-      const x = spec.domain.map(([lo, hi]) => Math.fround(uniform(rx, lo, hi)));
+      const xd = spec.xDist;
+      const x = spec.domain.map(([lo, hi]) =>
+        Math.fround(
+          xd ? Math.min(hi, Math.max(lo, xd.mean + xd.sd * rx.normal())) : uniform(rx, lo, hi),
+        ),
+      );
       const eps = rn.normal();
       rows.push({ x, y: spec.f(x) + noise * s * eps });
     }
