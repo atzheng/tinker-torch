@@ -250,16 +250,23 @@
   touch-action: pan-x;
 }
 
-/* A row holds the entry and its "?" (CONTRACTS.md section 15): the "?" shows on hover or focus with a
-   mouse, and on the armed entry (touch and keyboard); an open card keeps it shown. */
+/* A row holds the entry and its "?" (CONTRACTS.md section 15), side by side so the "?" never covers
+   the entry's symbol. The "?" shows on hover or focus with a mouse, and on the armed entry (touch
+   and keyboard); an open card keeps it shown. With a mouse its space is always kept, so hovering
+   does not reflow the row; on touch the palette is narrow, so it takes space only when shown. */
 .tk-palette-row {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 3px;
+}
+.tk-palette-row > .tk-palette-entry {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
 }
 .tk-palette-doc {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
+  flex: none;
   visibility: hidden;
 }
 .tk-palette-row[data-armed='true'] .tk-palette-doc,
@@ -274,6 +281,15 @@
 }
 @media (pointer: coarse) {
   .tk-palette-doc {
-    right: 2px;
+    display: none;
   }
+  .tk-palette-row[data-armed='true'] .tk-palette-doc,
+  .tk-palette-row:focus-within .tk-palette-doc,
+  .tk-palette-doc[aria-expanded='true'] {
+    display: inline-block;
+  }
+}
+.tk-palette[data-strip='true'] .tk-palette-row {
+  flex: none;
+  margin: 0;
 }
